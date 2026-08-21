@@ -20,6 +20,16 @@ async function token(): Promise<string> {
   return getValidGoogleAccessToken();
 }
 
+function driveErrorMessage(status: number): string {
+  if (status === 401) {
+    return 'Sessione Google scaduta. Accedi di nuovo con Google.';
+  }
+  if (status === 403) {
+    return 'ReWavier non vede le cartelle. Esci e entra di nuovo con Google.';
+  }
+  return 'Drive non ha aperto le cartelle. Riprova tra poco.';
+}
+
 async function driveGet<T>(path: string): Promise<T> {
   const call = async (access: string) =>
     fetch(`${DRIVE}${path}`, {
@@ -29,11 +39,8 @@ async function driveGet<T>(path: string): Promise<T> {
   if (response.status === 401) {
     response = await call(await getValidGoogleAccessToken(true));
   }
-  if (response.status === 401) {
-    throw new Error('Sessione Google scaduta. Accedi di nuovo con Google.');
-  }
   if (!response.ok) {
-    throw new Error(`Drive ${response.status}`);
+    throw new Error(driveErrorMessage(response.status));
   }
   return (await response.json()) as T;
 }
@@ -49,10 +56,16 @@ export async function listDriveFolders(query?: string): Promise<DriveFile[]> {
   const q = encodeURIComponent(
     `mimeType = 'application/vnd.google-apps.folder' and trashed = false${nameFilter}`,
   );
-  const data = await driveGet<{ files?: DriveFile[] }>(
-    `/files?q=${q}&pageSize=40&orderBy=modifiedTime desc&fields=files(id,name,mimeType,modifiedTime)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
-  );
-  return data.files ?? [];
+  const fields = 'files(id,name,mimeType,modifiedTime)';
+  const shared = `/files?q=${q}&pageSize=40&fields=${fields}&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives`;
+  const mine = `/files?q=${q}&pageSize=40&fields=${fields}&orderBy=${encodeURIComponent('modifiedTime desc')}`;
+  let files: DriveFile[] = [];
+  try {
+    files = (await driveGet<{ files?: DriveFile[] }>(shared)).files ?? [];
+  } catch {
+    files = (await driveGet<{ files?: DriveFile[] }>(mine)).files ?? [];
+  }
+  return [...files].sort((a, b) => (b.modifiedTime ?? '').localeCompare(a.modifiedTime ?? ''));
 }
 
 export async function findFolderByName(name: string): Promise<DriveFile | null> {

@@ -16,7 +16,7 @@ All user-facing text (app, alerts, Store, privacy) is for someone who has never 
 
 # VAI
 
-The word **VAI** means run `scripts/vai.sh` (commit, merge to main, push, FTP docs if changed, iOS build). Follow `.cursor/rules/vai.mdc`.
+The word **VAI** means run `scripts/vai.sh` (commit, merge to main, push, FTP docs if changed, iOS build, TestFlight). Follow `.cursor/rules/vai.mdc`.
 
 # Mac mini + iPhone
 

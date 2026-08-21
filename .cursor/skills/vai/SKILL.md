@@ -1,13 +1,13 @@
 ---
 name: vai
-description: Ships ReWavier when the user says VAI. Commits, merges to main, pushes, uploads docs over FTP if they changed, and starts the iOS production build. Use when the user says VAI, vai, or asks to ship / rilasciare.
+description: Ships ReWavier when the user says VAI. Commits, merges to main, pushes, uploads docs over FTP if they changed, starts the iOS production build, and sends it to TestFlight. Use when the user says VAI, vai, or asks to ship / rilasciare.
 ---
 
 # VAI
 
 Quando l’utente scrive **VAI** (o `vai`, o il messaggio inizia con VAI), lancia il rilascio. Non chiedere conferma. Non rifare i 30 discovery. Non toccare lo stile del player.
 
-VAI è permesso esplicito di commit, merge su main, push, FTP e build.
+VAI è permesso esplicito di commit, merge su main, push, FTP, build e invio a TestFlight.
 
 ## Prima lo script, non i passi a mano
 
@@ -21,7 +21,8 @@ Dalla root del repo, con rete. Lo script fa, in ordine:
 2. Merge su `main` se sei su un altro branch
 3. Push su `origin`
 4. FTP di `docs/` solo se il contenuto è cambiato rispetto all’ultimo upload
-5. Build iOS production (`eas`, non aspetta la fine)
+5. Build iOS production (`eas --auto-submit`, non aspetta la fine)
+6. TestFlight: Apple riceve la build appena è pronta
 
 ## Messaggio di commit
 
@@ -29,8 +30,9 @@ Dal `git diff`, 1–2 frasi sul **perché**. Esporta `VAI_MESSAGE`. Se VAI arriv
 
 ## Flag
 
-- `--skip-build` se `eas build` è già in corso in un terminale
+- `--skip-build` se `eas build` è già in corso in un terminale (niente invio della build vecchia)
 - `--skip-ftp` solo se l’utente lo chiede
+- `--skip-submit` solo se l’utente dice di non mandare a TestFlight
 
 ## FTP
 
@@ -47,4 +49,4 @@ Mai `--force`, `--no-verify`, amend. Mai `.env`, `.env.ftp`, `credentials.json`,
 
 ## Alla fine
 
-Riporta in breve: hash del commit, push, FTP (caricato / saltato / errore), build (URL o saltata). Se lo script manca, ricrealo da questa skill e rilancia.
+Riporta in breve: hash del commit, push, FTP (caricato / saltato / errore), build (URL o saltata), TestFlight (inviata / in attesa / saltata). Se lo script manca, ricrealo da questa skill e rilancia.

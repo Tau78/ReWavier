@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# VAI — commit, merge su main, push, FTP docs se cambiati, build iOS.
+# VAI — commit, merge su main, push, FTP docs se cambiati, build iOS, TestFlight.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -7,12 +7,14 @@ cd "$ROOT"
 
 SKIP_BUILD=0
 SKIP_FTP=0
+SKIP_SUBMIT=0
 for arg in "$@"; do
   case "$arg" in
     --skip-build) SKIP_BUILD=1 ;;
     --skip-ftp) SKIP_FTP=1 ;;
+    --skip-submit) SKIP_SUBMIT=1 ;;
     *)
-      echo "Uso: bash scripts/vai.sh [--skip-build] [--skip-ftp]"
+      echo "Uso: bash scripts/vai.sh [--skip-build] [--skip-ftp] [--skip-submit]"
       exit 2
       ;;
   esac
@@ -187,15 +189,38 @@ else
   fi
 fi
 
-# --- 5. build iOS ---
+# --- 5. build iOS + 6. TestFlight ---
+submit_latest() {
+  if [[ "$SKIP_SUBMIT" == "1" ]]; then
+    log "TestFlight: saltato (--skip-submit)."
+    return 0
+  fi
+  log "TestFlight: invio l’ultima build pronta (non aspetto Apple)."
+  if ! npx eas-cli submit --platform ios --profile production --latest --non-interactive --no-wait; then
+    log "TestFlight: invio fallito."
+    return 1
+  fi
+  log "TestFlight: richiesta inviata. Su iPhone arriva dopo l’elaborazione di Apple."
+}
+
 if [[ "$SKIP_BUILD" == "1" ]]; then
   log "Build: saltata (--skip-build)."
+  if pgrep -f 'eas build' >/dev/null 2>&1; then
+    log "TestFlight: la build è ancora in corso, Apple la riceverà a fine lavoro."
+  else
+    submit_latest || true
+  fi
 elif pgrep -f 'eas build' >/dev/null 2>&1; then
   log "Build: eas è già in corso, non ne lancio un'altra."
-else
+  log "TestFlight: aspetto che finisca quella in corso (niente invio della vecchia)."
+elif [[ "$SKIP_SUBMIT" == "1" ]]; then
   log "Build: avvio iOS production (non aspetto la fine)."
   npx eas-cli build --platform ios --profile production --non-interactive --no-wait
-  log "Build: richiesta inviata."
+  log "Build: richiesta inviata. TestFlight saltato (--skip-submit)."
+else
+  log "Build: avvio iOS production e, a fine lavoro, invio a TestFlight."
+  npx eas-cli build --platform ios --profile production --non-interactive --no-wait --auto-submit
+  log "Build + TestFlight: richiesta inviata. Su iPhone arriva dopo Apple."
 fi
 
 log "Fatto. HEAD $(git rev-parse --short HEAD) su $(git rev-parse --abbrev-ref HEAD)."
