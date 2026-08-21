@@ -12,7 +12,9 @@ La v1 è locale: audio e marker restano sul dispositivo. Serve un account (Apple
 npm start
 ```
 
-Poi Expo Go (SDK 54) su iPhone/iPad, oppure:
+Poi apri Expo Go (SDK 54) sull’iPhone o iPad, sulla stessa rete Wi-Fi del computer. Dal Mac mini in casa: `npx expo start --lan --go`.
+
+Oppure:
 
 ```bash
 npm start -- --ios

@@ -17,3 +17,14 @@ All user-facing text (app, alerts, Store, privacy) is for someone who has never 
 # VAI
 
 The word **VAI** means run `scripts/vai.sh` (commit, merge to main, push, FTP docs if changed, iOS build). Follow `.cursor/rules/vai.mdc`.
+
+# Mac mini + iPhone
+
+Agents launched from the phone can run on the local Mac mini private worker. After checkout:
+
+```bash
+npm ci
+npx tsc --noEmit
+```
+
+To preview on a physical iPhone on the same Wi-Fi, start Metro on the Mac mini (`npx expo start --lan --go`) and open the printed `exp://` address in Expo Go for SDK 54. Do not restyle the player.

@@ -1,0 +1,4 @@
+{
+  "name": "ReWavier",
+  "install": "npm ci"
+}
