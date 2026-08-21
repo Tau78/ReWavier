@@ -7,6 +7,7 @@ import { applyAudioReview } from '../../cloud/syncEngine';
 import { formatTimecode } from '../../domain/models';
 import { useSyncStore } from '../../store/syncStore';
 import { colors, layout } from '../../theme/colors';
+import { KindRow } from '../../theme/graphics';
 
 export function SyncReviewScreen() {
   const navigation = useNavigation();
@@ -27,7 +28,10 @@ export function SyncReviewScreen() {
           <Pressable onPress={() => navigation.goBack()} hitSlop={layout.hitSlop}>
             <Text style={styles.back}>‹</Text>
           </Pressable>
-          <Text style={styles.title}>Nessun file da rivedere</Text>
+          <View>
+            <KindRow label="Drive" />
+            <Text style={styles.title}>Nessun file da rivedere</Text>
+          </View>
         </View>
       </SafeAreaView>
     );
@@ -63,7 +67,7 @@ export function SyncReviewScreen() {
           <Text style={styles.back}>‹</Text>
         </Pressable>
         <View>
-          <Text style={styles.kind}>Nuova versione</Text>
+          <KindRow label="Nuova versione" />
           <Text style={styles.title}>{current.title}</Text>
         </View>
       </View>
@@ -117,13 +121,6 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   back: { color: colors.textMuted, fontSize: 34, lineHeight: 36, width: 28, marginTop: -4 },
-  kind: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
   title: { color: colors.text, fontSize: 22, fontWeight: '700' },
   hint: {
     paddingHorizontal: 20,

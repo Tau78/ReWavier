@@ -13,6 +13,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { useSessionStore } from '../../store/sessionStore';
 import { useSyncStore } from '../../store/syncStore';
 import { colors, layout } from '../../theme/colors';
+import { KindRow } from '../../theme/graphics';
 import { ColorSwatches, SavedBandRow } from '../auth/BandFields';
 
 const USAGES: { id: UsageType; title: string }[] = [
@@ -75,7 +76,7 @@ export function SettingsScreen() {
           <Text style={styles.back}>‹</Text>
         </Pressable>
         <View>
-          <Text style={styles.kind}>App</Text>
+          <KindRow label="App" />
           <Text style={styles.title}>Impostazioni</Text>
         </View>
       </View>
@@ -246,13 +247,6 @@ const styles = StyleSheet.create({
     lineHeight: 36,
     width: 28,
     marginTop: -4,
-  },
-  kind: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
   },
   title: {
     color: colors.text,

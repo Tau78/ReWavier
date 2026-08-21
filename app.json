@@ -96,10 +96,13 @@
         {
           "backgroundColor": "#0D0D0F",
           "image": "./assets/splash-icon.png",
-          "imageWidth": 220,
+          "imageWidth": 260,
+          "resizeMode": "contain",
           "dark": {
             "backgroundColor": "#0D0D0F",
-            "image": "./assets/splash-icon.png"
+            "image": "./assets/splash-icon.png",
+            "imageWidth": 260,
+            "resizeMode": "contain"
           }
         }
       ],
@@ -108,9 +111,9 @@
       "expo-apple-authentication"
     ],
     "extra": {
-      "googleIosClientId": "",
-      "googleExpoIosClientId": "",
-      "googleWebClientId": "",
+      "googleIosClientId": "1049963169218-o6tcahpfsdijj2lm811bmjs4vjaglb7v.apps.googleusercontent.com",
+      "googleExpoIosClientId": "1049963169218-gpj1pb8omtfhuv76npnhjnsshkqc970g.apps.googleusercontent.com",
+      "googleWebClientId": "1049963169218-k8i1dmlbsn1nqrv393u8pp111v7v2efc.apps.googleusercontent.com",
       "eas": {
         "projectId": "ac1cc991-f41d-4b45-adcb-bc574afbce3c"
       }

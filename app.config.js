@@ -1,29 +1,41 @@
 const appJson = require('./app.json');
 
-function reversedGoogleScheme(clientId) {
-  if (!clientId || !clientId.endsWith('.apps.googleusercontent.com')) {
-    return null;
-  }
-  return `com.googleusercontent.apps.${clientId.replace('.apps.googleusercontent.com', '')}`;
+function isGoogleClientId(value) {
+  return typeof value === 'string' && /^\d+-[a-zA-Z0-9]+\.apps\.googleusercontent\.com$/.test(value);
 }
 
-const iosClientId =
-  process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
-  appJson.expo.extra?.googleIosClientId ||
-  '';
-const expoIosClientId =
-  process.env.EXPO_PUBLIC_GOOGLE_EXPO_IOS_CLIENT_ID ||
-  appJson.expo.extra?.googleExpoIosClientId ||
-  '';
-const webClientId =
-  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
-  appJson.expo.extra?.googleWebClientId ||
-  '';
-const googleScheme = reversedGoogleScheme(iosClientId || expoIosClientId);
+function reversedGoogleScheme(clientId) {
+  if (!isGoogleClientId(clientId)) {
+    return null;
+  }
+  return `com.googleusercontent.apps.${clientId.replace(/\.apps\.googleusercontent\.com$/i, '')}`;
+}
 
+const iosClientId = isGoogleClientId(
+  process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || appJson.expo.extra?.googleIosClientId || '',
+)
+  ? process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || appJson.expo.extra?.googleIosClientId
+  : '';
+const expoIosClientId = isGoogleClientId(
+  process.env.EXPO_PUBLIC_GOOGLE_EXPO_IOS_CLIENT_ID ||
+    appJson.expo.extra?.googleExpoIosClientId ||
+    '',
+)
+  ? process.env.EXPO_PUBLIC_GOOGLE_EXPO_IOS_CLIENT_ID || appJson.expo.extra?.googleExpoIosClientId
+  : '';
+const webClientId = isGoogleClientId(
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || appJson.expo.extra?.googleWebClientId || '',
+)
+  ? process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || appJson.expo.extra?.googleWebClientId
+  : '';
+const storeScheme = reversedGoogleScheme(iosClientId);
+const expoScheme = reversedGoogleScheme(expoIosClientId);
 const urlSchemes = ['rewavier'];
-if (googleScheme) {
-  urlSchemes.push(googleScheme);
+if (storeScheme) {
+  urlSchemes.push(storeScheme);
+}
+if (expoScheme && expoScheme !== storeScheme) {
+  urlSchemes.push(expoScheme);
 }
 
 module.exports = {

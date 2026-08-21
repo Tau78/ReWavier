@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  View,
 } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useGoogleSignIn } from '../../auth/useGoogleSignIn';
 import { useSessionStore } from '../../store/sessionStore';
 import { colors, layout } from '../../theme/colors';
+import { BrandMark, ScreenAura } from '../../theme/graphics';
 
 function GoogleContinueButton({
   busy,
@@ -93,6 +95,7 @@ export function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <ScreenAura />
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -102,7 +105,10 @@ export function LoginScreen() {
           contentContainerStyle={styles.scroll}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.kicker}>ReWavier</Text>
+          <View style={styles.brand}>
+            <BrandMark size="md" />
+            <Text style={styles.kicker}>ReWavier</Text>
+          </View>
           <Text style={styles.title}>Accedi</Text>
           <Text style={styles.sub}>
             Entra col tuo Google: l’account è tuo e Drive è già collegato. Oppure Apple o email,
@@ -197,6 +203,11 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     backgroundColor: colors.background,
   },
+  brand: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   kicker: {
     color: colors.accent,
     fontSize: 13,
@@ -205,7 +216,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   title: {
-    marginTop: 8,
+    marginTop: 10,
     color: colors.text,
     fontSize: 32,
     fontWeight: '700',

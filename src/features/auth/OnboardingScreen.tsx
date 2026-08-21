@@ -7,6 +7,7 @@ import { createId } from '../../domain/library';
 import type { UsageType, UserBand } from '../../domain/session';
 import { useSessionStore } from '../../store/sessionStore';
 import { colors, layout } from '../../theme/colors';
+import { KindRow, ScreenAura } from '../../theme/graphics';
 import { BandDraftFields, SavedBandRow } from './BandFields';
 
 const USAGES: { id: UsageType; title: string; body: string }[] = [
@@ -101,12 +102,13 @@ export function OnboardingScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <ScreenAura />
       <ScrollView
         style={styles.flex}
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={styles.kicker}>Primo avvio</Text>
+        <KindRow label="Primo avvio" />
         <Text style={styles.title}>
           {step === 'roles' ? 'Come usi ReWavier?' : 'Le tue band'}
         </Text>
@@ -245,13 +247,6 @@ const styles = StyleSheet.create({
     paddingTop: 24,
     paddingBottom: 40,
     backgroundColor: colors.background,
-  },
-  kicker: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.7,
-    textTransform: 'uppercase',
   },
   title: {
     marginTop: 6,

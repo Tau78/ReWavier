@@ -11,6 +11,7 @@ import { ensurePeaks } from '../../audio/extractPeaks';
 import { useLibraryStore } from '../../store/libraryStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { colors, layout } from '../../theme/colors';
+import { KindRow } from '../../theme/graphics';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'ReplaceFile'>;
 type Route = RouteProp<RootStackParamList, 'ReplaceFile'>;
@@ -124,7 +125,7 @@ export function ReplaceFileScreen() {
           <Text style={styles.back}>‹</Text>
         </Pressable>
         <View>
-          <Text style={styles.kind}>Album</Text>
+          <KindRow label="Album" />
           <Text style={styles.title}>Sostituisci file</Text>
         </View>
       </View>
@@ -223,13 +224,6 @@ const styles = StyleSheet.create({
     lineHeight: 36,
     width: 28,
     marginTop: -4,
-  },
-  kind: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
   },
   title: {
     color: colors.text,

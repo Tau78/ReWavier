@@ -22,6 +22,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { useLibraryStore } from '../../store/libraryStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { colors, layout } from '../../theme/colors';
+import { KindRow } from '../../theme/graphics';
 import { PromptModal } from './PromptModal';
 
 function sketchFileName(title: string): { title: string; fileName: string } {
@@ -223,7 +224,7 @@ export function RecordSketchScreen() {
           <Text style={styles.back}>‹</Text>
         </Pressable>
         <View>
-          <Text style={styles.kind}>Microfono</Text>
+          <KindRow label="Microfono" />
           <Text style={styles.title}>Bozza</Text>
         </View>
       </View>
@@ -343,13 +344,6 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   back: { color: colors.textMuted, fontSize: 34, lineHeight: 36, width: 28, marginTop: -4 },
-  kind: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
   title: { color: colors.text, fontSize: 22, fontWeight: '700' },
   hint: {
     paddingHorizontal: 20,

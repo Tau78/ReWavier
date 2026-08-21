@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { PRIVACY_BODY } from '../../legal/privacy';
 import type { RootStackParamList } from '../../navigation/types';
 import { colors, layout } from '../../theme/colors';
+import { KindRow } from '../../theme/graphics';
 
 export function PrivacyScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'Privacy'>>();
@@ -22,7 +23,7 @@ export function PrivacyScreen() {
           <Text style={styles.back}>‹</Text>
         </Pressable>
         <View>
-          <Text style={styles.kind}>Legale</Text>
+          <KindRow label="Legale" />
           <Text style={styles.title}>Privacy</Text>
         </View>
       </View>
@@ -52,13 +53,6 @@ const styles = StyleSheet.create({
     lineHeight: 36,
     width: 28,
     marginTop: -4,
-  },
-  kind: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
   },
   title: {
     color: colors.text,

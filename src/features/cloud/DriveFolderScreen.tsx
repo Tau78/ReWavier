@@ -9,6 +9,7 @@ import { importDriveFolder, runCloudSync } from '../../cloud/syncEngine';
 import type { RootStackParamList } from '../../navigation/types';
 import { useLibraryStore } from '../../store/libraryStore';
 import { colors, layout } from '../../theme/colors';
+import { EmptyGraphic, KindRow } from '../../theme/graphics';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'DriveFolder'>;
 type Route = RouteProp<RootStackParamList, 'DriveFolder'>;
@@ -66,7 +67,7 @@ export function DriveFolderScreen() {
           <Text style={styles.back}>‹</Text>
         </Pressable>
         <View>
-          <Text style={styles.kind}>Drive</Text>
+          <KindRow label="Drive" />
           <Text style={styles.title}>Cartella album</Text>
         </View>
       </View>
@@ -88,7 +89,10 @@ export function DriveFolderScreen() {
       ) : (
         <ScrollView contentContainerStyle={styles.scroll}>
           {folders.length === 0 ? (
-            <Text style={styles.empty}>Nessuna cartella. Accedi con Google e condividi l’album su Drive.</Text>
+            <View style={styles.emptyBox}>
+              <EmptyGraphic />
+              <Text style={styles.empty}>Nessuna cartella. Accedi con Google e condividi l’album su Drive.</Text>
+            </View>
           ) : (
             folders.map((folder) => (
               <Pressable key={folder.id} onPress={() => onPick(folder)} style={styles.row}>
@@ -114,13 +118,6 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   back: { color: colors.textMuted, fontSize: 34, lineHeight: 36, width: 28, marginTop: -4 },
-  kind: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-  },
   title: { color: colors.text, fontSize: 22, fontWeight: '700' },
   hint: {
     paddingHorizontal: 20,
@@ -143,7 +140,8 @@ const styles = StyleSheet.create({
   },
   spinner: { marginTop: 32 },
   scroll: { paddingHorizontal: 16, paddingBottom: 32 },
-  empty: { color: colors.textMuted, fontSize: 14, padding: 16 },
+  emptyBox: { alignItems: 'center', paddingVertical: 20 },
+  empty: { color: colors.textMuted, fontSize: 14, paddingHorizontal: 16, textAlign: 'center' },
   row: {
     backgroundColor: colors.surface,
     borderRadius: 14,

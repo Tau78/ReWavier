@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import * as AuthSession from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import Constants from 'expo-constants';
@@ -7,13 +8,24 @@ import { useSessionStore } from '../store/sessionStore';
 
 WebBrowser.maybeCompleteAuthSession();
 
+const CLIENT_ID_RE = /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/i;
+
 const DRIVE_SCOPES = [
   'openid',
-  'profile',
-  'email',
+  'https://www.googleapis.com/auth/userinfo.email',
+  'https://www.googleapis.com/auth/userinfo.profile',
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/drive.readonly',
 ];
+
+function validClientId(value?: string): string | undefined {
+  const trimmed = value?.trim() ?? '';
+  return CLIENT_ID_RE.test(trimmed) ? trimmed : undefined;
+}
+
+function reversedGoogleScheme(clientId: string): string {
+  return `com.googleusercontent.apps.${clientId.replace(/\.apps\.googleusercontent\.com$/i, '')}`;
+}
 
 function readClientIds() {
   const extra = (Constants.expoConfig?.extra ?? {}) as {
@@ -21,17 +33,21 @@ function readClientIds() {
     googleExpoIosClientId?: string;
     googleWebClientId?: string;
   };
-  const storeIos = extra.googleIosClientId || process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
-  const expoIos =
-    extra.googleExpoIosClientId || process.env.EXPO_PUBLIC_GOOGLE_EXPO_IOS_CLIENT_ID || '';
-  const web = extra.googleWebClientId || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '';
+  const storeIos = validClientId(
+    extra.googleIosClientId || process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  );
+  const expoIos = validClientId(
+    extra.googleExpoIosClientId || process.env.EXPO_PUBLIC_GOOGLE_EXPO_IOS_CLIENT_ID,
+  );
+  const web = validClientId(extra.googleWebClientId || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID);
   const inExpoGo = Constants.appOwnership === 'expo';
-  const iosClientId = (inExpoGo ? expoIos || storeIos : storeIos || expoIos) || undefined;
-  const webClientId = web || undefined;
+  const iosClientId = inExpoGo ? undefined : storeIos ?? expoIos;
+  const clientId = inExpoGo ? web ?? expoIos ?? storeIos : iosClientId ?? web;
   return {
     iosClientId,
-    webClientId,
-    configured: Boolean(iosClientId || webClientId),
+    webClientId: web,
+    clientId,
+    inExpoGo,
   };
 }
 
@@ -58,21 +74,29 @@ function decodeJwtEmail(idToken: string): { email: string; name: string; sub: st
 
 export function useGoogleSignIn() {
   const ids = readClientIds();
-  const clientId = ids.iosClientId ?? ids.webClientId ?? 'rewavier.apps.googleusercontent.com';
+  const clientId = ids.clientId;
+  const redirectUri = ids.iosClientId
+    ? `${reversedGoogleScheme(ids.iosClientId)}:/oauthredirect`
+    : AuthSession.makeRedirectUri({
+        scheme: 'rewavier',
+        path: 'oauth',
+      });
+
   const [request, response, promptAsync] = Google.useAuthRequest({
-    iosClientId: ids.iosClientId ?? clientId,
+    iosClientId: ids.iosClientId,
     webClientId: ids.webClientId,
-    clientId,
+    clientId: clientId ?? ids.webClientId,
+    redirectUri,
+    language: 'it',
+    selectAccount: true,
     scopes: DRIVE_SCOPES,
     extraParams: {
       access_type: 'offline',
-      include_granted_scopes: 'true',
-      prompt: 'consent select_account',
     },
   });
 
   useEffect(() => {
-    if (response?.type !== 'success') {
+    if (response?.type !== 'success' || !clientId) {
       return;
     }
     const idToken = response.params.id_token ?? response.authentication?.idToken;
@@ -95,8 +119,11 @@ export function useGoogleSignIn() {
   }, [clientId, response]);
 
   return {
-    ready: request != null,
+    ready: Boolean(clientId && request),
     prompt: async () => {
+      if (!clientId) {
+        throw new Error('Google non è ancora pronto. Entra con Apple o crea un account email.');
+      }
       try {
         return await promptAsync();
       } finally {

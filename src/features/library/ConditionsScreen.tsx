@@ -12,6 +12,7 @@ import {
 import type { RootStackParamList } from '../../navigation/types';
 import { useLibraryStore } from '../../store/libraryStore';
 import { colors, layout } from '../../theme/colors';
+import { KindRow } from '../../theme/graphics';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Conditions'>;
 type Route = RouteProp<RootStackParamList, 'Conditions'>;
@@ -90,7 +91,7 @@ export function ConditionsScreen() {
           <Text style={styles.back}>‹</Text>
         </Pressable>
         <View style={styles.headerText}>
-          <Text style={styles.kind}>Smart playlist</Text>
+          <KindRow label="Smart playlist" />
           <Text style={styles.title}>{existing ? 'Modifica condizioni' : 'Nuove condizioni'}</Text>
         </View>
       </View>
@@ -219,13 +220,6 @@ const styles = StyleSheet.create({
   },
   headerText: {
     flex: 1,
-  },
-  kind: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
   },
   title: {
     color: colors.text,

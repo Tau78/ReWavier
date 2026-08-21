@@ -18,6 +18,7 @@ import { runCloudSync } from '../../cloud/syncEngine';
 import { useLibraryStore } from '../../store/libraryStore';
 import { useSyncStore } from '../../store/syncStore';
 import { colors, layout } from '../../theme/colors';
+import { BrandMark, EmptyGraphic, ScreenAura } from '../../theme/graphics';
 import { openTrack } from './openTrack';
 import { TrackRow } from './TrackRow';
 import { useLibraryActions } from './useLibraryActions';
@@ -120,10 +121,14 @@ export function LibraryScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <ScreenAura />
       <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Libreria</Text>
-          <Text style={styles.subtitle}>Cartelle e album</Text>
+        <View style={styles.titleRow}>
+          <BrandMark size="sm" />
+          <View>
+            <Text style={styles.title}>Libreria</Text>
+            <Text style={styles.subtitle}>Cartelle e album</Text>
+          </View>
         </View>
         <View style={styles.headerActions}>
           <Pressable
@@ -268,6 +273,7 @@ export function LibraryScreen() {
               accessibilityRole="button"
               accessibilityLabel="Carica audio"
             >
+              {query.trim() ? null : <EmptyGraphic />}
               <Text style={styles.emptyTitle}>
                 {query.trim() ? 'Nessun risultato' : 'Nessun audio in libreria'}
               </Text>
@@ -325,6 +331,11 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     gap: 8,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   title: {
     color: colors.text,

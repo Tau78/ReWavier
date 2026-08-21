@@ -9,6 +9,7 @@ import type { CollectionKind } from '../../domain/library';
 import type { RootStackParamList } from '../../navigation/types';
 import { useLibraryStore } from '../../store/libraryStore';
 import { colors, layout } from '../../theme/colors';
+import { EmptyGraphic, KindRow } from '../../theme/graphics';
 import { openTrack } from './openTrack';
 import { ReorderableTrackList } from './ReorderableTrackList';
 import { TrackRow } from './TrackRow';
@@ -79,7 +80,7 @@ export function CollectionScreen() {
           <Text style={styles.back}>‹</Text>
         </Pressable>
         <View style={styles.headerText}>
-          <Text style={styles.kind}>{KIND_LABEL[kind]}</Text>
+          <KindRow label={KIND_LABEL[kind]} />
           <Text style={styles.title} numberOfLines={1}>
             {title ?? 'Senza nome'}
           </Text>
@@ -178,11 +179,14 @@ export function CollectionScreen() {
         ) : null}
         <View style={styles.card}>
           {tracks.length === 0 ? (
-            <Text style={styles.empty}>
-              {kind === 'smart'
-                ? 'Nessuna traccia soddisfa queste condizioni.'
-                : 'Questa raccolta è vuota. Tieni premuto per i comandi, o importa un audio.'}
-            </Text>
+            <View style={styles.emptyBox}>
+              <EmptyGraphic />
+              <Text style={styles.empty}>
+                {kind === 'smart'
+                  ? 'Nessuna traccia soddisfa queste condizioni.'
+                  : 'Questa raccolta è vuota. Tieni premuto per i comandi, o importa un audio.'}
+              </Text>
+            </View>
           ) : (
             <ReorderableTrackList
               tracks={tracks}
@@ -252,13 +256,6 @@ const styles = StyleSheet.create({
   headerText: {
     flex: 1,
     minWidth: 0,
-  },
-  kind: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
   },
   title: {
     color: colors.text,
@@ -345,10 +342,15 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 12,
   },
+  emptyBox: {
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+  },
   empty: {
     color: colors.textMuted,
     fontSize: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 22,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

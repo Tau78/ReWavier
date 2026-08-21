@@ -2,7 +2,7 @@
 <html lang="it">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>ReWavier — un appunto sul momento esatto della canzone</title>
   <meta name="description" content="Ascolti un brano, tocchi + e scrivi cosa succede in quel punto. L’onda resta sul telefono, con i tuoi segnalini. Per iPhone e iPad.">
   <meta name="theme-color" content="#0D0D0F">
@@ -60,23 +60,27 @@
       position: sticky;
       top: 0;
       z-index: 10;
-      background: rgba(13, 13, 15, 0.86);
+      background: rgba(13, 13, 15, 0.92);
       backdrop-filter: blur(16px);
       border-bottom: 1px solid var(--border);
     }
-    .bar {
+    .top {
       max-width: var(--max);
       margin: 0 auto;
-      padding: 0.85rem 1.25rem;
+      padding: 0.75rem 1.15rem;
+      padding-left: max(1.15rem, env(safe-area-inset-left));
+      padding-right: max(1.15rem, env(safe-area-inset-right));
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 1rem;
+      gap: 0.75rem;
+      min-width: 0;
     }
     .brand {
       display: flex;
       align-items: center;
-      gap: 0.65rem;
+      gap: 0.55rem;
+      min-width: 0;
       color: var(--text);
       font-weight: 700;
       letter-spacing: -0.03em;
@@ -84,8 +88,15 @@
     }
     .brand:hover { text-decoration: none; }
     .mark { width: 28px; height: 28px; flex: 0 0 28px; }
-    nav { display: flex; align-items: center; gap: 1.1rem; }
-    nav a { color: var(--muted); font-size: 0.95rem; }
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.85rem;
+      flex: 0 0 auto;
+      min-width: 0;
+    }
+    nav a { color: var(--muted); font-size: 0.95rem; white-space: nowrap; }
     nav a:hover { color: var(--text); }
 
     .btn {
@@ -99,6 +110,10 @@
       padding: 0.85rem 1.35rem;
       text-decoration: none;
       border: 0;
+    }
+    .btn-sm {
+      padding: 0.45rem 0.85rem;
+      font-size: 0.88rem;
     }
     .btn:hover { text-decoration: none; filter: brightness(1.08); }
     .btn-ghost {
@@ -169,13 +184,14 @@
       height: 42px;
       margin-bottom: 1.1rem;
     }
-    .bar {
+    .tick {
       width: 7px;
       border-radius: 99px;
       background: var(--wave);
       position: relative;
+      flex: 0 0 7px;
     }
-    .bar.dot::after {
+    .tick.dot::after {
       content: "";
       position: absolute;
       top: -10px;
@@ -317,17 +333,21 @@
 
     @media (max-width: 860px) {
       .hero, .steps, .pills, .shots, .facts { grid-template-columns: 1fr; }
+      .hero { padding-top: 1.8rem; gap: 2rem; }
       .phones { max-width: 26rem; margin: 0 auto; transform: none; }
       .device.shift { margin-top: 0; }
       nav .hide { display: none; }
-      section { padding: 3.2rem 1.25rem; }
+      .actions { flex-direction: column; }
+      .actions .btn { width: 100%; }
+      section { padding: 3.2rem 1.15rem; }
+      .top { padding-top: 0.7rem; padding-bottom: 0.7rem; }
     }
   </style>
 </head>
 <body>
   <a class="skip" href="#contenuto">Vai al contenuto</a>
   <header>
-    <div class="bar">
+    <div class="top">
       <a class="brand" href="#inizio" aria-label="ReWavier, inizio pagina">
         <svg class="mark" viewBox="0 0 28 28" aria-hidden="true">
           <rect x="1" y="16" width="2.4" height="7" rx="1.2" fill="#4A9EFF"/>
@@ -345,7 +365,7 @@
         <a class="hide" href="#come">Come si usa</a>
         <a class="hide" href="#per-chi">Per chi</a>
         <a href="Privacy.html">Privacy</a>
-        <a class="btn" href="#scarica">Scarica</a>
+        <a class="btn btn-sm" href="#scarica">Scarica</a>
       </nav>
     </div>
   </header>
@@ -354,13 +374,13 @@
     <section class="hero" id="inizio">
       <div>
         <div class="wave-row" aria-hidden="true">
-          <span class="bar b1"></span>
-          <span class="bar b2"></span>
-          <span class="bar b3"></span>
-          <span class="bar b4"></span>
-          <span class="bar b5"></span>
-          <span class="bar b6 dot"></span>
-          <span class="bar b7"></span>
+          <span class="tick b1"></span>
+          <span class="tick b2"></span>
+          <span class="tick b3"></span>
+          <span class="tick b4"></span>
+          <span class="tick b5"></span>
+          <span class="tick b6 dot"></span>
+          <span class="tick b7"></span>
         </div>
         <p class="kicker">Per iPhone e iPad</p>
         <h1>Un appunto sul momento esatto della canzone.</h1>
