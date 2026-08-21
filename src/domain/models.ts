@@ -3,6 +3,16 @@ export type Track = {
   title: string;
   artist: string;
   durationMs: number;
+  fileUri?: string;
+  inboxUri?: string;
+  remoteUri?: string;
+  sourceFileName?: string;
+  downloaded?: boolean;
+  downloadedAt?: number;
+  driveFileId?: string;
+  remoteModifiedAt?: string;
+  remoteSize?: number;
+  remoteHash?: string;
 };
 
 export type Marker = {
@@ -11,6 +21,11 @@ export type Marker = {
   text: string;
   createdAt: number;
   updatedAt: number;
+  hidden?: boolean;
+  authorId?: string;
+  authorName?: string;
+  color?: string;
+  editableByOthers?: boolean;
 };
 
 export type NoteBubbleState = {
@@ -18,13 +33,6 @@ export type NoteBubbleState = {
   timestampMs: number;
   markerId: string | null;
   draft: string;
-};
-
-export const DEMO_TRACK: Track = {
-  id: 'demo-1',
-  title: 'Studio Session',
-  artist: 'Take 3',
-  durationMs: 204_000,
 };
 
 export function formatTimecode(ms: number): string {
@@ -39,16 +47,3 @@ export function clampTime(ms: number, durationMs: number): number {
   return Math.min(durationMs, Math.max(0, ms));
 }
 
-export function generatePeaks(count = 180): number[] {
-  const peaks: number[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = i / count;
-    const wave =
-      0.35 +
-      0.25 * Math.sin(t * Math.PI * 8) +
-      0.2 * Math.sin(t * Math.PI * 19) +
-      0.15 * Math.abs(Math.sin(t * Math.PI * 3));
-    peaks.push(Math.min(1, Math.max(0.15, wave)));
-  }
-  return peaks;
-}

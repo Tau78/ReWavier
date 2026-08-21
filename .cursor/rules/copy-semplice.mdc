@@ -1,0 +1,35 @@
+---
+description: Testi in app e Store — semplici, per chi non ha mai aperto ReWavier
+alwaysApply: true
+---
+
+# Copy non tecnica
+
+Ogni testo che vede una persona (schermate, bottoni, hint, alert, Store, privacy, docs prodotto) è per **chi non ha mai aperto l’app**. Guida la funzione in modo **semplice, breve, chiaro**.
+
+Vale per questo agente e per ogni subagente.
+
+## Come scrivere
+
+- Una idea per frase. Massimo due frasi per un hint.
+- Di’ **cosa fare** e **cosa succede**, non come è fatto dentro.
+- Italiano di tutti i giorni. Niente inglese da programmatore.
+- Se serve un termine dell’app (Drive, marker, waveform), spiegalo subito in parole piane.
+
+## Vietato (in ciò che legge l’utente)
+
+client ID, OAuth, bundle, Expo, JSON, API, token, SDK, stub, sync engine, `app.json`, URI, hook, store, persist, sidecar, hash, provider.
+
+```text
+❌ Google non è ancora configurato (client ID in app.json).
+❌ Email e password restano su questo dispositivo.
+❌ I file restano in nuvola, in app ascolti dalla cache.
+
+✅ Entra con Google: usi il tuo account e colleghi anche Drive.
+✅ Tocca + per scrivere un appunto sul momento esatto.
+✅ I brani e le note restano sul telefono.
+```
+
+## Dove
+
+Login, onboarding, libreria, player (solo testi, non lo stile), impostazioni, alert, App Store, `src/legal/`. I commenti nel codice possono restare tecnici.

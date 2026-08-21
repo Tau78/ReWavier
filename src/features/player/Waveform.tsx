@@ -10,6 +10,7 @@ import {
   type LayoutChangeEvent,
 } from 'react-native';
 
+import { isMarkerHidden, markerColor } from '../../domain/markers';
 import { clampTime, formatTimecode, type Marker } from '../../domain/models';
 import { usePlayerStore } from '../../store/playerStore';
 import { colors } from '../../theme/colors';
@@ -180,6 +181,7 @@ function ZoomMarkerPin({
     }),
   ).current;
 
+  const pinColor = markerColor(marker);
   const displayMs = dragMs ?? marker.timestampMs;
   const inWindow =
     displayMs >= windowStartMs - 40 && displayMs <= windowStartMs + windowSpanMs + 40;
@@ -206,8 +208,22 @@ function ZoomMarkerPin({
       {dragging ? (
         <Text style={styles.dragTime}>{formatTimecode(displayMs)}</Text>
       ) : null}
-      <View style={[styles.pinHead, dragging && styles.pinHeadActive]} />
-      <View style={[styles.pinStem, dragging && styles.pinStemActive]} />
+      <View
+        style={[
+          styles.pinHead,
+          { backgroundColor: pinColor, shadowColor: pinColor },
+          dragging && styles.pinHeadActive,
+          marker.hidden && styles.pinHidden,
+        ]}
+      />
+      <View
+        style={[
+          styles.pinStem,
+          { backgroundColor: pinColor },
+          dragging && styles.pinStemActive,
+          marker.hidden && styles.pinHidden,
+        ]}
+      />
     </View>
   );
 }
@@ -216,6 +232,12 @@ export function Waveform() {
   const track = usePlayerStore((s) => s.track);
   const peaks = usePlayerStore((s) => s.peaks);
   const markers = usePlayerStore((s) => s.markers);
+  const showHidden = usePlayerStore((s) => s.showHidden);
+  const toggleShowHidden = usePlayerStore((s) => s.toggleShowHidden);
+  const visiblePins = useMemo(
+    () => (showHidden ? markers : markers.filter((marker) => !isMarkerHidden(marker))),
+    [markers, showHidden],
+  );
   const positionMs = usePlayerStore((s) => s.positionMs);
   const seekTo = usePlayerStore((s) => s.seekTo);
   const openMarker = usePlayerStore((s) => s.openMarker);
@@ -278,7 +300,12 @@ export function Waveform() {
       <View style={styles.card}>
         <View style={styles.cardHeader}>
           <Text style={styles.cardLabel}>Panoramica</Text>
-          <Text style={styles.cardMeta}>{formatTimecode(track.durationMs)}</Text>
+          <View style={styles.cardMetaRow}>
+            <Pressable onPress={toggleShowHidden} hitSlop={8} accessibilityRole="button">
+              <Text style={[styles.cardMeta, showHidden && styles.hideOn]}>Hide</Text>
+            </Pressable>
+            <Text style={styles.cardMeta}>{formatTimecode(track.durationMs)}</Text>
+          </View>
         </View>
         <Pressable
           onLayout={onOverviewLayout}
@@ -301,14 +328,18 @@ export function Waveform() {
             playedRatio={overviewPlayed}
             barWidth={2}
           />
-          {markers.map((marker) => (
+          {visiblePins.map((marker) => (
             <Pressable
               key={marker.id}
               onPress={() => openMarker(marker.id)}
               hitSlop={8}
               style={[
                 styles.overviewDot,
-                { left: `${(marker.timestampMs / durationMs) * 100}%` },
+                {
+                  left: `${(marker.timestampMs / durationMs) * 100}%`,
+                  backgroundColor: markerColor(marker),
+                  opacity: marker.hidden ? 0.4 : 1,
+                },
               ]}
               accessibilityRole="button"
               accessibilityLabel={`Appunto a ${formatTimecode(marker.timestampMs)}`}
@@ -342,7 +373,7 @@ export function Waveform() {
             />
             <Playhead percent={playheadZoomPct} tall />
           </Pressable>
-          {markers.map((marker) => (
+          {visiblePins.map((marker) => (
             <ZoomMarkerPin
               key={marker.id}
               marker={marker}
@@ -391,11 +422,23 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
+  cardMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
   cardMeta: {
     color: colors.textMuted,
     fontSize: 11,
     fontVariant: ['tabular-nums'],
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+  },
+  hideOn: {
+    color: colors.accent,
+    fontWeight: '700',
+  },
+  pinHidden: {
+    opacity: 0.4,
   },
   overviewTrack: {
     height: OVERVIEW_HEIGHT,

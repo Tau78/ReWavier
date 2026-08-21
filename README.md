@@ -1,31 +1,57 @@
 # ReWavier
 
-App mobile per prendere appunti su una canzone. Mostra la waveform, i controlli play/stop/pausa/±10s e un pulsante **+** centrale: toccandolo la traccia va in pausa e si apre un fumetto con il timestamp esatto.
+App iOS per annotare un brano sul timestamp esatto. Waveform, play/stop/±10s e pulsante **+**: la traccia va in pausa e si apre un fumetto con il timecode.
 
-La v0 è 100% locale: traccia demo in memoria, nessuna registrazione, nessun cloud.
+La v1 è locale: audio e marker restano sul dispositivo. Serve un account (Apple, Google o email). Per la recensione App Store: `review@rewavier.app` / `Review2026!`.
 
-**Prerequisiti:** Node.js 18+
+**Prerequisiti:** Node.js 20+ · account [Apple Developer](https://developer.apple.com/account/) · account [Expo](https://expo.dev)
 
-## Avvio (un comando)
+## Sviluppo
 
 ```bash
 npm start
 ```
 
-Poi scansiona il QR con **Expo Go** sull’iPhone. La traccia demo dura 3:24 e parte da sola in memoria: non serve un file audio.
-
-Se hai il Simulator di Xcode:
+Poi Expo Go (SDK 54) su iPhone/iPad, oppure:
 
 ```bash
 npm start -- --ios
 ```
 
+## Lancio App Store
+
+1. Pubblica il testo di `src/legal/privacy.ts` su un URL **https** (sito o GitHub Pages). Senza questo URL App Store Connect rifiuta la scheda.
+2. In [App Store Connect](https://appstoreconnect.apple.com/) crea l’app **ReWavier**, bundle ID `app.rewavier`, categoria Musica, iPhone + iPad.
+3. Compila Privacy: nessun dato raccolto da ReWavier (file solo sul device; l’export usa il foglio di share di iOS).
+4. Login Expo e collega il progetto:
+
+```bash
+npx eas-cli login
+npx eas-cli init
+```
+
+5. Build di produzione e invio a TestFlight:
+
+```bash
+npm run build:ios
+npm run submit:ios
+```
+
+`eas init` scrive `extra.eas.projectId` in `app.json`. La prima build chiede il team Apple e crea certificati/provisioning.
+
+### Checklist review
+
+- [ ] Screenshot iPhone 6.7" e iPad 13" (libreria con un brano importato, player con un marker)
+- [ ] Privacy Policy URL
+- [ ] Note per il reviewer (incolla il blocco in `docs/prodotto.md`, sezione App Review)
+- [ ] Demo senza audio rimosse: la libreria parte vuota
+- [ ] Account placeholder nascosto
+
 ## Cosa puoi provare
 
+- Importa un audio da File
 - Play / Pausa / Stop / ±10 secondi
 - Tap **+** → pausa + fumetto con timecode
-- Scrivi un appunto e tocca **Salva**
-- Tap su un marker nella waveform per riaprirlo
-- Trascina un marker per cambiare il momento
+- Salva un appunto, tap sul marker, trascinalo
 
-**Stack:** Expo + TypeScript + Zustand. Tutto offline e in locale. Supabase arriverà dopo.
+**Stack:** Expo SDK 54 · TypeScript · Zustand · EAS Build. Offline e in locale.

@@ -3,7 +3,7 @@ export type PlaybackListener = (positionMs: number, playing: boolean) => void;
 const TICK_MS = 50;
 
 export class MockAudioEngine {
-  readonly durationMs: number;
+  private durationMs: number;
 
   private positionMs = 0;
   private playing = false;
@@ -13,6 +13,18 @@ export class MockAudioEngine {
 
   constructor(durationMs: number) {
     this.durationMs = durationMs;
+  }
+
+  getDurationMs(): number {
+    return this.durationMs;
+  }
+
+  reset(durationMs: number): void {
+    this.playing = false;
+    this.stopClock();
+    this.durationMs = durationMs;
+    this.positionMs = 0;
+    this.emit();
   }
 
   getPositionMs(): number {

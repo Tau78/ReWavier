@@ -1,0 +1,49 @@
+---
+description: Blocca la UI del player — non alterare layout, colori, controlli
+alwaysApply: true
+---
+
+# Player UI lock (globale)
+
+La schermata player è **approvata dal product owner**. Non modificarne estetica, gerarchia o spaziatura. Vale per questo agente e per ogni subagente.
+
+## Schermata bloccata
+
+`src/features/player/PlayerScreen.tsx` e i suoi figli diretti:
+
+- `Waveform.tsx` — panoramica + dettaglio 12s
+- `PlaybackControls.tsx` — −10s / Stop / Play / +10s
+- `AddNoteButton.tsx` — + arancione 72pt, label "Aggiungi nota"
+- `src/features/notes/NoteBubble.tsx` — fumetto timestamp
+
+Layout vincolato, dall’alto in basso:
+
+1. Titolo + artista (niente icone extra in header)
+2. Timecode `mm:ss.mmm / mm:ss.mmm`
+3. Waveform panoramica + dettaglio
+4. Controlli circolari
+5. FAB + centrale
+
+Niente tab bar, drawer, gear, cartelle o settings **sopra** questa schermata.
+
+## Token (non reinventare)
+
+Usa solo `src/theme/colors.ts`: background `#0D0D0F`, surface `#1A1A1E`, accent `#FF6B35`, waveform `#4A9EFF` / played `#FFFFFF`. Controlli 56pt, + 72pt.
+
+## Come aggiungere feature
+
+- **Libreria / cartelle / condizioni (smart playlist):** schermate **nuove**, stack o modal full-screen. Il player si apre da una traccia e resta identico.
+- **Impostazioni:** schermata propria, raggiungibile dalla libreria — non dal player.
+- Sul player, unico ingresso futuro ammesso: un back discreto "‹" in alto a sinistra (solo quando esiste lo stack). Non aggiungere gear, hamburger, tab, badge.
+- Bugfix sul player: cambiare solo logica, non stile, salvo richiesta esplicita dell’utente.
+
+```tsx
+// ❌ BAD — rovina il player approvato
+<View style={styles.header}>
+  <Text>{track.title}</Text>
+  <Pressable><GearIcon /></Pressable>
+</View>
+
+// ✅ GOOD — feature fuori dal player
+// LibraryScreen → tap traccia → PlayerScreen (invariata)
+```

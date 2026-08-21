@@ -1,0 +1,26 @@
+---
+description: La parola VAI lancia lo script di rilascio (commit, main, push, FTP, build)
+alwaysApply: true
+---
+
+# VAI
+
+Se il messaggio dell’utente è **VAI** (anche `vai`, o inizia con VAI), è un ordine di rilascio. Non chiedere conferma.
+
+## Cosa fare
+
+1. Se VAI arriva con altro lavoro, **fai prima quello**, poi rilascia.
+2. Leggi `.cursor/skills/vai/SKILL.md` se serve il dettaglio.
+3. Esegui `bash scripts/vai.sh` dalla root del repo (con rete).
+4. Prima dello script, imposta `VAI_MESSAGE` (1–2 frasi sul *perché*, dallo `git diff`).
+5. Se `eas build` è già in corso in un terminale, aggiungi `--skip-build`.
+
+## Permessi
+
+VAI = permesso esplicito di **commit**, **merge su main**, **push**, **FTP** e **build iOS**. Non è un force-push. Non committare `.env`, `.env.ftp`, password, `firebase-debug.log`.
+
+## Vietato
+
+- Rifare i passi a mano se lo script esiste
+- Chiedere «vuoi che committi?»
+- `--force`, `--no-verify`, amend

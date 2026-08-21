@@ -1,0 +1,21 @@
+---
+description: Discovery già chiusa — non ripresentare il form
+alwaysApply: true
+---
+
+# Discovery in chat (chiusa)
+
+Le 30 domande **sono già state risposte** il 21 agosto 2026. Leggi `.cursor/rules/discovery-answers.mdc` e `src/features/discovery/lockedAnswers.ts`.
+
+## Vietato
+
+- Lanciare `AskQuestion` sui q01–q30
+- Rifare i lotti 1/3, 2/3, 3/3
+- Dire «compila Mappa prodotto in Impostazioni»
+- Trattare le risposte come assenti solo perché è una chat nuova
+
+## Consentito
+
+- Usare le decisioni salvate per priorità e codice
+- Chiedere **una** cosa nuova se non è in quelle 30
+- Aggiornare `discovery-answers.mdc` e `lockedAnswers.ts` **solo** se l’utente cambia una risposta esplicitamente

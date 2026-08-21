@@ -10,8 +10,10 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
+import { canEditMarker } from '../../domain/markers';
 import { formatTimecode } from '../../domain/models';
 import { usePlayerStore } from '../../store/playerStore';
+import { useSessionStore } from '../../store/sessionStore';
 import { colors, layout } from '../../theme/colors';
 
 function hapticSuccess() {
@@ -24,13 +26,18 @@ function hapticSuccess() {
 
 export function NoteBubble() {
   const bubble = usePlayerStore((s) => s.bubble);
+  const markers = usePlayerStore((s) => s.markers);
   const closeBubble = usePlayerStore((s) => s.closeBubble);
   const deleteMarker = usePlayerStore((s) => s.deleteMarker);
+  const hideMarker = usePlayerStore((s) => s.hideMarker);
   const setDraft = usePlayerStore((s) => s.setDraft);
   const saveBubble = usePlayerStore((s) => s.saveBubble);
+  const user = useSessionStore((s) => s.user);
 
   const isEditing = bubble.markerId != null;
-  const canSave = bubble.draft.trim().length > 0;
+  const current = markers.find((marker) => marker.id === bubble.markerId);
+  const readOnly = isEditing && current != null && !canEditMarker(current, user);
+  const canSave = !readOnly && bubble.draft.trim().length > 0;
 
   const persistNote = () => {
     if (!canSave) {
@@ -73,7 +80,13 @@ export function NoteBubble() {
                 {formatTimecode(bubble.timestampMs)}
               </Text>
               <Text style={styles.subtitle}>
-                {isEditing ? 'Modifica appunto' : 'Nuovo appunto'}
+                {readOnly
+                  ? `Sola lettura${current?.authorName ? ` · ${current.authorName}` : ''}`
+                  : isEditing
+                    ? current?.hidden
+                      ? 'Storico · nascosto'
+                      : 'Modifica appunto'
+                    : 'Nuovo appunto'}
               </Text>
 
               <TextInput
@@ -83,7 +96,8 @@ export function NoteBubble() {
                 placeholder="Scrivi il tuo appunto…"
                 placeholderTextColor={colors.textMuted}
                 multiline
-                autoFocus
+                autoFocus={!readOnly}
+                editable={!readOnly}
                 textAlignVertical="top"
                 selectionColor={colors.accent}
                 cursorColor={colors.accent}
@@ -100,7 +114,22 @@ export function NoteBubble() {
                 </Pressable>
 
                 <View style={styles.actionsRight}>
-                  {isEditing ? (
+                  {isEditing && !readOnly ? (
+                    <Pressable
+                      onPress={() => {
+                        if (bubble.markerId) {
+                          hideMarker(bubble.markerId, !current?.hidden);
+                        }
+                      }}
+                      hitSlop={layout.hitSlop}
+                      accessibilityRole="button"
+                      accessibilityLabel={current?.hidden ? 'Mostra appunto' : 'Nascondi appunto'}
+                    >
+                      <Text style={styles.hideLabel}>{current?.hidden ? 'Mostra' : 'Nascondi'}</Text>
+                    </Pressable>
+                  ) : null}
+
+                  {isEditing && !readOnly ? (
                     <Pressable
                       onPress={onDelete}
                       hitSlop={layout.hitSlop}
@@ -111,6 +140,7 @@ export function NoteBubble() {
                     </Pressable>
                   ) : null}
 
+                  {readOnly ? null : (
                   <Pressable
                     onPress={persistNote}
                     disabled={!canSave}
@@ -124,6 +154,7 @@ export function NoteBubble() {
                   >
                     <Text style={styles.saveLabel}>Salva</Text>
                   </Pressable>
+                  )}
                 </View>
               </View>
             </View>
@@ -216,6 +247,11 @@ const styles = StyleSheet.create({
   cancelLabel: {
     fontSize: 16,
     fontWeight: '500',
+    color: colors.textMuted,
+  },
+  hideLabel: {
+    fontSize: 16,
+    fontWeight: '600',
     color: colors.textMuted,
   },
   deleteLabel: {

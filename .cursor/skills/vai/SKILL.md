@@ -1,0 +1,50 @@
+---
+name: vai
+description: Ships ReWavier when the user says VAI. Commits, merges to main, pushes, uploads docs over FTP if they changed, and starts the iOS production build. Use when the user says VAI, vai, or asks to ship / rilasciare.
+---
+
+# VAI
+
+Quando l’utente scrive **VAI** (o `vai`, o il messaggio inizia con VAI), lancia il rilascio. Non chiedere conferma. Non rifare i 30 discovery. Non toccare lo stile del player.
+
+VAI è permesso esplicito di commit, merge su main, push, FTP e build.
+
+## Prima lo script, non i passi a mano
+
+```bash
+VAI_MESSAGE='…' bash scripts/vai.sh
+```
+
+Dalla root del repo, con rete. Lo script fa, in ordine:
+
+1. Commit (esclude segreti)
+2. Merge su `main` se sei su un altro branch
+3. Push su `origin`
+4. FTP di `docs/` solo se il contenuto è cambiato rispetto all’ultimo upload
+5. Build iOS production (`eas`, non aspetta la fine)
+
+## Messaggio di commit
+
+Dal `git diff`, 1–2 frasi sul **perché**. Esporta `VAI_MESSAGE`. Se VAI arriva con altro lavoro, **fallo prima**, poi rilascia così entra nel commit.
+
+## Flag
+
+- `--skip-build` se `eas build` è già in corso in un terminale
+- `--skip-ftp` solo se l’utente lo chiede
+
+## FTP
+
+Destinazione: `eventi.musicproeventi.it/ReWavier/`  
+URL pubblico: https://eventi.musicproeventi.it/ReWavier/
+
+Credenziali, in questo ordine: `.env.ftp` → `.env.local` → `FTP_HOST` / `FTP_USER` / `FTP_PASS` nell’ambiente → fallback sul `.env` Eventi del Mac. Non stampare la password. Non committare `.env.ftp`.
+
+Carica solo `docs/` (no `prodotto.md`). Se invariati, salta.
+
+## Sicurezza git
+
+Mai `--force`, `--no-verify`, amend. Mai `.env`, `.env.ftp`, `credentials.json`, `firebase-debug.log`.
+
+## Alla fine
+
+Riporta in breve: hash del commit, push, FTP (caricato / saltato / errore), build (URL o saltata). Se lo script manca, ricrealo da questa skill e rilancia.

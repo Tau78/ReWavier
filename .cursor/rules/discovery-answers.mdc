@@ -1,0 +1,62 @@
+---
+description: Decisioni prodotto già prese (q01–q30). Non riformulare.
+alwaysApply: true
+---
+
+# Discovery bloccata (21 agosto 2026)
+
+Le 30 domande sono **già risposte**. Non lanciare AskQuestion, non rifare i 3 lotti, non rimandare a Impostazioni. Se serve una scelta nuova, chiedi solo quella. Per cambiare una decisione già presa, l’utente lo dice esplicitamente.
+
+Fonte codice: `src/features/discovery/lockedAnswers.ts`.
+
+## Area buia
+
+| Id | Decisione |
+| --- | --- |
+| q01 | **iPhone** (uso principale) |
+| q02 | Player **bloccato** (waveform, controlli, +) |
+| q03 | Utente = **io, da solo** |
+| q04 | Dati **sempre** sul telefono |
+| q05 | Drive: vuole **sync automatica** (non solo .rewavier.json a mano) |
+| q06 | Marker: **solo io + chi ha la cartella + ruoli** (owner / editor / viewer) |
+| q07 | Fumetto + **ok così** |
+| q08 | Timestamp **così com’è** |
+| q09 | Cartelle = **mix** lezioni / progetti / cassetto |
+| q10 | Import File/Drive **trovato, chiaro** |
+
+## Funzioni (dopo v0 / priorità)
+
+| Id | Decisione |
+| --- | --- |
+| q11 | Primo dopo v0: **persistenza + Drive auto + audio/waveform veri** |
+| q12 | Velocità 0.5×–2×: **subito** |
+| q13 | Loop A–B: **subito** |
+| q14 | Nota vocale: **dopo** |
+| q15 | Foto/disegno nel fumetto: **subito** |
+| q16 | Campo accordi: **subito** |
+| q17 | Ascolto insieme: **subito** |
+| q18 | Export Logic / Ableton / Reaper: **subito** |
+| q19 | Link web sola lettura: **subito** |
+| q20 | Android: **appena iOS è usabile** |
+
+## Bug / stub
+
+| Id | Decisione |
+| --- | --- |
+| q21 | Crash cartella: **risolto** |
+| q22 | Expo Go iPad SDK 54: **apre** |
+| q23 | Import audio: **funziona** |
+| q24 | Audio vero: **si sente** |
+| q25 | Drag marker: **preciso** |
+| q26 | Demo Studio Session / Take 3: **togli tutte** |
+| q27 | Album/playlist stub: **libreria vuota** |
+| q28 | Share marker: vuole **Drive vero** |
+| q29 | Account: **login ora** (Apple / email) |
+| q30 | Smart playlist «Con appunti»: **togli** |
+
+## Vincoli operativi
+
+- Non contraddire queste risposte.
+- Player: solo logica, mai stile (vedi `player-ui-lock.mdc`).
+- Libreria parte vuota, niente demo, niente «Con appunti» seminata.
+- Login c’è; Google Drive solo se i client ID sono configurati.

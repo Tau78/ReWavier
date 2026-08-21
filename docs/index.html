@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ReWavier — un appunto sul momento esatto della canzone</title>
+  <meta name="description" content="Ascolti un brano, tocchi + e scrivi cosa succede in quel punto. L’onda resta sul telefono, con i tuoi segnalini. Per iPhone e iPad.">
+  <meta name="theme-color" content="#0D0D0F">
+  <link rel="icon" href="img/favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="img/icon-180.png">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="ReWavier — un appunto sul momento esatto">
+  <meta property="og:description" content="Ascolti, tocchi +, scrivi. La musica va in pausa e il segnalino resta sull’onda.">
+  <meta property="og:image" content="img/player.png">
+  <meta property="og:locale" content="it_IT">
+  <meta name="twitter:card" content="summary_large_image">
+  <style>
+    :root {
+      --bg: #0D0D0F;
+      --surface: #1A1A1E;
+      --raised: #252529;
+      --text: #F5F5F7;
+      --muted: #8E8E93;
+      --accent: #FF6B35;
+      --wave: #4A9EFF;
+      --border: #2C2C31;
+      --max: 72rem;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    img { max-width: 100%; height: auto; display: block; }
+
+    .skip {
+      position: absolute;
+      left: -999px;
+      top: 0;
+    }
+    .skip:focus {
+      left: 1rem;
+      top: 1rem;
+      z-index: 20;
+      background: var(--accent);
+      color: #fff;
+      padding: 0.5rem 0.8rem;
+      border-radius: 0.5rem;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(13, 13, 15, 0.86);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+    .bar {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 0.85rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      color: var(--text);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      text-decoration: none;
+    }
+    .brand:hover { text-decoration: none; }
+    .mark { width: 28px; height: 28px; flex: 0 0 28px; }
+    nav { display: flex; align-items: center; gap: 1.1rem; }
+    nav a { color: var(--muted); font-size: 0.95rem; }
+    nav a:hover { color: var(--text); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      border-radius: 999px;
+      padding: 0.85rem 1.35rem;
+      text-decoration: none;
+      border: 0;
+    }
+    .btn:hover { text-decoration: none; filter: brightness(1.08); }
+    .btn-ghost {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .soon { opacity: 0.92; cursor: default; }
+    .soon:hover { filter: none; }
+
+    main { overflow: hidden; }
+
+    .hero {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 3.2rem 1.25rem 1rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+      align-items: center;
+    }
+    .kicker {
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0.55rem 0 0;
+      font-size: clamp(2.1rem, 5vw, 3.4rem);
+      line-height: 1.08;
+      letter-spacing: -0.045em;
+    }
+    .lede {
+      margin: 1rem 0 0;
+      color: var(--muted);
+      font-size: 1.15rem;
+      max-width: 34rem;
+    }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1.6rem; }
+    .meta {
+      margin-top: 1.1rem;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .phones {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.9rem;
+      transform: rotate(-2deg);
+    }
+    .device {
+      background: #000;
+      border: 1px solid var(--border);
+      border-radius: 1.35rem;
+      padding: 0.45rem;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    }
+    .device img { border-radius: 1rem; }
+    .device.shift { margin-top: 2.4rem; }
+
+    .wave-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 5px;
+      height: 42px;
+      margin-bottom: 1.1rem;
+    }
+    .bar {
+      width: 7px;
+      border-radius: 99px;
+      background: var(--wave);
+      position: relative;
+    }
+    .bar.dot::after {
+      content: "";
+      position: absolute;
+      top: -10px;
+      right: -3px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+    .b1 { height: 14px; } .b2 { height: 22px; } .b3 { height: 30px; }
+    .b4 { height: 42px; } .b5 { height: 28px; } .b6 { height: 20px; } .b7 { height: 12px; }
+
+    section { padding: 4.2rem 1.25rem; }
+    .wrap { max-width: var(--max); margin: 0 auto; }
+    h2 {
+      margin: 0;
+      font-size: clamp(1.6rem, 3vw, 2.2rem);
+      letter-spacing: -0.035em;
+    }
+    .sub {
+      color: var(--muted);
+      margin: 0.6rem 0 0;
+      max-width: 36rem;
+    }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 1.15rem;
+      padding: 1.35rem 1.3rem 1.45rem;
+    }
+    .num {
+      color: var(--accent);
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      font-size: 0.92rem;
+    }
+    .card h3 {
+      margin: 0.45rem 0 0;
+      font-size: 1.15rem;
+      letter-spacing: -0.02em;
+    }
+    .card p {
+      margin: 0.45rem 0 0;
+      color: var(--muted);
+    }
+
+    .who { background: #111114; }
+    .pills {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+    .pill h3 { margin: 0; font-size: 1.1rem; }
+    .pill p { margin: 0.4rem 0 0; color: var(--muted); }
+
+    .shots {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.1rem;
+      margin-top: 2rem;
+    }
+    figure { margin: 0; }
+    figcaption {
+      margin-top: 0.7rem;
+      color: var(--muted);
+      font-size: 0.92rem;
+      text-align: center;
+    }
+    .frame {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 1.25rem;
+      padding: 0.55rem;
+    }
+    .frame img { border-radius: 0.9rem; }
+
+    .facts {
+      display: grid;
+      grid-template-columns: 1.1fr 0.9fr;
+      gap: 1.2rem;
+      margin-top: 2rem;
+    }
+    .fact-list { margin: 0; padding: 0; list-style: none; }
+    .fact-list li {
+      padding: 0.85rem 0;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .fact-list strong { color: var(--text); display: block; margin-bottom: 0.15rem; }
+    .stamp {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 1.2rem;
+      padding: 1.6rem 1.4rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .time {
+      font-size: clamp(1.8rem, 4vw, 2.5rem);
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      font-variant-numeric: tabular-nums;
+    }
+    .time span { color: var(--accent); }
+    .stamp p { margin: 0.6rem 0 0; color: var(--muted); }
+
+    .cta {
+      text-align: center;
+      padding-bottom: 5rem;
+    }
+    .cta h2 { max-width: 22rem; margin-left: auto; margin-right: auto; }
+    .cta .actions { justify-content: center; }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.4rem 1.25rem 2.2rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .foot {
+      max-width: var(--max);
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .foot a { color: var(--muted); }
+    .foot a:hover { color: var(--text); }
+
+    @media (max-width: 860px) {
+      .hero, .steps, .pills, .shots, .facts { grid-template-columns: 1fr; }
+      .phones { max-width: 26rem; margin: 0 auto; transform: none; }
+      .device.shift { margin-top: 0; }
+      nav .hide { display: none; }
+      section { padding: 3.2rem 1.25rem; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#contenuto">Vai al contenuto</a>
+  <header>
+    <div class="bar">
+      <a class="brand" href="#inizio" aria-label="ReWavier, inizio pagina">
+        <svg class="mark" viewBox="0 0 28 28" aria-hidden="true">
+          <rect x="1" y="16" width="2.4" height="7" rx="1.2" fill="#4A9EFF"/>
+          <rect x="5" y="12" width="2.4" height="11" rx="1.2" fill="#4A9EFF"/>
+          <rect x="9" y="8" width="2.4" height="15" rx="1.2" fill="#4A9EFF"/>
+          <rect x="13" y="4" width="2.4" height="19" rx="1.2" fill="#4A9EFF"/>
+          <rect x="17" y="9" width="2.4" height="14" rx="1.2" fill="#4A9EFF"/>
+          <rect x="21" y="13" width="2.4" height="10" rx="1.2" fill="#4A9EFF"/>
+          <rect x="25" y="17" width="2.4" height="6" rx="1.2" fill="#4A9EFF"/>
+          <circle cx="22.2" cy="8.2" r="1.7" fill="#FF6B35"/>
+        </svg>
+        ReWavier
+      </a>
+      <nav>
+        <a class="hide" href="#come">Come si usa</a>
+        <a class="hide" href="#per-chi">Per chi</a>
+        <a href="Privacy.html">Privacy</a>
+        <a class="btn" href="#scarica">Scarica</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="contenuto">
+    <section class="hero" id="inizio">
+      <div>
+        <div class="wave-row" aria-hidden="true">
+          <span class="bar b1"></span>
+          <span class="bar b2"></span>
+          <span class="bar b3"></span>
+          <span class="bar b4"></span>
+          <span class="bar b5"></span>
+          <span class="bar b6 dot"></span>
+          <span class="bar b7"></span>
+        </div>
+        <p class="kicker">Per iPhone e iPad</p>
+        <h1>Un appunto sul momento esatto della canzone.</h1>
+        <p class="lede">Ascolti. Tocchi +. La musica va in pausa e si apre un fumetto con l’orario preciso. Scrivi cosa succede in quel punto. Il segnalino resta sull’onda.</p>
+        <div class="actions">
+          <a class="btn soon" href="#scarica">Presto sull’App Store</a>
+          <a class="btn btn-ghost" href="#come">Vedi come funziona</a>
+        </div>
+        <p class="meta">Niente pubblicità. I brani e le note restano sul telefono.</p>
+      </div>
+      <div class="phones" aria-hidden="true">
+        <div class="device">
+          <img src="img/player.png" alt="" width="735" height="980">
+        </div>
+        <div class="device shift">
+          <img src="img/appunto.png" alt="" width="735" height="980">
+        </div>
+      </div>
+    </section>
+
+    <section id="come">
+      <div class="wrap">
+        <h2>Tre gesti. Poi l’appunto è lì.</h2>
+        <p class="sub">Non è un registratore e non è un social. È un taccuino attaccato alla linea del tempo del brano.</p>
+        <div class="steps">
+          <article class="card">
+            <span class="num">01</span>
+            <h3>Carica un brano</h3>
+            <p>Apri la libreria e scegli un file audio dal telefono: una prova, un take, una lezione.</p>
+          </article>
+          <article class="card">
+            <span class="num">02</span>
+            <h3>Ascolta e tocca +</h3>
+            <p>Quando senti il punto da segnare, tocca il pulsante arancione. La traccia si ferma da sola.</p>
+          </article>
+          <article class="card">
+            <span class="num">03</span>
+            <h3>Scrivi e salva</h3>
+            <p>Nel fumetto c’è già l’orario. Scrivi l’errore, l’accordo o l’idea. Il segnalino resta sull’onda.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="who" id="per-chi">
+      <div class="wrap">
+        <h2>Per chi riascolta e deve ricordare.</h2>
+        <p class="sub">Da solo sul take, in sala prove o in lezione. Stesso gesto.</p>
+        <div class="pills">
+          <article class="card pill">
+            <h3>Musicista</h3>
+            <p>Riascolti un take e segni dove sbagli, dove entra il basso, dove il mix si sporca.</p>
+          </article>
+          <article class="card pill">
+            <h3>Band</h3>
+            <p>In sala prove tieni le note sul pezzo, non su un foglio che poi sparisce.</p>
+          </article>
+          <article class="card pill">
+            <h3>Lezione</h3>
+            <p>Insegnante o studente: un appunto sul passaggio, con l’orario già scritto.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="schermate">
+      <div class="wrap">
+        <h2>Libreria, onda, fumetto.</h2>
+        <p class="sub">Il player è pulito: titolo, tempo, forma d’onda, controlli e il + arancione. Si organizza tutto dalla libreria.</p>
+        <div class="shots">
+          <figure>
+            <div class="frame">
+              <img src="img/libreria.png" alt="Libreria di ReWavier con cartelle, album e lista dei brani." width="735" height="980">
+            </div>
+            <figcaption>Metti i brani in cartelle, album o playlist.</figcaption>
+          </figure>
+          <figure>
+            <div class="frame">
+              <img src="img/player.png" alt="Player di ReWavier con forma d’onda e controlli di ascolto." width="735" height="980">
+            </div>
+            <figcaption>Vedi tutto il brano e un dettaglio di 12 secondi.</figcaption>
+          </figure>
+          <figure>
+            <div class="frame">
+              <img src="img/appunto.png" alt="Fumetto per scrivere un appunto sull’orario esatto." width="735" height="980">
+            </div>
+            <figcaption>L’orario è già lì. Tu scrivi solo la nota.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <h2>Cosa fa, in chiaro.</h2>
+        <div class="facts">
+          <ul class="fact-list">
+            <li>
+              <strong>Onda del brano</strong>
+              Due viste: quella intera e un dettaglio. I segnalini si toccano, si spostano, si cancellano.
+            </li>
+            <li>
+              <strong>Orario al millesimo</strong>
+              Minuti, secondi e millesimi. Così ritrovi lo stesso punto, non “verso il ritornello”.
+            </li>
+            <li>
+              <strong>Tutto sul telefono</strong>
+              I file e gli appunti restano su quell’iPhone o iPad. Niente pubblicità, niente tracciamento.
+            </li>
+            <li>
+              <strong>I tuoi file</strong>
+              Carichi tu l’audio. ReWavier non apre nulla da sola e non tiene le tue canzoni su un sito nostro.
+            </li>
+          </ul>
+          <aside class="stamp">
+            <p class="kicker">Esempio</p>
+            <p class="time"><span>00:14.603</span> / 03:24.000</p>
+            <p>Tocchi + a questo punto. Scrivi. Il segnalino resta lì, sull’onda.</p>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta" id="scarica">
+      <div class="wrap">
+        <p class="kicker">iPhone e iPad</p>
+        <h2>Presto sull’App Store.</h2>
+        <p class="sub" style="margin-left:auto;margin-right:auto;">Carichi un brano, tocchi la traccia, poi + per un appunto. I file restano sul telefono.</p>
+        <div class="actions">
+          <span class="btn soon">In arrivo per iPhone e iPad</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="foot">
+      <span>© 2026 ReWavier</span>
+      <span>
+        <a href="Privacy.html">Informativa sulla privacy</a>
+        ·
+        <a href="Supporto.html">Assistenza</a>
+      </span>
+    </div>
+  </footer>
+</body>
+</html>

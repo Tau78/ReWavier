@@ -1,0 +1,354 @@
+import { useMemo, useState } from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { isDownloaded } from '../../domain/audioFormats';
+import type { CollectionKind } from '../../domain/library';
+import type { RootStackParamList } from '../../navigation/types';
+import { useLibraryStore } from '../../store/libraryStore';
+import { colors, layout } from '../../theme/colors';
+import { openTrack } from './openTrack';
+import { ReorderableTrackList } from './ReorderableTrackList';
+import { TrackRow } from './TrackRow';
+import { useLibraryActions } from './useLibraryActions';
+
+type Nav = NativeStackNavigationProp<RootStackParamList, 'Collection'>;
+type Route = RouteProp<RootStackParamList, 'Collection'>;
+
+const KIND_LABEL: Record<CollectionKind, string> = {
+  folder: 'Cartella',
+  album: 'Album',
+  playlist: 'Playlist',
+  smart: 'Condizioni',
+};
+
+export function CollectionScreen() {
+  const navigation = useNavigation<Nav>();
+  const { kind, id } = useRoute<Route>().params;
+  const folders = useLibraryStore((s) => s.folders);
+  const albums = useLibraryStore((s) => s.albums);
+  const playlists = useLibraryStore((s) => s.playlists);
+  const smartPlaylists = useLibraryStore((s) => s.smartPlaylists);
+  const markersByTrackId = useLibraryStore((s) => s.markersByTrackId);
+  const allTracks = useLibraryStore((s) => s.tracks);
+  const downloadingIds = useLibraryStore((s) => s.downloadingIds);
+  const tracks = useMemo(
+    () => useLibraryStore.getState().tracksIn(kind, id),
+    [kind, id, folders, albums, playlists, smartPlaylists, markersByTrackId, allTracks],
+  );
+  const childFolders = useMemo(
+    () => (kind === 'folder' ? folders.filter((folder) => folder.parentId === id) : []),
+    [kind, id, folders],
+  );
+  const actions = useLibraryActions(kind === 'folder' ? id : null, (openedKind, openedId) => {
+    navigation.push('Collection', { kind: openedKind, id: openedId });
+  });
+
+  const title =
+    kind === 'folder'
+      ? folders.find((item) => item.id === id)?.name
+      : kind === 'album'
+        ? albums.find((item) => item.id === id)?.name
+        : kind === 'playlist'
+          ? playlists.find((item) => item.id === id)?.name
+          : smartPlaylists.find((item) => item.id === id)?.name;
+
+  const [dragging, setDragging] = useState(false);
+  const canReorder = kind !== 'smart';
+  const album = kind === 'album' ? albums.find((item) => item.id === id) : undefined;
+  const subtitle =
+    kind === 'album'
+      ? album?.origin === 'drive'
+        ? `Drive · ${album.trackIds.length} tracce`
+        : album?.artist || `${album?.trackIds.length ?? 0} tracce`
+      : kind === 'smart'
+        ? `${smartPlaylists.find((item) => item.id === id)?.conditions.length ?? 0} regole`
+        : `${tracks.length} tracce`;
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <View style={styles.header}>
+        <Pressable
+          onPress={() => navigation.goBack()}
+          hitSlop={layout.hitSlop}
+          accessibilityRole="button"
+          accessibilityLabel="Indietro"
+        >
+          <Text style={styles.back}>‹</Text>
+        </Pressable>
+        <View style={styles.headerText}>
+          <Text style={styles.kind}>{KIND_LABEL[kind]}</Text>
+          <Text style={styles.title} numberOfLines={1}>
+            {title ?? 'Senza nome'}
+          </Text>
+          <Text style={styles.subtitle}>{subtitle}</Text>
+        </View>
+        {kind === 'smart' ? (
+          <Pressable
+            onPress={() => navigation.navigate('Conditions', { id })}
+            hitSlop={layout.hitSlop}
+          >
+            <Text style={styles.edit}>Modifica</Text>
+          </Pressable>
+        ) : kind === 'album' ? (
+          <View style={styles.headerButtons}>
+            <Pressable
+              onPress={() => {
+                void useLibraryStore
+                  .getState()
+                  .downloadAlbum(id)
+                  .catch((error) => {
+                    Alert.alert(
+                      'Download',
+                      error instanceof Error ? error.message : 'Download non riuscito',
+                    );
+                  });
+              }}
+              style={({ pressed }) => [styles.plus, pressed && styles.plusPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Scarica album"
+            >
+              <Text
+                style={[
+                  styles.plusGlyph,
+                  tracks.every((track) => isDownloaded(track)) && styles.downloadDone,
+                ]}
+              >
+                {tracks.some((track) => downloadingIds[track.id] != null)
+                  ? '…'
+                  : tracks.every((track) => isDownloaded(track))
+                    ? '✓'
+                    : '↓'}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => actions.openAlbumMenu(id)}
+              style={({ pressed }) => [styles.plus, pressed && styles.plusPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Album"
+            >
+              <Text style={styles.plusGlyph}>＋</Text>
+            </Pressable>
+          </View>
+        ) : kind === 'folder' ? (
+          <Pressable
+            onPress={() => actions.openFolderCreateMenu()}
+            style={({ pressed }) => [styles.plus, pressed && styles.plusPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Nuovo"
+          >
+            <Text style={styles.plusGlyph}>＋</Text>
+          </Pressable>
+        ) : kind === 'playlist' ? (
+          <Pressable
+            onPress={() => actions.openPlaylistMenu(id)}
+            style={({ pressed }) => [styles.plus, pressed && styles.plusPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Playlist"
+          >
+            <Text style={styles.plusGlyph}>⋯</Text>
+          </Pressable>
+        ) : (
+          <View style={styles.editSpacer} />
+        )}
+      </View>
+
+      {canReorder && tracks.length > 1 ? (
+        <Text style={styles.hint}>Tieni premuto una traccia e trascinala per riordinare.</Text>
+      ) : null}
+
+      <ScrollView contentContainerStyle={styles.scroll} scrollEnabled={!dragging}>
+        {childFolders.length > 0 ? (
+          <View style={[styles.card, styles.cardGap]}>
+            {childFolders.map((folder) => (
+              <Pressable
+                key={folder.id}
+                onPress={() => navigation.push('Collection', { kind: 'folder', id: folder.id })}
+                onLongPress={() => actions.openFolderMenu(folder)}
+                delayLongPress={280}
+                style={styles.subfolder}
+              >
+                <Text style={styles.subfolderName}>{folder.name}</Text>
+                <Text style={styles.subfolderMeta}>{folder.trackIds.length} tracce</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+        <View style={styles.card}>
+          {tracks.length === 0 ? (
+            <Text style={styles.empty}>
+              {kind === 'smart'
+                ? 'Nessuna traccia soddisfa queste condizioni.'
+                : 'Questa raccolta è vuota. Tieni premuto per i comandi, o importa un audio.'}
+            </Text>
+          ) : (
+            <ReorderableTrackList
+              tracks={tracks}
+              enabled={canReorder}
+              onDraggingChange={setDragging}
+              onReorder={(trackIds) => {
+                useLibraryStore.getState().setCollectionOrder(kind, id, trackIds);
+              }}
+              renderItem={(track) => (
+                <TrackRow
+                  track={track}
+                  noteCount={
+                    (markersByTrackId[track.id] ?? []).filter((marker) => marker.hidden !== true)
+                      .length
+                  }
+                  downloading={downloadingIds[track.id] != null}
+                  onPress={() => {
+                    if (openTrack(track.id, tracks.map((item) => item.id))) {
+                      navigation.navigate('Player');
+                      return;
+                    }
+                    Alert.alert(
+                      'Scarica',
+                      'Questa traccia non è ancora sul telefono. Tocca ↓ per il download offline.',
+                    );
+                  }}
+                  onMenu={() => actions.openTrackMenu(track)}
+                  onDownload={() => {
+                    void useLibraryStore.getState().downloadTrack(track.id).catch((error) => {
+                      Alert.alert(
+                        'Download',
+                        error instanceof Error ? error.message : 'Download non riuscito',
+                      );
+                    });
+                  }}
+                />
+              )}
+            />
+          )}
+        </View>
+      </ScrollView>
+      {actions.modals}
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 10,
+    gap: 4,
+  },
+  back: {
+    color: colors.textMuted,
+    fontSize: 34,
+    lineHeight: 36,
+    width: 28,
+    marginTop: -4,
+  },
+  headerText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  kind: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+  },
+  title: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: -0.4,
+  },
+  subtitle: {
+    marginTop: 2,
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  edit: {
+    color: colors.accent,
+    fontSize: 15,
+    fontWeight: '700',
+    marginTop: 18,
+  },
+  plus: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    marginTop: 4,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  plusPressed: {
+    opacity: 0.7,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  plusGlyph: {
+    color: colors.accent,
+    fontSize: 22,
+    fontWeight: '600',
+    marginTop: -2,
+  },
+  downloadDone: {
+    color: '#34C759',
+  },
+  editSpacer: {
+    width: 28,
+  },
+  hint: {
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  scroll: {
+    paddingHorizontal: 16,
+    paddingBottom: 32,
+  },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  cardGap: {
+    marginBottom: 12,
+  },
+  subfolder: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  subfolderName: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  subfolderMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  empty: {
+    color: colors.textMuted,
+    fontSize: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 22,
+  },
+});
