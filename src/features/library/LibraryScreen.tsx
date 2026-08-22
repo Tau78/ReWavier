@@ -13,7 +13,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import type { CollectionKind } from '../../domain/library';
+import { albumTrackCount, type CollectionKind } from '../../domain/library';
 import type { RootStackParamList } from '../../navigation/types';
 import { runCloudSync } from '../../cloud/syncEngine';
 import { useLibraryStore } from '../../store/libraryStore';
@@ -249,8 +249,8 @@ export function LibraryScreen() {
                 imageUri={album.artworkUri ?? ''}
                 meta={
                   album.origin === 'drive'
-                    ? `Drive · ${album.trackIds.length} tracce`
-                    : album.artist || `${album.trackIds.length} tracce`
+                    ? `Drive · ${albumTrackCount(album.trackIds)} tracce`
+                    : album.artist || `${albumTrackCount(album.trackIds)} tracce`
                 }
                 onPress={() => openCollection('album', album.id)}
                 onLongPress={() => actions.openAlbumMenu(album.id)}

@@ -25,6 +25,7 @@ type Menu =
   | { type: 'create-album' }
   | { type: 'album'; albumId: string }
   | { type: 'playlist'; playlistId: string }
+  | { type: 'separator'; albumId: string; separatorId: string; name: string }
   | null;
 
 type Prompt =
@@ -32,10 +33,12 @@ type Prompt =
   | { type: 'rename-folder'; id: string; value: string }
   | { type: 'rename-album'; id: string; value: string }
   | { type: 'rename-playlist'; id: string; value: string }
+  | { type: 'rename-separator'; albumId: string; id: string; value: string }
   | { type: 'new-folder'; parentId: string | null }
   | { type: 'new-album' }
   | { type: 'drive-album' }
   | { type: 'new-playlist' }
+  | { type: 'new-separator'; albumId: string }
   | null;
 
 type Mover =
@@ -256,6 +259,10 @@ export function useLibraryActions(
       onPress: () => navigation.navigate('ReplaceFile', { albumId }),
     },
     {
+      label: 'Aggiungi separatore',
+      onPress: () => setPrompt({ type: 'new-separator', albumId }),
+    },
+    {
       label: useLibraryStore.getState().albums.find((item) => item.id === albumId)?.artworkUri
         ? 'Cambia copertina'
         : 'Aggiungi copertina',
@@ -296,6 +303,27 @@ export function useLibraryActions(
               useLibraryStore.getState().deleteAlbum(albumId);
               leaveIfViewing('album', albumId);
             },
+          },
+        ]);
+      },
+    },
+  ];
+
+  const separatorActions = (albumId: string, separatorId: string, name: string): ActionItem[] => [
+    {
+      label: 'Rinomina',
+      onPress: () => setPrompt({ type: 'rename-separator', albumId, id: separatorId, value: name }),
+    },
+    {
+      label: 'Elimina separatore',
+      danger: true,
+      onPress: () => {
+        Alert.alert('Togliere il separatore?', name, [
+          { text: 'Annulla', style: 'cancel' },
+          {
+            text: 'Elimina',
+            style: 'destructive',
+            onPress: () => useLibraryStore.getState().deleteAlbumSeparator(albumId, separatorId),
           },
         ]);
       },
@@ -410,7 +438,9 @@ export function useLibraryActions(
                   ? albums.find((item) => item.id === menu.albumId)?.name ?? 'Album'
                   : menu?.type === 'playlist'
                     ? playlists.find((item) => item.id === menu.playlistId)?.name ?? 'Playlist'
-                    : ''
+                    : menu?.type === 'separator'
+                      ? menu.name
+                      : ''
         }
         actions={
           menu?.type === 'track'
@@ -427,7 +457,9 @@ export function useLibraryActions(
                     ? albumActions(menu.albumId)
                     : menu?.type === 'playlist'
                       ? playlistActions(menu.playlistId)
-                      : []
+                      : menu?.type === 'separator'
+                        ? separatorActions(menu.albumId, menu.separatorId, menu.name)
+                        : []
         }
         onClose={() => setMenu(null)}
       />
@@ -448,22 +480,29 @@ export function useLibraryActions(
                   ? 'Nome album Drive'
                 : prompt?.type === 'new-playlist'
                   ? 'Nuova playlist'
-                  : 'Nuova cartella'
+                  : prompt?.type === 'new-separator'
+                    ? 'Nome del separatore'
+                    : prompt?.type === 'rename-separator'
+                      ? 'Rinomina separatore'
+                      : 'Nuova cartella'
         }
-        placeholder="Nome"
+        placeholder={prompt?.type === 'new-separator' ? 'Bozze' : 'Nome'}
         confirmLabel={
           prompt?.type === 'new-folder' ||
           prompt?.type === 'new-album' ||
           prompt?.type === 'drive-album' ||
           prompt?.type === 'new-playlist'
             ? 'Crea'
-            : 'Salva'
+            : prompt?.type === 'new-separator'
+              ? 'Aggiungi'
+              : 'Salva'
         }
         initialValue={
           prompt?.type === 'rename-track' ||
           prompt?.type === 'rename-folder' ||
           prompt?.type === 'rename-album' ||
-          prompt?.type === 'rename-playlist'
+          prompt?.type === 'rename-playlist' ||
+          prompt?.type === 'rename-separator'
             ? prompt.value
             : ''
         }
@@ -502,6 +541,10 @@ export function useLibraryActions(
           } else if (prompt?.type === 'new-playlist') {
             const id = store.createPlaylist(value);
             onOpened?.('playlist', id);
+          } else if (prompt?.type === 'new-separator') {
+            store.addAlbumSeparator(prompt.albumId, value);
+          } else if (prompt?.type === 'rename-separator') {
+            store.renameAlbumSeparator(prompt.albumId, prompt.id, value);
           }
           setPrompt(null);
         }}
@@ -546,6 +589,8 @@ export function useLibraryActions(
     openAlbumCreateMenu: () => setMenu({ type: 'create-album' }),
     openAlbumMenu: (albumId: string) => setMenu({ type: 'album', albumId }),
     openPlaylistMenu: (playlistId: string) => setMenu({ type: 'playlist', playlistId }),
+    openSeparatorMenu: (albumId: string, separatorId: string, name: string) =>
+      setMenu({ type: 'separator', albumId, separatorId, name }),
     newFolder: (parentId: string | null = currentFolderId) =>
       setPrompt({ type: 'new-folder', parentId }),
     newPlaylist: () => setPrompt({ type: 'new-playlist' }),

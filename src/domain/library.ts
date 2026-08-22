@@ -11,6 +11,11 @@ export type Folder = {
 
 export type AlbumOrigin = 'local' | 'drive';
 
+export type AlbumSeparator = {
+  id: string;
+  name: string;
+};
+
 export type Album = {
   id: string;
   name: string;
@@ -24,7 +29,34 @@ export type Album = {
   shared?: boolean;
   artworkUri?: string;
   notes?: string;
+  separators?: AlbumSeparator[];
 };
+
+export function isSeparatorId(id: string): boolean {
+  return id.startsWith('sep-');
+}
+
+export function albumTrackCount(trackIds: string[]): number {
+  return trackIds.filter((id) => !isSeparatorId(id)).length;
+}
+
+export function mergeAlbumOrderFromCloud(previousIds: string[], incomingTrackIds: string[]): string[] {
+  const next = incomingTrackIds.filter((id) => !isSeparatorId(id));
+  let lastIncomingIndex = -1;
+  for (const id of previousIds) {
+    if (isSeparatorId(id)) {
+      const at = lastIncomingIndex + 1;
+      next.splice(at, 0, id);
+      lastIncomingIndex = at;
+      continue;
+    }
+    const index = next.indexOf(id);
+    if (index >= 0) {
+      lastIncomingIndex = index;
+    }
+  }
+  return next;
+}
 
 export type Playlist = {
   id: string;

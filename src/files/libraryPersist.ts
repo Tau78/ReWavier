@@ -1,7 +1,14 @@
 import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
-import { SEEDED_SMART_IDS, type Album, type Folder, type Playlist, type SmartPlaylist } from '../domain/library';
+import {
+  isSeparatorId,
+  SEEDED_SMART_IDS,
+  type Album,
+  type Folder,
+  type Playlist,
+  type SmartPlaylist,
+} from '../domain/library';
 import type { Marker, Track } from '../domain/models';
 import { fileExists, reconcileTrack } from './downloads';
 import { libraryDirectory } from './libraryPaths';
@@ -35,12 +42,20 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
       ...folder,
       trackIds: pruneIds(folder.trackIds),
     })),
-    albums: snapshot.albums.map((album) => ({
-      ...album,
-      trackIds: pruneIds(album.trackIds),
-      artworkUri: fileExists(album.artworkUri) ? album.artworkUri : undefined,
-      notes: album.notes?.trim() ? album.notes : undefined,
-    })),
+    albums: snapshot.albums.map((album) => {
+      const names = new Map((album.separators ?? []).map((item) => [item.id, item.name]));
+      const trackIds = album.trackIds.filter((id) => keep.has(id) || names.has(id) || isSeparatorId(id));
+      const separators = trackIds
+        .filter((id) => names.has(id) || isSeparatorId(id))
+        .map((id) => ({ id, name: names.get(id)?.trim() || 'Separatore' }));
+      return {
+        ...album,
+        trackIds,
+        separators: separators.length > 0 ? separators : undefined,
+        artworkUri: fileExists(album.artworkUri) ? album.artworkUri : undefined,
+        notes: album.notes?.trim() ? album.notes : undefined,
+      };
+    }),
     playlists: snapshot.playlists.map((playlist) => ({
       ...playlist,
       trackIds: pruneIds(playlist.trackIds),

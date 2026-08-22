@@ -5,7 +5,8 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { isDownloaded } from '../../domain/audioFormats';
-import type { CollectionKind } from '../../domain/library';
+import type { Album, CollectionKind } from '../../domain/library';
+import type { Track } from '../../domain/models';
 import type { RootStackParamList } from '../../navigation/types';
 import { useLibraryStore } from '../../store/libraryStore';
 import { usePlayerStore } from '../../store/playerStore';
@@ -13,10 +14,33 @@ import { colors, layout } from '../../theme/colors';
 import { EmptyGraphic, KindRow } from '../../theme/graphics';
 import { AlbumHero } from './AlbumHero';
 import { AlbumNotes } from './AlbumNotes';
+import { AlbumSeparatorRow, SEPARATOR_ROW_HEIGHT } from './AlbumSeparatorRow';
 import { openTrack, playQueue } from './openTrack';
 import { ReorderableTrackList } from './ReorderableTrackList';
 import { TrackRow } from './TrackRow';
 import { useLibraryActions } from './useLibraryActions';
+
+type ListItem =
+  | { id: string; type: 'track'; track: Track; rowHeight?: number }
+  | { id: string; type: 'separator'; name: string; rowHeight: number };
+
+function albumListItems(album: Album, tracks: Track[]): ListItem[] {
+  const byId = new Map(tracks.map((track) => [track.id, track]));
+  const names = new Map((album.separators ?? []).map((item) => [item.id, item.name]));
+  const items: ListItem[] = [];
+  for (const itemId of album.trackIds) {
+    const name = names.get(itemId);
+    if (name != null) {
+      items.push({ id: itemId, type: 'separator', name, rowHeight: SEPARATOR_ROW_HEIGHT });
+      continue;
+    }
+    const track = byId.get(itemId);
+    if (track) {
+      items.push({ id: itemId, type: 'track', track });
+    }
+  }
+  return items;
+}
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Collection'>;
 type Route = RouteProp<RootStackParamList, 'Collection'>;
@@ -62,6 +86,13 @@ export function CollectionScreen() {
   const [dragging, setDragging] = useState(false);
   const canReorder = kind !== 'smart';
   const album = kind === 'album' ? albums.find((item) => item.id === id) : undefined;
+  const listItems = useMemo<ListItem[]>(
+    () =>
+      album
+        ? albumListItems(album, tracks)
+        : tracks.map((track) => ({ id: track.id, type: 'track' as const, track })),
+    [album, tracks],
+  );
   const playerTrackId = usePlayerStore((s) => s.track.id);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const isPlayingThisAlbum =
@@ -205,9 +236,11 @@ export function CollectionScreen() {
           </>
         ) : null}
         {album ? <Text style={styles.sectionLabel}>Tracce</Text> : null}
-        {canReorder && tracks.length > 1 ? (
+        {canReorder && listItems.length > 1 ? (
           <Text style={[styles.hint, album && styles.hintInScroll]}>
-            Tieni premuto una traccia e trascinala per riordinare.
+            {album
+              ? 'Tieni premuto e trascina. Il separatore divide, per esempio, le tracce finite dalle bozze.'
+              : 'Tieni premuto una traccia e trascinala per riordinare.'}
           </Text>
         ) : null}
         {childFolders.length > 0 ? (
@@ -227,7 +260,7 @@ export function CollectionScreen() {
           </View>
         ) : null}
         <View style={styles.card}>
-          {tracks.length === 0 ? (
+          {listItems.length === 0 ? (
             <View style={styles.emptyBox}>
               <EmptyGraphic />
               <Text style={styles.empty}>
@@ -238,41 +271,48 @@ export function CollectionScreen() {
             </View>
           ) : (
             <ReorderableTrackList
-              tracks={tracks}
+              items={listItems}
               enabled={canReorder}
               onDraggingChange={setDragging}
-              onReorder={(trackIds) => {
-                useLibraryStore.getState().setCollectionOrder(kind, id, trackIds);
+              onReorder={(itemIds) => {
+                useLibraryStore.getState().setCollectionOrder(kind, id, itemIds);
               }}
-              renderItem={(track) => (
-                <TrackRow
-                  track={track}
-                  noteCount={
-                    (markersByTrackId[track.id] ?? []).filter((marker) => marker.hidden !== true)
-                      .length
-                  }
-                  downloading={downloadingIds[track.id] != null}
-                  onPress={() => {
-                    if (openTrack(track.id, tracks.map((item) => item.id))) {
-                      navigation.navigate('Player');
-                      return;
+              renderItem={(item) =>
+                item.type === 'separator' ? (
+                  <AlbumSeparatorRow
+                    name={item.name}
+                    onPress={() => actions.openSeparatorMenu(id, item.id, item.name)}
+                  />
+                ) : (
+                  <TrackRow
+                    track={item.track}
+                    noteCount={
+                      (markersByTrackId[item.track.id] ?? []).filter((marker) => marker.hidden !== true)
+                        .length
                     }
-                    Alert.alert(
-                      'Scarica',
-                      'Questa traccia non è ancora sul telefono. Tocca ↓ per il download offline.',
-                    );
-                  }}
-                  onMenu={() => actions.openTrackMenu(track)}
-                  onDownload={() => {
-                    void useLibraryStore.getState().downloadTrack(track.id).catch((error) => {
+                    downloading={downloadingIds[item.track.id] != null}
+                    onPress={() => {
+                      if (openTrack(item.track.id, tracks.map((track) => track.id))) {
+                        navigation.navigate('Player');
+                        return;
+                      }
                       Alert.alert(
-                        'Download',
-                        error instanceof Error ? error.message : 'Download non riuscito',
+                        'Scarica',
+                        'Questa traccia non è ancora sul telefono. Tocca ↓ per il download offline.',
                       );
-                    });
-                  }}
-                />
-              )}
+                    }}
+                    onMenu={() => actions.openTrackMenu(item.track)}
+                    onDownload={() => {
+                      void useLibraryStore.getState().downloadTrack(item.track.id).catch((error) => {
+                        Alert.alert(
+                          'Download',
+                          error instanceof Error ? error.message : 'Download non riuscito',
+                        );
+                      });
+                    }}
+                  />
+                )
+              }
             />
           )}
         </View>

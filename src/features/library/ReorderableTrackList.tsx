@@ -3,44 +3,54 @@ import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 
-import type { Track } from '../../domain/models';
 import { colors } from '../../theme/colors';
 
 const DEFAULT_ROW = 68;
 
-export function ReorderableTrackList({
-  tracks,
+export type ReorderableItem = {
+  id: string;
+  rowHeight?: number;
+};
+
+export function ReorderableTrackList<T extends ReorderableItem>({
+  items,
   enabled,
   onDraggingChange,
   onReorder,
   renderItem,
 }: {
-  tracks: Track[];
+  items: T[];
   enabled: boolean;
   onDraggingChange?: (dragging: boolean) => void;
-  onReorder: (trackIds: string[]) => void;
-  renderItem: (track: Track, dragging: boolean) => React.ReactNode;
+  onReorder: (ids: string[]) => void;
+  renderItem: (item: T, dragging: boolean) => React.ReactNode;
 }) {
-  const [ids, setIds] = useState(tracks.map((track) => track.id));
+  const [ids, setIds] = useState(items.map((item) => item.id));
   const [activeId, setActiveId] = useState<string | null>(null);
   const [shiftY, setShiftY] = useState(0);
   const idsRef = useRef(ids);
   const originIds = useRef(ids);
   const originIndex = useRef(0);
   const draggingRef = useRef(false);
-  const rowHeight = useRef(DEFAULT_ROW);
+  const heightsRef = useRef<Record<string, number>>({});
+  const fallbackRef = useRef<Record<string, number>>({});
   const onReorderRef = useRef(onReorder);
   const onDraggingChangeRef = useRef(onDraggingChange);
   idsRef.current = ids;
   onReorderRef.current = onReorder;
   onDraggingChangeRef.current = onDraggingChange;
+  fallbackRef.current = Object.fromEntries(items.map((item) => [item.id, item.rowHeight ?? DEFAULT_ROW]));
 
   useEffect(() => {
     if (activeId) {
       return;
     }
-    setIds(tracks.map((track) => track.id));
-  }, [tracks, activeId]);
+    setIds(items.map((item) => item.id));
+  }, [items, activeId]);
+
+  const heightOf = useCallback((id: string) => {
+    return heightsRef.current[id] ?? fallbackRef.current[id] ?? DEFAULT_ROW;
+  }, []);
 
   const onDragStart = useCallback((id: string) => {
     originIds.current = idsRef.current;
@@ -52,23 +62,37 @@ export function ReorderableTrackList({
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   }, []);
 
-  const onDragMove = useCallback((_id: string, translationY: number) => {
-    setShiftY(translationY);
-    const to = Math.max(
-      0,
-      Math.min(
-        originIds.current.length - 1,
-        originIndex.current + Math.round(translationY / rowHeight.current),
-      ),
-    );
-    const next = [...originIds.current];
-    const [moved] = next.splice(originIndex.current, 1);
-    if (!moved) {
-      return;
-    }
-    next.splice(to, 0, moved);
-    setIds((current) => (sameIds(current, next) ? current : next));
-  }, []);
+  const onDragMove = useCallback(
+    (_id: string, translationY: number) => {
+      setShiftY(translationY);
+      const current = originIds.current;
+      const from = originIndex.current;
+      if (from < 0) {
+        return;
+      }
+      const originMid =
+        current.slice(0, from).reduce((sum, id) => sum + heightOf(id), 0) + heightOf(current[from]) / 2;
+      const pointer = originMid + translationY;
+      let acc = 0;
+      let to = current.length - 1;
+      for (let index = 0; index < current.length; index += 1) {
+        const next = acc + heightOf(current[index]);
+        if (pointer < (acc + next) / 2) {
+          to = index;
+          break;
+        }
+        acc = next;
+      }
+      const nextIds = [...current];
+      const [moved] = nextIds.splice(from, 1);
+      if (!moved) {
+        return;
+      }
+      nextIds.splice(to, 0, moved);
+      setIds((existing) => (sameIds(existing, nextIds) ? existing : nextIds));
+    },
+    [heightOf],
+  );
 
   const onDragEnd = useCallback(() => {
     if (!draggingRef.current) {
@@ -81,27 +105,29 @@ export function ReorderableTrackList({
     onReorderRef.current(idsRef.current);
   }, []);
 
-  const onRowLayout = useCallback((height: number) => {
+  const onRowLayout = useCallback((id: string, height: number) => {
     if (height > 0) {
-      rowHeight.current = height;
+      heightsRef.current[id] = height;
     }
   }, []);
 
   if (!enabled) {
-    return <>{tracks.map((track) => renderItem(track, false))}</>;
+    return <>{items.map((item) => renderItem(item, false))}</>;
   }
+
+  const byId = new Map(items.map((item) => [item.id, item]));
 
   return (
     <View>
       {ids.map((id) => {
-        const track = tracks.find((item) => item.id === id);
-        if (!track) {
+        const item = byId.get(id);
+        if (!item) {
           return null;
         }
         return (
           <DraggableRow
             key={id}
-            track={track}
+            id={id}
             dragging={activeId === id}
             shiftY={activeId === id ? shiftY : 0}
             onDragStart={onDragStart}
@@ -109,7 +135,7 @@ export function ReorderableTrackList({
             onDragEnd={onDragEnd}
             onRowLayout={onRowLayout}
           >
-            {renderItem(track, activeId === id)}
+            {renderItem(item, activeId === id)}
           </DraggableRow>
         );
       })}
@@ -118,7 +144,7 @@ export function ReorderableTrackList({
 }
 
 function DraggableRow({
-  track,
+  id,
   dragging,
   shiftY,
   onDragStart,
@@ -127,13 +153,13 @@ function DraggableRow({
   onRowLayout,
   children,
 }: {
-  track: Track;
+  id: string;
   dragging: boolean;
   shiftY: number;
   onDragStart: (id: string) => void;
   onDragMove: (id: string, translationY: number) => void;
   onDragEnd: () => void;
-  onRowLayout: (height: number) => void;
+  onRowLayout: (id: string, height: number) => void;
   children: React.ReactNode;
 }) {
   const gesture = useMemo(
@@ -141,16 +167,16 @@ function DraggableRow({
       Gesture.Pan()
         .activateAfterLongPress(280)
         .runOnJS(true)
-        .onStart(() => onDragStart(track.id))
-        .onUpdate((event) => onDragMove(track.id, event.translationY))
+        .onStart(() => onDragStart(id))
+        .onUpdate((event) => onDragMove(id, event.translationY))
         .onFinalize(() => onDragEnd()),
-    [track.id, onDragStart, onDragMove, onDragEnd],
+    [id, onDragStart, onDragMove, onDragEnd],
   );
 
   return (
     <GestureDetector gesture={gesture}>
       <View
-        onLayout={(event) => onRowLayout(event.nativeEvent.layout.height)}
+        onLayout={(event) => onRowLayout(id, event.nativeEvent.layout.height)}
         style={[dragging && styles.dragging, dragging && { transform: [{ translateY: shiftY }] }]}
       >
         {children}

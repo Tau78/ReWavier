@@ -7,6 +7,7 @@ import {
   DEMO_SMART,
   DEMO_TRACKS,
   createId,
+  mergeAlbumOrderFromCloud,
   trackMatchesSmart,
   type Album,
   type AlbumOrigin,
@@ -68,6 +69,9 @@ export type LibraryActions = {
   renameAlbum: (id: string, name: string) => void;
   setAlbumArtwork: (id: string, artworkUri?: string) => void;
   setAlbumNotes: (id: string, notes: string) => void;
+  addAlbumSeparator: (albumId: string, name: string) => string;
+  renameAlbumSeparator: (albumId: string, separatorId: string, name: string) => void;
+  deleteAlbumSeparator: (albumId: string, separatorId: string) => void;
   deleteAlbum: (id: string) => void;
   renamePlaylist: (id: string, name: string) => void;
   deletePlaylist: (id: string) => void;
@@ -312,6 +316,58 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     set((state) => ({
       albums: state.albums.map((album) =>
         album.id === id ? { ...album, notes } : album,
+      ),
+    }));
+  },
+
+  addAlbumSeparator(albumId, name) {
+    const trimmed = name.trim() || 'Separatore';
+    const separatorId = createId('sep');
+    set((state) => ({
+      albums: state.albums.map((album) =>
+        album.id === albumId
+          ? {
+              ...album,
+              trackIds: [...album.trackIds, separatorId],
+              separators: [...(album.separators ?? []), { id: separatorId, name: trimmed }],
+              orderUpdatedAt: Date.now(),
+            }
+          : album,
+      ),
+    }));
+    return separatorId;
+  },
+
+  renameAlbumSeparator(albumId, separatorId, name) {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      return;
+    }
+    set((state) => ({
+      albums: state.albums.map((album) =>
+        album.id === albumId
+          ? {
+              ...album,
+              separators: (album.separators ?? []).map((item) =>
+                item.id === separatorId ? { ...item, name: trimmed } : item,
+              ),
+            }
+          : album,
+      ),
+    }));
+  },
+
+  deleteAlbumSeparator(albumId, separatorId) {
+    set((state) => ({
+      albums: state.albums.map((album) =>
+        album.id === albumId
+          ? {
+              ...album,
+              trackIds: album.trackIds.filter((id) => id !== separatorId),
+              separators: (album.separators ?? []).filter((item) => item.id !== separatorId),
+              orderUpdatedAt: Date.now(),
+            }
+          : album,
       ),
     }));
   },
@@ -603,14 +659,18 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       return;
     }
     const updatedAt = extras.updatedAt ?? Date.now();
-    const same = (current: string[]) =>
-      current.length === trackIds.length && current.every((trackId, index) => trackId === trackIds[index]);
     const currentIds =
       kind === 'folder'
         ? get().folders.find((folder) => folder.id === id)?.trackIds
         : kind === 'playlist'
           ? get().playlists.find((playlist) => playlist.id === id)?.trackIds
           : get().albums.find((album) => album.id === id)?.trackIds;
+    const nextIds =
+      kind === 'album' && extras.fromCloud && currentIds
+        ? mergeAlbumOrderFromCloud(currentIds, trackIds)
+        : trackIds;
+    const same = (current: string[]) =>
+      current.length === nextIds.length && current.every((trackId, index) => trackId === nextIds[index]);
     if (currentIds && same(currentIds) && !extras.fromCloud) {
       return;
     }
@@ -618,21 +678,21 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       if (kind === 'folder') {
         return {
           folders: state.folders.map((folder) =>
-            folder.id === id && !same(folder.trackIds) ? { ...folder, trackIds } : folder,
+            folder.id === id && !same(folder.trackIds) ? { ...folder, trackIds: nextIds } : folder,
           ),
         };
       }
       if (kind === 'playlist') {
         return {
           playlists: state.playlists.map((playlist) =>
-            playlist.id === id && !same(playlist.trackIds) ? { ...playlist, trackIds } : playlist,
+            playlist.id === id && !same(playlist.trackIds) ? { ...playlist, trackIds: nextIds } : playlist,
           ),
         };
       }
       return {
         albums: state.albums.map((album) =>
           album.id === id
-            ? { ...album, trackIds, orderUpdatedAt: updatedAt }
+            ? { ...album, trackIds: nextIds, orderUpdatedAt: updatedAt }
             : album,
         ),
       };
