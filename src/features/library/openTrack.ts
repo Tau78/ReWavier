@@ -30,3 +30,17 @@ export function playQueue(trackIds: string[]): boolean {
   }
   return openTrack(first, playableIds, { autoPlay: true });
 }
+
+/** Loads the first playable track in this list unless one is already in the player. */
+export function ensureCollectionTrack(trackIds: string[]): boolean {
+  const current = usePlayerStore.getState().track.id;
+  if (current && trackIds.includes(current)) {
+    return true;
+  }
+  for (const trackId of trackIds) {
+    if (openTrack(trackId, trackIds)) {
+      return true;
+    }
+  }
+  return false;
+}

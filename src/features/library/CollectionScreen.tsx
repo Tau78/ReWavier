@@ -15,6 +15,7 @@ import { EmptyGraphic, KindRow } from '../../theme/graphics';
 import { AlbumHero } from './AlbumHero';
 import { AlbumNotes } from './AlbumNotes';
 import { AlbumSeparatorRow, SEPARATOR_ROW_HEIGHT } from './AlbumSeparatorRow';
+import { CollectionPlayer } from './CollectionPlayer';
 import { openTrack, playQueue } from './openTrack';
 import { ReorderableTrackList } from './ReorderableTrackList';
 import { TrackRow } from './TrackRow';
@@ -93,6 +94,7 @@ export function CollectionScreen() {
         : tracks.map((track) => ({ id: track.id, type: 'track' as const, track })),
     [album, tracks],
   );
+  const trackIds = useMemo(() => tracks.map((track) => track.id), [tracks]);
   const playerTrackId = usePlayerStore((s) => s.track.id);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const isPlayingThisAlbum =
@@ -286,13 +288,18 @@ export function CollectionScreen() {
                 ) : (
                   <TrackRow
                     track={item.track}
+                    active={item.track.id === playerTrackId}
                     noteCount={
                       (markersByTrackId[item.track.id] ?? []).filter((marker) => marker.hidden !== true)
                         .length
                     }
                     downloading={downloadingIds[item.track.id] != null}
                     onPress={() => {
-                      if (openTrack(item.track.id, tracks.map((track) => track.id))) {
+                      if (kind === 'album' || kind === 'folder') {
+                        if (openTrack(item.track.id, trackIds, { autoPlay: true })) {
+                          return;
+                        }
+                      } else if (openTrack(item.track.id, trackIds)) {
                         navigation.navigate('Player');
                         return;
                       }
@@ -318,6 +325,7 @@ export function CollectionScreen() {
           )}
         </View>
       </ScrollView>
+      {kind === 'album' || kind === 'folder' ? <CollectionPlayer trackIds={trackIds} /> : null}
       {actions.modals}
     </SafeAreaView>
   );

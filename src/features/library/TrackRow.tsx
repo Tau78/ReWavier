@@ -9,6 +9,7 @@ export function TrackRow({
   track,
   noteCount,
   downloading,
+  active,
   onPress,
   onLongPress,
   onDownload,
@@ -18,6 +19,7 @@ export function TrackRow({
   track: Track;
   noteCount: number;
   downloading?: boolean;
+  active?: boolean;
   onPress: () => void;
   onLongPress?: () => void;
   onDownload?: () => void;
@@ -33,7 +35,7 @@ export function TrackRow({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={280}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.row, active && styles.active, pressed && styles.pressed]}
       accessibilityRole="button"
       accessibilityLabel={`${track.title}, ${track.artist}`}
     >
@@ -59,7 +61,7 @@ export function TrackRow({
         )}
       </Pressable>
       <View style={styles.meta}>
-        <Text style={styles.title} numberOfLines={1}>
+        <Text style={[styles.title, active && styles.titleActive]} numberOfLines={1}>
           {track.title}
         </Text>
         <Text style={styles.sub} numberOfLines={1}>
@@ -110,9 +112,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     gap: 10,
   },
+  active: {
+    backgroundColor: colors.surfaceRaised,
+  },
   pressed: {
     opacity: 0.7,
     backgroundColor: colors.surfaceRaised,
+  },
+  titleActive: {
+    color: colors.accent,
   },
   artHit: {
     width: 44,
