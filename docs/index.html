@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>ReWavier — un appunto sul momento esatto della canzone</title>
-  <meta name="description" content="Ascolti un brano, tocchi + e scrivi cosa succede in quel punto. L’onda resta sul telefono, con i tuoi segnalini. Per iPhone e iPad.">
+  <meta name="description" content="Ascolti, tocchi + e scrivi un appunto sul momento esatto. Loop, bozza al volo, cartelle e album condivisi. Per iPhone e iPad.">
   <meta name="theme-color" content="#0D0D0F">
   <link rel="icon" href="img/favicon.png" type="image/png">
   <link rel="apple-touch-icon" href="img/icon-180.png">
   <meta property="og:type" content="website">
   <meta property="og:title" content="ReWavier — un appunto sul momento esatto">
-  <meta property="og:description" content="Ascolti, tocchi +, scrivi. La musica va in pausa e il segnalino resta sull’onda.">
+  <meta property="og:description" content="Ascolti, tocchi +, scrivi. Loop, bozza al volo e album condivisi per la band.">
   <meta property="og:image" content="img/player.png">
   <meta property="og:locale" content="it_IT">
   <meta name="twitter:card" content="summary_large_image">
@@ -28,9 +28,10 @@
     }
 
     * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
+    html { scroll-behavior: smooth; overflow-x: hidden; }
     body {
       margin: 0;
+      overflow-x: hidden;
       background: var(--bg);
       color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
@@ -255,11 +256,21 @@
     .pill h3 { margin: 0; font-size: 1.1rem; }
     .pill p { margin: 0.4rem 0 0; color: var(--muted); }
 
+    .extras {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-top: 2rem;
+    }
+
     .shots {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 1.1rem;
       margin-top: 2rem;
+    }
+    .shots-wide {
+      grid-template-columns: repeat(3, 1fr);
     }
     figure { margin: 0; }
     figcaption {
@@ -331,8 +342,11 @@
     .foot a { color: var(--muted); }
     .foot a:hover { color: var(--text); }
 
+    @media (max-width: 1100px) {
+      .extras { grid-template-columns: 1fr 1fr; }
+    }
     @media (max-width: 860px) {
-      .hero, .steps, .pills, .shots, .facts { grid-template-columns: 1fr; }
+      .hero, .steps, .pills, .extras, .shots, .facts { grid-template-columns: 1fr; }
       .hero { padding-top: 1.8rem; gap: 2rem; }
       .phones { max-width: 26rem; margin: 0 auto; transform: none; }
       .device.shift { margin-top: 0; }
@@ -363,7 +377,7 @@
       </a>
       <nav>
         <a class="hide" href="#come">Come si usa</a>
-        <a class="hide" href="#per-chi">Per chi</a>
+        <a class="hide" href="#ora">Ora in app</a>
         <a href="Privacy.html">Privacy</a>
         <a class="btn btn-sm" href="#scarica">Scarica</a>
       </nav>
@@ -389,7 +403,7 @@
           <a class="btn soon" href="#scarica">Presto sull’App Store</a>
           <a class="btn btn-ghost" href="#come">Vedi come funziona</a>
         </div>
-        <p class="meta">Niente pubblicità. I brani e le note restano sul telefono.</p>
+        <p class="meta">Entra con Apple, Google o email. Niente pubblicità. I brani restano sul telefono.</p>
       </div>
       <div class="phones" aria-hidden="true">
         <div class="device">
@@ -404,12 +418,12 @@
     <section id="come">
       <div class="wrap">
         <h2>Tre gesti. Poi l’appunto è lì.</h2>
-        <p class="sub">Non è un registratore e non è un social. È un taccuino attaccato alla linea del tempo del brano.</p>
+        <p class="sub">Non è un social e non è un programma da studio. È un taccuino attaccato alla linea del tempo del brano.</p>
         <div class="steps">
           <article class="card">
             <span class="num">01</span>
-            <h3>Carica un brano</h3>
-            <p>Apri la libreria e scegli un file audio dal telefono: una prova, un take, una lezione.</p>
+            <h3>Carica o registra</h3>
+            <p>Metti in libreria un file dal telefono, oppure registra una bozza: idea, riff o melodia al volo.</p>
           </article>
           <article class="card">
             <span class="num">02</span>
@@ -428,19 +442,44 @@
     <section class="who" id="per-chi">
       <div class="wrap">
         <h2>Per chi riascolta e deve ricordare.</h2>
-        <p class="sub">Da solo sul take, in sala prove o in lezione. Stesso gesto.</p>
+        <p class="sub">Creator, band o lezione. Stesso gesto: ascolti e segni il momento.</p>
         <div class="pills">
           <article class="card pill">
-            <h3>Musicista</h3>
+            <h3>Creator</h3>
             <p>Riascolti un take e segni dove sbagli, dove entra il basso, dove il mix si sporca.</p>
           </article>
           <article class="card pill">
             <h3>Band</h3>
-            <p>In sala prove tieni le note sul pezzo, non su un foglio che poi sparisce.</p>
+            <p>Aprite lo stesso album da una cartella Drive. All’apertura arrivano brani e note di chi la condivide.</p>
           </article>
           <article class="card pill">
-            <h3>Lezione</h3>
-            <p>Insegnante o studente: un appunto sul passaggio, con l’orario già scritto.</p>
+            <h3>Teacher</h3>
+            <p>Lezioni in cartelle. Un appunto sul passaggio, con l’orario già scritto.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="ora">
+      <div class="wrap">
+        <h2>Ora in app.</h2>
+        <p class="sub">Oltre all’appunto sul tempo, queste cose le fai già oggi.</p>
+        <div class="extras">
+          <article class="card">
+            <h3>Loop</h3>
+            <p>Due maniglie sull’onda. Le sposti e riascolti solo quel pezzo, finché vuoi.</p>
+          </article>
+          <article class="card">
+            <h3>Bozza</h3>
+            <p>Idea, riff o melodia al volo. Dopo il salvataggio è una traccia come le altre: onda e appunti.</p>
+          </article>
+          <article class="card">
+            <h3>Album da Drive</h3>
+            <p>Entri con Google e apri una cartella condivisa. All’apertura arrivano audio e note dei compagni.</p>
+          </article>
+          <article class="card">
+            <h3>Anche senza rete</h3>
+            <p>Tocchi la freccia verso il basso e il brano resta sul telefono, pronto da ascoltare.</p>
           </article>
         </div>
       </div>
@@ -448,14 +487,26 @@
 
     <section id="schermate">
       <div class="wrap">
-        <h2>Libreria, onda, fumetto.</h2>
-        <p class="sub">Il player è pulito: titolo, tempo, forma d’onda, controlli e il + arancione. Si organizza tutto dalla libreria.</p>
+        <h2>Accedi, libreria, onda, bozza.</h2>
+        <p class="sub">Il player resta pulito: titolo, tempo, forma d’onda, controlli e il + arancione. Il resto sta in libreria.</p>
         <div class="shots">
           <figure>
             <div class="frame">
-              <img src="img/libreria.png" alt="Libreria di ReWavier con cartelle, album e lista dei brani." width="735" height="980">
+              <img src="img/accedi.jpg" alt="Schermata Accedi di ReWavier, con Apple e email." width="509" height="1100">
             </div>
-            <figcaption>Metti i brani in cartelle, album o playlist.</figcaption>
+            <figcaption>Entra con Apple, Google o email.</figcaption>
+          </figure>
+          <figure>
+            <div class="frame">
+              <img src="img/libreria-iphone.jpg" alt="Libreria vuota di ReWavier, pronta per cartelle e album." width="509" height="1100">
+            </div>
+            <figcaption>La libreria parte vuota. Carichi tu i brani.</figcaption>
+          </figure>
+          <figure>
+            <div class="frame">
+              <img src="img/bozza.jpg" alt="Schermata Bozza per registrare un’idea al volo." width="509" height="1100">
+            </div>
+            <figcaption>Registra una bozza. Poi è una traccia normale.</figcaption>
           </figure>
           <figure>
             <div class="frame">
@@ -487,12 +538,12 @@
               Minuti, secondi e millesimi. Così ritrovi lo stesso punto, non “verso il ritornello”.
             </li>
             <li>
-              <strong>Tutto sul telefono</strong>
-              I file e gli appunti restano su quell’iPhone o iPad. Niente pubblicità, niente tracciamento.
+              <strong>Loop e coda</strong>
+              Ripeti un passaggio. A fine brano, se sei in un album, passa al successivo.
             </li>
             <li>
-              <strong>I tuoi file</strong>
-              Carichi tu l’audio. ReWavier non apre nulla da sola e non tiene le tue canzoni su un sito nostro.
+              <strong>I tuoi file, sul telefono</strong>
+              Carichi tu l’audio, oppure registri una bozza. Niente pubblicità. Gli album Drive restano nella cartella che scegli tu.
             </li>
           </ul>
           <aside class="stamp">
@@ -508,7 +559,7 @@
       <div class="wrap">
         <p class="kicker">iPhone e iPad</p>
         <h2>Presto sull’App Store.</h2>
-        <p class="sub" style="margin-left:auto;margin-right:auto;">Carichi un brano, tocchi la traccia, poi + per un appunto. I file restano sul telefono.</p>
+        <p class="sub" style="margin-left:auto;margin-right:auto;">Carichi un brano o registri una bozza, tocchi la traccia, poi + per un appunto.</p>
         <div class="actions">
           <span class="btn soon">In arrivo per iPhone e iPad</span>
         </div>
