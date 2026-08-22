@@ -189,6 +189,24 @@ else
   fi
 fi
 
+# Solo una build *di questo repo*. Un eas di un altro progetto non blocca VAI.
+rewavier_build_running() {
+  local pids pid cwd cmd
+  pids="$(pgrep -f 'eas build' || true)"
+  [[ -z "$pids" ]] && return 1
+  for pid in $pids; do
+    cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1)"
+    if [[ "$cwd" == "$ROOT" ]]; then
+      return 0
+    fi
+    cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+    if [[ "$cmd" == *"$ROOT"* ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 # --- 5. build iOS + 6. TestFlight ---
 submit_latest() {
   if [[ "$SKIP_SUBMIT" == "1" ]]; then
@@ -205,13 +223,13 @@ submit_latest() {
 
 if [[ "$SKIP_BUILD" == "1" ]]; then
   log "Build: saltata (--skip-build)."
-  if pgrep -f 'eas build' >/dev/null 2>&1; then
+  if rewavier_build_running; then
     log "TestFlight: la build è ancora in corso, Apple la riceverà a fine lavoro."
   else
     submit_latest || true
   fi
-elif pgrep -f 'eas build' >/dev/null 2>&1; then
-  log "Build: eas è già in corso, non ne lancio un'altra."
+elif rewavier_build_running; then
+  log "Build: eas di ReWavier è già in corso, non ne lancio un'altra."
   log "TestFlight: aspetto che finisca quella in corso (niente invio della vecchia)."
 elif [[ "$SKIP_SUBMIT" == "1" ]]; then
   log "Build: avvio iOS production (non aspetto la fine)."

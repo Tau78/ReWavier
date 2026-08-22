@@ -26,7 +26,8 @@ import {
   copyToDownloads,
   removeUri,
 } from '../files/downloads';
-import { writeSidecarToLibrary, type ImportedBundle } from '../files/libraryFiles';
+import { sourceFileNameFromTitle } from '../domain/sidecar';
+import { writeSidecarToLibrary, removeSidecarFromLibrary, type ImportedBundle } from '../files/libraryFiles';
 import { userHasUsage } from '../domain/session';
 import { useSessionStore } from './sessionStore';
 
@@ -69,6 +70,7 @@ export type LibraryActions = {
   renamePlaylist: (id: string, name: string) => void;
   deletePlaylist: (id: string) => void;
   renameTrack: (id: string, title: string) => void;
+  setTrackBounds: (id: string, startMs: number, endMs: number) => void;
   deleteTrack: (id: string) => void;
   moveTrack: (trackId: string, folderId: string | null) => void;
   importBundles: (
@@ -321,9 +323,48 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     if (!trimmed) {
       return;
     }
+    const previous = get().getTrack(id);
+    if (!previous) {
+      return;
+    }
+    const nextSource = sourceFileNameFromTitle(trimmed, previous.sourceFileName);
+    const oldSource = previous.sourceFileName ?? `${previous.title}.mp3`;
+    const nameChanged =
+      oldSource.toLowerCase() !== nextSource.toLowerCase();
     set((state) => ({
       tracks: state.tracks.map((track) =>
-        track.id === id ? { ...track, title: trimmed } : track,
+        track.id === id ? { ...track, title: trimmed, sourceFileName: nextSource } : track,
+      ),
+    }));
+    const track = get().getTrack(id);
+    const markers = get().markersByTrackId[id] ?? [];
+    void import('./playerStore').then(({ usePlayerStore }) => {
+      const playing = usePlayerStore.getState().track;
+      if (playing.id === id) {
+        usePlayerStore.setState({
+          track: { ...playing, title: trimmed, sourceFileName: nextSource },
+        });
+      }
+    });
+    if (!nameChanged) {
+      persistSidecar(track, markers);
+      return;
+    }
+    removeSidecarFromLibrary(oldSource, sidecarSlug());
+    if (!track) {
+      return;
+    }
+    void writeSidecarToLibrary(track, markers, sidecarSlug())
+      .then(() =>
+        import('../cloud/syncEngine').then((mod) => mod.followTrackRenameOnDrive(id, oldSource)),
+      )
+      .catch(() => undefined);
+  },
+
+  setTrackBounds(id, startMs, endMs) {
+    set((state) => ({
+      tracks: state.tracks.map((track) =>
+        track.id === id ? { ...track, startMs, endMs } : track,
       ),
     }));
     const track = get().getTrack(id);

@@ -7,6 +7,9 @@ import { playableUri } from '../domain/audioFormats';
 import { stampNewMarker } from '../domain/markers';
 import {
   clampTime,
+  isCustomRange,
+  MIN_RANGE_MS,
+  resolveTrackRange,
   type Marker,
   type NoteBubbleState,
   type Track,
@@ -63,6 +66,8 @@ export type PlayerActions = {
   toggleShowHidden: () => void;
   loadTrack: (track: Track, markers?: Marker[], queueIds?: string[]) => void;
   skipBy: (step: number) => boolean;
+  setStartMs: (ms: number, options?: { persist?: boolean; seek?: boolean }) => void;
+  setEndMs: (ms: number, options?: { persist?: boolean; seek?: boolean }) => void;
 };
 
 export type PlayerStore = PlayerState & PlayerActions;
@@ -99,6 +104,12 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   showHidden: false,
 
   play() {
+    const { track } = get();
+    const range = resolveTrackRange(track);
+    const positionMs = engine().getPositionMs();
+    if (positionMs < range.startMs || positionMs >= range.endMs - 40) {
+      engine().seekTo(range.startMs);
+    }
     engine().play();
   },
 
@@ -107,15 +118,53 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   stop() {
-    engine().stop();
+    engine().pause();
+    engine().seekTo(resolveTrackRange(get().track).startMs);
   },
 
   seekBy(deltaMs) {
-    engine().seekBy(deltaMs);
+    get().seekTo(engine().getPositionMs() + deltaMs);
   },
 
   seekTo(ms) {
-    engine().seekTo(ms);
+    const range = resolveTrackRange(get().track);
+    engine().seekTo(Math.min(range.endMs, Math.max(range.startMs, ms)));
+  },
+
+  setStartMs(ms, options) {
+    const persist = options?.persist ?? false;
+    const seek = options?.seek ?? true;
+    const { track } = get();
+    const duration = Math.max(track.durationMs, 1);
+    const current = resolveTrackRange(track);
+    const minSpan = Math.min(MIN_RANGE_MS, duration);
+    const startMs = Math.max(0, Math.min(ms, current.endMs - minSpan));
+    const next = { ...track, startMs, endMs: current.endMs };
+    set({ track: next });
+    if (seek) {
+      engine().seekTo(startMs);
+    }
+    if (persist) {
+      useLibraryStore.getState().setTrackBounds(track.id, startMs, current.endMs);
+    }
+  },
+
+  setEndMs(ms, options) {
+    const persist = options?.persist ?? false;
+    const seek = options?.seek ?? true;
+    const { track } = get();
+    const duration = Math.max(track.durationMs, 1);
+    const current = resolveTrackRange(track);
+    const minSpan = Math.min(MIN_RANGE_MS, duration);
+    const endMs = Math.min(duration, Math.max(ms, current.startMs + minSpan));
+    const next = { ...track, startMs: current.startMs, endMs };
+    set({ track: next });
+    if (seek) {
+      engine().seekTo(endMs);
+    }
+    if (persist) {
+      useLibraryStore.getState().setTrackBounds(track.id, current.startMs, endMs);
+    }
   },
 
   pressAddNote() {
@@ -272,11 +321,13 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     usingFile = false;
     mockEngine.reset(track.durationMs);
     void fileEngine.unload();
+    const range = resolveTrackRange(track);
+    mockEngine.seekTo(range.startMs);
     set({
-      track,
+      track: { ...track, startMs: range.startMs, endMs: range.endMs },
       peaks: useLibraryStore.getState().peaksByTrackId[track.id] ?? [],
       markers,
-      positionMs: 0,
+      positionMs: range.startMs,
       isPlaying: false,
       bubble: { ...HIDDEN_BUBBLE },
       queueIds: queueIds ?? get().queueIds,
@@ -292,7 +343,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
           const durationMs = useLibraryStore.getState().getTrack(track.id)?.durationMs;
           if (durationMs && durationMs !== get().track.durationMs) {
             set((state) => ({
-              track: { ...state.track, durationMs },
+              track: boundsForDuration(state.track, durationMs),
             }));
           }
         })
@@ -308,10 +359,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
           return;
         }
         usingFile = true;
+        const startMs = resolveTrackRange(get().track).startMs;
+        if (startMs > 0) {
+          fileEngine.seekTo(startMs);
+        }
         if (durationMs > 0 && durationMs !== get().track.durationMs) {
           useLibraryStore.getState().updateTrackDuration(track.id, durationMs);
           set((state) => ({
-            track: { ...state.track, durationMs },
+            track: boundsForDuration(state.track, durationMs),
           }));
         }
       })
@@ -321,14 +376,33 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 }));
 
+function boundsForDuration(track: Track, durationMs: number): Track {
+  const wasFull = track.endMs == null || track.endMs <= 0 || track.endMs >= track.durationMs - 1;
+  const startMs = Math.min(track.startMs ?? 0, durationMs);
+  const endMs = wasFull ? durationMs : Math.min(Math.max(track.endMs ?? durationMs, startMs), durationMs);
+  return { ...track, durationMs, startMs, endMs };
+}
+
+function onEngineFrame(positionMs: number, playing: boolean) {
+  const { track } = usePlayerStore.getState();
+  const range = resolveTrackRange(track);
+  if (playing && range.endMs > range.startMs && positionMs >= range.endMs - 25) {
+    if (isCustomRange(range, track.durationMs)) {
+      engine().seekTo(range.startMs);
+      return;
+    }
+  }
+  usePlayerStore.setState({ positionMs, isPlaying: playing });
+}
+
 mockEngine.subscribe((positionMs, playing) => {
   if (!usingFile) {
-    usePlayerStore.setState({ positionMs, isPlaying: playing });
+    onEngineFrame(positionMs, playing);
   }
 });
 
 fileEngine.subscribe((positionMs, playing) => {
   if (usingFile) {
-    usePlayerStore.setState({ positionMs, isPlaying: playing });
+    onEngineFrame(positionMs, playing);
   }
 });

@@ -29,8 +29,10 @@ import {
   downloadDriveFile,
   findChildByName,
   findFolderByName,
+  getDriveFileParentId,
   hasDriveToken,
   listFolderChildren,
+  renameDriveFile,
   updateDriveFileMedia,
   uploadDriveFile,
   type DriveFile,
@@ -287,12 +289,10 @@ export async function applyAudioReview(trackId: string, keepMarkerIds: string[])
 function sharedDriveAlbum(albumId?: string, trackId?: string) {
   const albums = useLibraryStore.getState().albums;
   if (albumId) {
-    return albums.find((album) => album.id === albumId && album.origin === 'drive' && album.driveFolderId);
+    return albums.find((album) => album.id === albumId && album.driveFolderId);
   }
   if (trackId) {
-    return albums.find(
-      (album) => album.origin === 'drive' && album.driveFolderId && album.trackIds.includes(trackId),
-    );
+    return albums.find((album) => album.driveFolderId && album.trackIds.includes(trackId));
   }
   return undefined;
 }
@@ -346,6 +346,75 @@ export async function pushAlbumOrder(albumId: string): Promise<void> {
     fileUri: dest.uri,
     mimeType: 'application/json',
   });
+}
+
+export async function followTrackRenameOnDrive(
+  trackId: string,
+  oldSourceFileName: string,
+): Promise<void> {
+  const store = useLibraryStore.getState();
+  const track = store.getTrack(trackId);
+  if (!track) {
+    return;
+  }
+  if (!(await hasDriveToken())) {
+    return;
+  }
+  const album = sharedDriveAlbum(undefined, trackId);
+  let folderId = album?.driveFolderId;
+  const newAudioName = track.sourceFileName ?? `${track.title}.m4a`;
+  if (audioBasename(oldSourceFileName).toLowerCase() === audioBasename(newAudioName).toLowerCase()) {
+    return;
+  }
+
+  if (!folderId && track.driveFileId) {
+    try {
+      folderId = await getDriveFileParentId(track.driveFileId);
+    } catch {
+      folderId = undefined;
+    }
+  }
+
+  const children = folderId ? await listFolderChildren(folderId) : [];
+  let audioId = track.driveFileId;
+  if (!audioId && folderId) {
+    const match = children.find(
+      (file) =>
+        isAudioName(file.name) &&
+        (file.name.toLowerCase() === oldSourceFileName.toLowerCase() ||
+          audioBasename(file.name).toLowerCase() === audioBasename(oldSourceFileName).toLowerCase()),
+    );
+    audioId = match?.id;
+  }
+  if (audioId) {
+    try {
+      const remote = await renameDriveFile(audioId, newAudioName);
+      store.updateTrackRemote(trackId, metaFrom(remote));
+    } catch {
+      // Sidecar rename still keeps notes attached to the new name.
+    }
+  }
+
+  if (folderId) {
+    const sidecars = children.filter(
+      (file) =>
+        isSidecarName(file.name) &&
+        audioBasename(file.name).toLowerCase() === audioBasename(oldSourceFileName).toLowerCase(),
+    );
+    for (const remote of sidecars) {
+      const nextName = sidecarNameForAudio(newAudioName, sidecarAuthorSlug(remote.name));
+      if (remote.name.toLowerCase() === nextName.toLowerCase()) {
+        continue;
+      }
+      try {
+        await renameDriveFile(remote.id, nextName);
+      } catch {
+        // pushSidecarIfShared below writes the notes under the new name
+      }
+    }
+  }
+
+  await pushSidecarIfShared(trackId);
 }
 
 export async function pushSidecarIfShared(trackId: string): Promise<void> {

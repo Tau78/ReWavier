@@ -13,7 +13,36 @@ export type Track = {
   remoteModifiedAt?: string;
   remoteSize?: number;
   remoteHash?: string;
+  startMs?: number;
+  endMs?: number;
 };
+
+export const MIN_RANGE_MS = 400;
+
+export function resolveTrackRange(track: Pick<Track, 'durationMs' | 'startMs' | 'endMs'>): {
+  startMs: number;
+  endMs: number;
+} {
+  const duration = Math.max(track.durationMs, 0);
+  if (duration <= 0) {
+    return { startMs: 0, endMs: 0 };
+  }
+  const start = clampTime(track.startMs ?? 0, duration);
+  const rawEnd = track.endMs == null || track.endMs <= 0 ? duration : track.endMs;
+  const end = clampTime(rawEnd, duration);
+  const minSpan = Math.min(MIN_RANGE_MS, duration);
+  if (end - start < minSpan) {
+    return { startMs: 0, endMs: duration };
+  }
+  return { startMs: start, endMs: end };
+}
+
+export function isCustomRange(
+  range: { startMs: number; endMs: number },
+  durationMs: number,
+): boolean {
+  return range.startMs > 1 || range.endMs < Math.max(durationMs, 0) - 1;
+}
 
 export type Marker = {
   id: string;

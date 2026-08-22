@@ -108,6 +108,13 @@ export async function downloadDriveFile(fileId: string, destUri: string): Promis
   return result.uri;
 }
 
+export async function getDriveFileParentId(fileId: string): Promise<string | undefined> {
+  const data = await driveGet<{ parents?: string[] }>(
+    `/files/${encodeURIComponent(fileId)}?supportsAllDrives=true&fields=parents`,
+  );
+  return data.parents?.[0];
+}
+
 export async function findChildByName(folderId: string, name: string): Promise<DriveFile | null> {
   const lower = name.trim().toLowerCase();
   const children = await listFolderChildren(folderId);
@@ -192,4 +199,42 @@ export async function updateDriveFileMedia(
     throw new Error(`Drive update ${result.status}`);
   }
   return JSON.parse(result.body) as DriveFile;
+}
+
+export async function renameDriveFile(fileId: string, name: string): Promise<DriveFile> {
+  const call = async (access: string) =>
+    fetch(
+      `${DRIVE}/files/${encodeURIComponent(fileId)}?supportsAllDrives=true&fields=${encodeURIComponent(DRIVE_FIELDS)}`,
+      {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${access}`,
+          'Content-Type': 'application/json; charset=UTF-8',
+        },
+        body: JSON.stringify({ name }),
+      },
+    );
+  let response = await call(await token());
+  if (response.status === 401) {
+    response = await call(await getValidGoogleAccessToken(true));
+  }
+  if (!response.ok) {
+    throw new Error(driveErrorMessage(response.status));
+  }
+  return (await response.json()) as DriveFile;
+}
+
+export async function deleteDriveFile(fileId: string): Promise<void> {
+  const access = await token();
+  const response = await fetch(
+    `${DRIVE}/files/${encodeURIComponent(fileId)}?supportsAllDrives=true`,
+    {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${access}` },
+    },
+  );
+  if (response.status === 404 || response.status === 204 || response.ok) {
+    return;
+  }
+  throw new Error(driveErrorMessage(response.status));
 }

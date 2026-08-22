@@ -13,6 +13,8 @@ export type SidecarFile = {
   artist: string;
   durationMs: number;
   markers: Marker[];
+  startMs?: number;
+  endMs?: number;
 };
 
 export function audioBasename(fileName: string): string {
@@ -52,6 +54,29 @@ export function isAudioName(fileName: string): boolean {
   return isAudioFileName(fileName);
 }
 
+export function extensionOfAudioName(fileName?: string): string {
+  if (!fileName) {
+    return '.m4a';
+  }
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(SIDECAR_SUFFIX) || lower.endsWith('.json')) {
+    return '.m4a';
+  }
+  const base = audioBasename(fileName);
+  const ext = fileName.slice(base.length);
+  return ext.startsWith('.') ? ext : '.m4a';
+}
+
+export function sourceFileNameFromTitle(title: string, previous?: string): string {
+  const ext = extensionOfAudioName(previous);
+  const trimmed = title.trim();
+  const withoutExt = trimmed.toLowerCase().endsWith(ext.toLowerCase())
+    ? trimmed.slice(0, -ext.length)
+    : trimmed;
+  const safe = withoutExt.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'traccia';
+  return `${safe}${ext}`;
+}
+
 export function sidecarNameForAudio(fileName: string, authorSlug?: string): string {
   const base = audioBasename(fileName);
   if (authorSlug) {
@@ -69,6 +94,8 @@ export function buildSidecar(track: Track, markers: Marker[]): SidecarFile {
     artist: track.artist,
     durationMs: track.durationMs,
     markers,
+    startMs: track.startMs,
+    endMs: track.endMs,
   };
 }
 
@@ -85,6 +112,8 @@ export function parseSidecar(raw: string): SidecarFile | null {
       title: data.title ?? '',
       artist: data.artist ?? '',
       durationMs: data.durationMs ?? 0,
+      startMs: typeof data.startMs === 'number' ? data.startMs : undefined,
+      endMs: typeof data.endMs === 'number' ? data.endMs : undefined,
       markers: data.markers.map((marker) =>
         normalizeMarker({
           id: marker.id,

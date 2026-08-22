@@ -1,5 +1,7 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Animated,
+  Easing,
   PanResponder,
   Platform,
   Pressable,
@@ -9,34 +11,86 @@ import {
   type GestureResponderEvent,
   type LayoutChangeEvent,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
 
 import { isMarkerHidden, markerColor } from '../../domain/markers';
-import { clampTime, formatTimecode, type Marker } from '../../domain/models';
+import {
+  clampTime,
+  formatTimecode,
+  isCustomRange,
+  resolveTrackRange,
+  type Marker,
+} from '../../domain/models';
 import { usePlayerStore } from '../../store/playerStore';
 import { colors } from '../../theme/colors';
 
 const OVERVIEW_HEIGHT = 48;
 const ZOOM_HEIGHT = 120;
-const ZOOM_WINDOW_MS = 12_000;
+const DEFAULT_DETAIL_MS = 12_000;
+const MIN_WINDOW_MS = 800;
 const DRAG_THRESHOLD = 8;
 const PIN_HIT = 44;
+const HANDLE_HIT = 28;
+const PLAYHEAD_HALF = 7;
 
-function getZoomWindow(positionMs: number, durationMs: number) {
-  if (durationMs <= ZOOM_WINDOW_MS) {
-    const spanMs = Math.max(durationMs, 1);
-    return { startMs: 0, endMs: spanMs, spanMs };
+function clampWindowMs(ms: number, durationMs: number): number {
+  return Math.min(Math.max(durationMs, 1), Math.max(MIN_WINDOW_MS, ms));
+}
+
+function getTimeWindow(positionMs: number, durationMs: number, windowMs: number) {
+  const spanMs = clampWindowMs(windowMs, durationMs);
+  if (durationMs <= spanMs) {
+    return { startMs: 0, endMs: durationMs, spanMs: durationMs };
   }
-  const half = ZOOM_WINDOW_MS / 2;
+  const half = spanMs / 2;
   let startMs = positionMs - half;
   let endMs = positionMs + half;
   if (startMs < 0) {
     startMs = 0;
-    endMs = ZOOM_WINDOW_MS;
+    endMs = spanMs;
   } else if (endMs > durationMs) {
     endMs = durationMs;
-    startMs = durationMs - ZOOM_WINDOW_MS;
+    startMs = durationMs - spanMs;
   }
   return { startMs, endMs, spanMs: endMs - startMs };
+}
+
+function formatWindowSeconds(ms: number): string {
+  if (ms >= 9_500) {
+    return `${Math.round(ms / 1000)}s`;
+  }
+  const seconds = ms / 1000;
+  return `${seconds.toFixed(seconds >= 2 ? 0 : 1)}s`;
+}
+
+function usePinchSpan(
+  spanMs: number,
+  setSpanMs: (ms: number) => void,
+  minMs: number,
+  maxMs: number,
+) {
+  const startSpan = useRef(spanMs);
+  const spanRef = useRef(spanMs);
+  const minRef = useRef(minMs);
+  const maxRef = useRef(maxMs);
+  spanRef.current = spanMs;
+  minRef.current = minMs;
+  maxRef.current = maxMs;
+
+  return useMemo(
+    () =>
+      Gesture.Pinch()
+        .runOnJS(true)
+        .onStart(() => {
+          startSpan.current = spanRef.current;
+        })
+        .onUpdate((event) => {
+          const scale = event.scale > 0 ? event.scale : 1;
+          setSpanMs(Math.min(maxRef.current, Math.max(minRef.current, startSpan.current / scale)));
+        }),
+    [setSpanMs],
+  );
 }
 
 function samplePeaks(
@@ -64,19 +118,85 @@ function samplePeaks(
   return out;
 }
 
+function pxPerMs(width: number, durationMs: number, windowMs: number): number {
+  return width / Math.min(windowMs, Math.max(durationMs, 1));
+}
+
+function tapeSpanFor(windowMs: number, durationMs: number): number {
+  return Math.min(Math.max(windowMs * 3, windowMs), Math.max(durationMs, 1));
+}
+
+function tapeStartFor(
+  positionMs: number,
+  durationMs: number,
+  current: number,
+  windowMs: number,
+): number {
+  const span = tapeSpanFor(windowMs, durationMs);
+  const pad = windowMs * 0.65;
+  const maxStart = Math.max(0, durationMs - span);
+  if (durationMs <= span) {
+    return 0;
+  }
+  const left = positionMs - current;
+  const right = current + span - positionMs;
+  if (left >= pad && right >= pad && current <= maxStart) {
+    return current;
+  }
+  return Math.max(0, Math.min(maxStart, positionMs - span / 2));
+}
+
+function playheadOffsetPx(
+  positionMs: number,
+  durationMs: number,
+  width: number,
+  windowMs: number,
+): number {
+  const scale = pxPerMs(width, durationMs, windowMs);
+  const half = width / 2;
+  if (durationMs <= windowMs) {
+    return positionMs * (width / Math.max(durationMs, 1));
+  }
+  if (positionMs * scale < half) {
+    return positionMs * scale;
+  }
+  if ((durationMs - positionMs) * scale < half) {
+    return width - (durationMs - positionMs) * scale;
+  }
+  return half;
+}
+
+function tapeTranslateX(
+  positionMs: number,
+  tapeStartMs: number,
+  durationMs: number,
+  width: number,
+  windowMs: number,
+): number {
+  return (
+    playheadOffsetPx(positionMs, durationMs, width, windowMs) -
+    (positionMs - tapeStartMs) * pxPerMs(width, durationMs, windowMs)
+  );
+}
+
 function PeakBars({
   values,
   height,
   playedRatio,
   barWidth,
+  rowWidth,
 }: {
   values: number[];
   height: number;
   playedRatio: number;
   barWidth: number;
+  rowWidth?: number;
 }) {
   return (
-    <View style={[styles.barsRow, { height }]} pointerEvents="none">
+    <View
+      style={[styles.barsRow, { height }, rowWidth != null ? { width: rowWidth } : { flex: 1 }]}
+      pointerEvents="none"
+    >
       {values.map((amp, i) => {
         const played = (i + 0.5) / values.length <= playedRatio;
         const barH = Math.max(3, amp * (height - 10));
@@ -115,29 +235,23 @@ function Playhead({ percent, tall }: { percent: number; tall: boolean }) {
 
 function ZoomMarkerPin({
   marker,
-  windowStartMs,
-  windowSpanMs,
+  tapeStartMs,
+  tapeSpanMs,
+  px,
   durationMs,
-  trackWidth,
 }: {
   marker: Marker;
-  windowStartMs: number;
-  windowSpanMs: number;
+  tapeStartMs: number;
+  tapeSpanMs: number;
+  px: number;
   durationMs: number;
-  trackWidth: number;
 }) {
   const openMarker = usePlayerStore((s) => s.openMarker);
   const moveMarker = usePlayerStore((s) => s.moveMarker);
   const [dragMs, setDragMs] = useState<number | null>(null);
 
-  const latest = useRef({
-    marker,
-    windowStartMs,
-    windowSpanMs,
-    durationMs,
-    trackWidth,
-  });
-  latest.current = { marker, windowStartMs, windowSpanMs, durationMs, trackWidth };
+  const latest = useRef({ marker, tapeStartMs, tapeSpanMs, px, durationMs });
+  latest.current = { marker, tapeStartMs, tapeSpanMs, px, durationMs };
 
   const originMs = useRef(marker.timestampMs);
   const didDrag = useRef(false);
@@ -154,24 +268,23 @@ function ZoomMarkerPin({
         setDragMs(originMs.current);
       },
       onPanResponderMove: (_, gesture) => {
-        const { trackWidth: w, windowSpanMs: span, durationMs: dur } = latest.current;
-        if (w <= 0 || span <= 0) {
+        const { px: scale, durationMs: dur } = latest.current;
+        if (scale <= 0) {
           return;
         }
         if (Math.abs(gesture.dx) >= DRAG_THRESHOLD || Math.abs(gesture.dy) >= DRAG_THRESHOLD) {
           didDrag.current = true;
         }
-        setDragMs(clampTime(originMs.current + (gesture.dx / w) * span, dur));
+        setDragMs(clampTime(originMs.current + gesture.dx / scale, dur));
       },
       onPanResponderRelease: (_, gesture) => {
-        const { marker: m, trackWidth: w, windowSpanMs: span, durationMs: dur } =
-          latest.current;
+        const { marker: m, px: scale, durationMs: dur } = latest.current;
         if (!didDrag.current) {
           setDragMs(null);
           openMarker(m.id);
           return;
         }
-        const next = clampTime(originMs.current + (w > 0 ? (gesture.dx / w) * span : 0), dur);
+        const next = clampTime(originMs.current + (scale > 0 ? gesture.dx / scale : 0), dur);
         setDragMs(null);
         moveMarker(m.id, next);
       },
@@ -183,31 +296,24 @@ function ZoomMarkerPin({
 
   const pinColor = markerColor(marker);
   const displayMs = dragMs ?? marker.timestampMs;
-  const inWindow =
-    displayMs >= windowStartMs - 40 && displayMs <= windowStartMs + windowSpanMs + 40;
-  if (!inWindow && dragMs == null) {
+  const onTape =
+    displayMs >= tapeStartMs - 40 && displayMs <= tapeStartMs + tapeSpanMs + 40;
+  if (!onTape && dragMs == null) {
     return null;
   }
 
-  const rawPct = windowSpanMs > 0 ? ((displayMs - windowStartMs) / windowSpanMs) * 100 : 0;
-  const leftPercent = Math.max(0, Math.min(100, rawPct));
+  const left = (displayMs - tapeStartMs) * px;
   const dragging = dragMs != null && didDrag.current;
 
   return (
     <View
-      style={[
-        styles.zoomPinWrap,
-        { left: `${leftPercent}%` },
-        dragging && styles.zoomPinDragging,
-      ]}
+      style={[styles.zoomPinWrap, { left }, dragging && styles.zoomPinDragging]}
       {...pan.panHandlers}
       accessibilityRole="adjustable"
       accessibilityLabel={`Appunto a ${formatTimecode(displayMs)}`}
       accessibilityHint="Tocca per aprire, trascina per spostare"
     >
-      {dragging ? (
-        <Text style={styles.dragTime}>{formatTimecode(displayMs)}</Text>
-      ) : null}
+      {dragging ? <Text style={styles.dragTime}>{formatTimecode(displayMs)}</Text> : null}
       <View
         style={[
           styles.pinHead,
@@ -228,6 +334,113 @@ function ZoomMarkerPin({
   );
 }
 
+function RangeHandle({
+  side,
+  timeMs,
+  durationMs,
+  trackWidth,
+  windowStartMs,
+  windowSpanMs,
+  seekWhileDrag,
+  leftPx,
+}: {
+  side: 'start' | 'end';
+  timeMs: number;
+  durationMs: number;
+  trackWidth: number;
+  windowStartMs?: number;
+  windowSpanMs?: number;
+  seekWhileDrag: boolean;
+  leftPx?: number;
+}) {
+  const setStartMs = usePlayerStore((s) => s.setStartMs);
+  const setEndMs = usePlayerStore((s) => s.setEndMs);
+  const pause = usePlayerStore((s) => s.pause);
+
+  const latest = useRef({
+    timeMs,
+    durationMs,
+    trackWidth,
+    windowStartMs,
+    windowSpanMs,
+    side,
+    seekWhileDrag,
+  });
+  latest.current = {
+    timeMs,
+    durationMs,
+    trackWidth,
+    windowStartMs,
+    windowSpanMs,
+    side,
+    seekWhileDrag,
+  };
+  const originMs = useRef(timeMs);
+
+  const apply = (dx: number, persist: boolean) => {
+    const { durationMs: dur, trackWidth: w, windowSpanMs: span, side: which, seekWhileDrag: scrub } =
+      latest.current;
+    if (w <= 0) {
+      return;
+    }
+    const scale = span != null && span > 0 ? span / w : dur / w;
+    const next = clampTime(originMs.current + dx * scale, dur);
+    const options = { persist, seek: persist || scrub };
+    if (which === 'start') {
+      setStartMs(next, options);
+    } else {
+      setEndMs(next, options);
+    }
+  };
+
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: () => {
+        originMs.current = latest.current.timeMs;
+        pause();
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      },
+      onPanResponderMove: (_, gesture) => {
+        apply(gesture.dx, false);
+      },
+      onPanResponderRelease: (_, gesture) => {
+        apply(gesture.dx, true);
+      },
+      onPanResponderTerminate: (_, gesture) => {
+        apply(gesture.dx, true);
+      },
+    }),
+  ).current;
+
+  const start = windowStartMs ?? 0;
+  const span = windowSpanMs ?? durationMs;
+  if (span <= 0 || timeMs < start - 80 || timeMs > start + span + 80) {
+    return null;
+  }
+  const leftStyle =
+    leftPx != null
+      ? { left: leftPx }
+      : { left: `${((timeMs - start) / span) * 100}%` as `${number}%` };
+
+  return (
+    <View
+      style={[styles.handleHit, leftStyle]}
+      {...pan.panHandlers}
+      accessibilityRole="adjustable"
+      accessibilityLabel={side === 'start' ? 'Inizio' : 'Fine'}
+      accessibilityHint="Trascina per scegliere dove parte o dove finisce"
+    >
+      <View style={[styles.handleBody, side === 'start' ? styles.handleStart : styles.handleEnd]}>
+        <View style={styles.handleGrip} />
+      </View>
+    </View>
+  );
+}
+
 export function Waveform() {
   const track = usePlayerStore((s) => s.track);
   const peaks = usePlayerStore((s) => s.peaks);
@@ -239,34 +452,122 @@ export function Waveform() {
     [markers, showHidden],
   );
   const positionMs = usePlayerStore((s) => s.positionMs);
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
   const seekTo = usePlayerStore((s) => s.seekTo);
   const openMarker = usePlayerStore((s) => s.openMarker);
 
   const [overviewWidth, setOverviewWidth] = useState(0);
   const [zoomWidth, setZoomWidth] = useState(0);
+  const [tapeStartMs, setTapeStartMs] = useState(0);
+  const [detailWindowMs, setDetailWindowMs] = useState(DEFAULT_DETAIL_MS);
+  const [overviewWindowMs, setOverviewWindowMs] = useState(Number.MAX_SAFE_INTEGER);
+
+  const translateX = useRef(new Animated.Value(0)).current;
+  const playheadX = useRef(new Animated.Value(0)).current;
+  const tapeStartRef = useRef(0);
+  const lastDetailSpan = useRef(DEFAULT_DETAIL_MS);
 
   const durationMs = Math.max(track.durationMs, 1);
+  const detailSpan = clampWindowMs(detailWindowMs, durationMs);
+  const overviewSpan = clampWindowMs(overviewWindowMs, durationMs);
+  const range = resolveTrackRange(track);
+  const customRange = isCustomRange(range, track.durationMs);
   const window = useMemo(
-    () => getZoomWindow(positionMs, durationMs),
-    [positionMs, durationMs],
+    () => getTimeWindow(positionMs, durationMs, detailSpan),
+    [positionMs, durationMs, detailSpan],
   );
+  const overviewView = useMemo(
+    () => getTimeWindow(positionMs, durationMs, overviewSpan),
+    [positionMs, durationMs, overviewSpan],
+  );
+
+  useEffect(() => {
+    setDetailWindowMs(Math.min(DEFAULT_DETAIL_MS, Math.max(track.durationMs, 1)));
+    setOverviewWindowMs(Number.MAX_SAFE_INTEGER);
+    tapeStartRef.current = 0;
+    setTapeStartMs(0);
+  }, [track.id]);
+
+  const tapeSpanMs = tapeSpanFor(detailSpan, durationMs);
+  const scale = zoomWidth > 0 ? pxPerMs(zoomWidth, durationMs, detailSpan) : 0;
+  const tapeWidth = tapeSpanMs * scale;
+
+  const overviewPinch = usePinchSpan(
+    overviewSpan,
+    setOverviewWindowMs,
+    MIN_WINDOW_MS,
+    durationMs,
+  );
+  const detailPinch = usePinchSpan(detailSpan, setDetailWindowMs, MIN_WINDOW_MS, durationMs);
+
+  useEffect(() => {
+    const nextTape = tapeStartFor(positionMs, durationMs, tapeStartRef.current, detailSpan);
+    const tapeChanged = nextTape !== tapeStartRef.current;
+    const spanChanged = lastDetailSpan.current !== detailSpan;
+    lastDetailSpan.current = detailSpan;
+    if (tapeChanged) {
+      tapeStartRef.current = nextTape;
+      setTapeStartMs(nextTape);
+    }
+    if (zoomWidth <= 0) {
+      return;
+    }
+    const tx = tapeTranslateX(positionMs, nextTape, durationMs, zoomWidth, detailSpan);
+    const hx = playheadOffsetPx(positionMs, durationMs, zoomWidth, detailSpan) - PLAYHEAD_HALF;
+    if (isPlaying && !tapeChanged && !spanChanged) {
+      Animated.parallel([
+        Animated.timing(translateX, {
+          toValue: tx,
+          duration: 52,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+        Animated.timing(playheadX, {
+          toValue: hx,
+          duration: 52,
+          easing: Easing.linear,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      return;
+    }
+    translateX.setValue(tx);
+    playheadX.setValue(hx);
+  }, [positionMs, isPlaying, zoomWidth, durationMs, detailSpan, translateX, playheadX]);
 
   const overviewBars = useMemo(() => {
     const count = overviewWidth > 0 ? Math.max(48, Math.floor(overviewWidth / 3.4)) : 0;
-    return samplePeaks(peaks, 0, 1, count);
-  }, [peaks, overviewWidth]);
+    return samplePeaks(
+      peaks,
+      overviewView.startMs / durationMs,
+      overviewView.endMs / durationMs,
+      count,
+    );
+  }, [peaks, overviewWidth, overviewView.startMs, overviewView.endMs, durationMs]);
 
   const zoomBars = useMemo(() => {
-    const count = zoomWidth > 0 ? Math.max(40, Math.floor(zoomWidth / 4.2)) : 0;
-    return samplePeaks(peaks, window.startMs / durationMs, window.endMs / durationMs, count);
-  }, [peaks, zoomWidth, window.startMs, window.endMs, durationMs]);
+    const count = tapeWidth > 0 ? Math.max(40, Math.floor(tapeWidth / 4.2)) : 0;
+    return samplePeaks(peaks, tapeStartMs / durationMs, (tapeStartMs + tapeSpanMs) / durationMs, count);
+  }, [peaks, tapeWidth, tapeStartMs, tapeSpanMs, durationMs]);
 
-  const overviewPlayed = positionMs / durationMs;
-  const zoomPlayed = (positionMs - window.startMs) / window.spanMs;
+  const overviewPlayed =
+    overviewView.spanMs > 0 ? (positionMs - overviewView.startMs) / overviewView.spanMs : 0;
+  const zoomPlayed = tapeSpanMs > 0 ? (positionMs - tapeStartMs) / tapeSpanMs : 0;
   const playheadOverviewPct = overviewPlayed * 100;
-  const playheadZoomPct = zoomPlayed * 100;
-  const windowLeftPct = (window.startMs / durationMs) * 100;
-  const windowWidthPct = (window.spanMs / durationMs) * 100;
+  const windowLeftPct =
+    overviewView.spanMs > 0
+      ? ((window.startMs - overviewView.startMs) / overviewView.spanMs) * 100
+      : 0;
+  const windowWidthPct =
+    overviewView.spanMs > 0 ? (window.spanMs / overviewView.spanMs) * 100 : 100;
+  const rangeLeftPct =
+    overviewView.spanMs > 0
+      ? ((range.startMs - overviewView.startMs) / overviewView.spanMs) * 100
+      : 0;
+  const rangeWidthPct =
+    overviewView.spanMs > 0
+      ? ((range.endMs - range.startMs) / overviewView.spanMs) * 100
+      : 100;
 
   const seekFromEvent = (
     event: GestureResponderEvent,
@@ -299,91 +600,188 @@ export function Waveform() {
     <View style={styles.root}>
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardLabel}>Panoramica</Text>
+          <Text style={styles.cardLabel}>
+            {overviewSpan < durationMs - 1
+              ? `Panoramica · ${formatWindowSeconds(overviewSpan)}`
+              : 'Panoramica'}
+          </Text>
           <View style={styles.cardMetaRow}>
             <Pressable onPress={toggleShowHidden} hitSlop={8} accessibilityRole="button">
               <Text style={[styles.cardMeta, showHidden && styles.hideOn]}>Hide</Text>
             </Pressable>
-            <Text style={styles.cardMeta}>{formatTimecode(track.durationMs)}</Text>
+            <Text style={styles.cardMeta}>
+              {customRange
+                ? `${formatTimecode(range.startMs)} – ${formatTimecode(range.endMs)}`
+                : formatTimecode(track.durationMs)}
+            </Text>
           </View>
         </View>
-        <Pressable
-          onLayout={onOverviewLayout}
-          onPress={(e) => seekFromEvent(e, overviewWidth, 0, durationMs)}
-          style={styles.overviewTrack}
-          accessibilityRole="adjustable"
-          accessibilityLabel="Forma d'onda panoramica"
-          accessibilityHint="Tocca per andare a quel punto"
-        >
-          <View
-            pointerEvents="none"
-            style={[
-              styles.windowHighlight,
-              { left: `${windowLeftPct}%`, width: `${windowWidthPct}%` },
-            ]}
-          />
-          <PeakBars
-            values={overviewBars}
-            height={OVERVIEW_HEIGHT}
-            playedRatio={overviewPlayed}
-            barWidth={2}
-          />
-          {visiblePins.map((marker) => (
-            <Pressable
-              key={marker.id}
-              onPress={() => openMarker(marker.id)}
-              hitSlop={8}
+        <GestureDetector gesture={overviewPinch}>
+        <View style={styles.overviewWrap}>
+          <Pressable
+            onLayout={onOverviewLayout}
+            onPress={(e) =>
+              seekFromEvent(e, overviewWidth, overviewView.startMs, overviewView.spanMs)
+            }
+            style={styles.overviewTrack}
+            accessibilityRole="adjustable"
+            accessibilityLabel="Forma d'onda panoramica"
+            accessibilityHint="Tocca per andare a quel punto. Pizzica per ingrandire. Trascina le parentesi per inizio e fine."
+          >
+            <View
+              pointerEvents="none"
               style={[
-                styles.overviewDot,
-                {
-                  left: `${(marker.timestampMs / durationMs) * 100}%`,
-                  backgroundColor: markerColor(marker),
-                  opacity: marker.hidden ? 0.4 : 1,
-                },
+                styles.windowHighlight,
+                { left: `${windowLeftPct}%`, width: `${windowWidthPct}%` },
               ]}
-              accessibilityRole="button"
-              accessibilityLabel={`Appunto a ${formatTimecode(marker.timestampMs)}`}
             />
-          ))}
-          <Playhead percent={playheadOverviewPct} tall={false} />
-        </Pressable>
+            <PeakBars
+              values={overviewBars}
+              height={OVERVIEW_HEIGHT}
+              playedRatio={overviewPlayed}
+              barWidth={2}
+            />
+            <View pointerEvents="none" style={[styles.rangeDim, { width: `${rangeLeftPct}%` }]} />
+            <View
+              pointerEvents="none"
+              style={[
+                styles.rangeDim,
+                { left: `${rangeLeftPct + rangeWidthPct}%`, right: 0 },
+              ]}
+            />
+            <View
+              pointerEvents="none"
+              style={[
+                styles.rangeFrame,
+                { left: `${rangeLeftPct}%`, width: `${rangeWidthPct}%` },
+              ]}
+            />
+            {visiblePins.map((marker) => {
+              const left =
+                overviewView.spanMs > 0
+                  ? ((marker.timestampMs - overviewView.startMs) / overviewView.spanMs) * 100
+                  : 0;
+              if (left < -4 || left > 104) {
+                return null;
+              }
+              return (
+                <Pressable
+                  key={marker.id}
+                  onPress={() => openMarker(marker.id)}
+                  hitSlop={8}
+                  style={[
+                    styles.overviewDot,
+                    {
+                      left: `${left}%`,
+                      backgroundColor: markerColor(marker),
+                      opacity: marker.hidden ? 0.4 : 1,
+                    },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Appunto a ${formatTimecode(marker.timestampMs)}`}
+                />
+              );
+            })}
+            <Playhead percent={playheadOverviewPct} tall={false} />
+          </Pressable>
+          <RangeHandle
+            side="start"
+            timeMs={range.startMs}
+            durationMs={durationMs}
+            trackWidth={overviewWidth}
+            windowStartMs={overviewView.startMs}
+            windowSpanMs={overviewView.spanMs}
+            seekWhileDrag
+          />
+          <RangeHandle
+            side="end"
+            timeMs={range.endMs}
+            durationMs={durationMs}
+            trackWidth={overviewWidth}
+            windowStartMs={overviewView.startMs}
+            windowSpanMs={overviewView.spanMs}
+            seekWhileDrag
+          />
+        </View>
+        </GestureDetector>
       </View>
 
       <View style={[styles.card, styles.zoomCard]}>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardLabel}>Dettaglio · 12s</Text>
+          <Text style={styles.cardLabel}>Dettaglio · {formatWindowSeconds(detailSpan)}</Text>
           <Text style={styles.cardMeta}>
             {formatTimecode(window.startMs)} – {formatTimecode(window.endMs)}
           </Text>
         </View>
+        <GestureDetector gesture={detailPinch}>
         <View style={styles.zoomBody}>
-          <Pressable
-            onLayout={onZoomLayout}
-            onPress={(e) => seekFromEvent(e, zoomWidth, window.startMs, window.spanMs)}
-            style={styles.zoomTrack}
-            accessibilityRole="adjustable"
-            accessibilityLabel="Forma d'onda ingrandita"
-            accessibilityHint="Tocca per andare a quel punto"
-          >
-            <PeakBars
-              values={zoomBars}
-              height={ZOOM_HEIGHT}
-              playedRatio={zoomPlayed}
-              barWidth={2.5}
-            />
-            <Playhead percent={playheadZoomPct} tall />
-          </Pressable>
-          {visiblePins.map((marker) => (
-            <ZoomMarkerPin
-              key={marker.id}
-              marker={marker}
-              windowStartMs={window.startMs}
-              windowSpanMs={window.spanMs}
-              durationMs={durationMs}
-              trackWidth={zoomWidth}
-            />
-          ))}
+          <View onLayout={onZoomLayout} style={styles.zoomTrack}>
+            <Pressable
+              onPress={(e) => seekFromEvent(e, zoomWidth, window.startMs, window.spanMs)}
+              style={StyleSheet.absoluteFill}
+              accessibilityRole="adjustable"
+              accessibilityLabel="Forma d'onda ingrandita"
+              accessibilityHint="Tocca per andare a quel punto. Pizzica per ingrandire."
+            >
+              <Animated.View
+                pointerEvents="box-none"
+                style={[
+                  styles.zoomTape,
+                  {
+                    width: Math.max(tapeWidth, zoomWidth),
+                    transform: [{ translateX }],
+                  },
+                ]}
+              >
+                <PeakBars
+                  values={zoomBars}
+                  height={ZOOM_HEIGHT}
+                  playedRatio={zoomPlayed}
+                  barWidth={2.5}
+                  rowWidth={Math.max(tapeWidth, zoomWidth)}
+                />
+                {visiblePins.map((marker) => (
+                  <ZoomMarkerPin
+                    key={marker.id}
+                    marker={marker}
+                    tapeStartMs={tapeStartMs}
+                    tapeSpanMs={tapeSpanMs}
+                    px={scale}
+                    durationMs={durationMs}
+                  />
+                ))}
+                <RangeHandle
+                  side="start"
+                  timeMs={range.startMs}
+                  durationMs={durationMs}
+                  trackWidth={Math.max(tapeWidth, 1)}
+                  windowStartMs={tapeStartMs}
+                  windowSpanMs={tapeSpanMs}
+                  seekWhileDrag={false}
+                  leftPx={(range.startMs - tapeStartMs) * scale}
+                />
+                <RangeHandle
+                  side="end"
+                  timeMs={range.endMs}
+                  durationMs={durationMs}
+                  trackWidth={Math.max(tapeWidth, 1)}
+                  windowStartMs={tapeStartMs}
+                  windowSpanMs={tapeSpanMs}
+                  seekWhileDrag={false}
+                  leftPx={(range.endMs - tapeStartMs) * scale}
+                />
+              </Animated.View>
+            </Pressable>
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.playhead, styles.playheadTall, { transform: [{ translateX: playheadX }] }]}
+            >
+              <View style={styles.playheadNub} />
+              <View style={styles.playheadLine} />
+            </Animated.View>
+          </View>
         </View>
+        </GestureDetector>
       </View>
     </View>
   );
@@ -440,6 +838,10 @@ const styles = StyleSheet.create({
   pinHidden: {
     opacity: 0.4,
   },
+  overviewWrap: {
+    height: OVERVIEW_HEIGHT + 8,
+    justifyContent: 'center',
+  },
   overviewTrack: {
     height: OVERVIEW_HEIGHT,
     overflow: 'hidden',
@@ -456,6 +858,12 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: colors.surfaceRaised,
     overflow: 'hidden',
+  },
+  zoomTape: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
   },
   barsRow: {
     flex: 1,
@@ -476,6 +884,61 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,107,53,0.45)',
     borderRadius: 6,
   },
+  rangeDim: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: 'rgba(13,13,15,0.5)',
+  },
+  rangeFrame: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    borderWidth: 2,
+    borderColor: colors.accent,
+    borderRadius: 6,
+  },
+  handleHit: {
+    position: 'absolute',
+    top: -2,
+    bottom: -2,
+    width: HANDLE_HIT,
+    marginLeft: -(HANDLE_HIT / 2),
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  handleBody: {
+    flex: 1,
+    width: 10,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.45,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  handleStart: {
+    borderTopLeftRadius: 6,
+    borderBottomLeftRadius: 6,
+    borderTopRightRadius: 2,
+    borderBottomRightRadius: 2,
+  },
+  handleEnd: {
+    borderTopRightRadius: 6,
+    borderBottomRightRadius: 6,
+    borderTopLeftRadius: 2,
+    borderBottomLeftRadius: 2,
+  },
+  handleGrip: {
+    width: 2,
+    height: 16,
+    borderRadius: 1,
+    backgroundColor: colors.text,
+    opacity: 0.9,
+  },
   playhead: {
     position: 'absolute',
     top: 0,
@@ -487,7 +950,7 @@ const styles = StyleSheet.create({
   },
   playheadTall: {
     width: 14,
-    marginLeft: -7,
+    marginLeft: 0,
   },
   playheadNub: {
     width: 0,

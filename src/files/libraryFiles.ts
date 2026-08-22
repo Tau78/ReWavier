@@ -48,6 +48,16 @@ export async function writeSidecarToLibrary(
   return dest.uri;
 }
 
+export function removeSidecarFromLibrary(fileName: string, authorSlug?: string): void {
+  const names = [sidecarNameForAudio(fileName, authorSlug), sidecarNameForAudio(fileName)];
+  for (const name of new Set(names)) {
+    const dest = new File(libraryDir(), safeFileName(name));
+    if (dest.exists) {
+      dest.delete();
+    }
+  }
+}
+
 export async function shareSidecar(
   track: Track,
   markers: Marker[],
@@ -107,6 +117,8 @@ export async function pickAndImportAudio(): Promise<ImportedBundle[]> {
         inboxUri,
         remoteUri: asset.uri,
         sourceFileName: asset.name,
+        startMs: sidecar?.startMs,
+        endMs: sidecar?.endMs,
         downloaded: false,
         remoteSize: asset.size,
         remoteModifiedAt: asset.lastModified
@@ -130,6 +142,8 @@ export async function pickAndImportAudio(): Promise<ImportedBundle[]> {
           artist: sidecar.artist || 'Importata',
           durationMs: sidecar.durationMs || 0,
           sourceFileName: sidecar.audioFileName || `${audioBasename(asset.name)}.mp3`,
+          startMs: sidecar.startMs,
+          endMs: sidecar.endMs,
         },
         markers: sidecar.markers,
       });
