@@ -3,7 +3,7 @@ import * as LegacyFS from 'expo-file-system/legacy';
 
 import { SEEDED_SMART_IDS, type Album, type Folder, type Playlist, type SmartPlaylist } from '../domain/library';
 import type { Marker, Track } from '../domain/models';
-import { reconcileTrack } from './downloads';
+import { fileExists, reconcileTrack } from './downloads';
 import { libraryDirectory } from './libraryPaths';
 
 export const LIBRARY_SNAPSHOT_VERSION = 2;
@@ -38,6 +38,8 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
     albums: snapshot.albums.map((album) => ({
       ...album,
       trackIds: pruneIds(album.trackIds),
+      artworkUri: fileExists(album.artworkUri) ? album.artworkUri : undefined,
+      notes: album.notes?.trim() ? album.notes : undefined,
     })),
     playlists: snapshot.playlists.map((playlist) => ({
       ...playlist,

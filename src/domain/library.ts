@@ -22,6 +22,8 @@ export type Album = {
   lastSyncedAt?: number;
   orderUpdatedAt?: number;
   shared?: boolean;
+  artworkUri?: string;
+  notes?: string;
 };
 
 export type Playlist = {

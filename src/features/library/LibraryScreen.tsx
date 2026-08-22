@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import {
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -54,14 +55,17 @@ function Section({
 function CollectionRow({
   name,
   meta,
+  imageUri,
   onPress,
   onLongPress,
 }: {
   name: string;
   meta: string;
+  imageUri?: string;
   onPress: () => void;
   onLongPress?: () => void;
 }) {
+  const letter = (name.trim()[0] || '?').toUpperCase();
   return (
     <Pressable
       onPress={onPress}
@@ -69,6 +73,15 @@ function CollectionRow({
       delayLongPress={280}
       style={({ pressed }) => [styles.collectionRow, pressed && styles.pressed]}
     >
+      {imageUri !== undefined ? (
+        imageUri ? (
+          <Image source={{ uri: imageUri }} style={styles.thumb} resizeMode="cover" />
+        ) : (
+          <View style={styles.thumbFallback}>
+            <Text style={styles.thumbLetter}>{letter}</Text>
+          </View>
+        )
+      ) : null}
       <Text style={styles.collectionName}>{name}</Text>
       <Text style={styles.collectionMeta}>{meta}</Text>
     </Pressable>
@@ -233,6 +246,7 @@ export function LibraryScreen() {
               <CollectionRow
                 key={album.id}
                 name={album.name}
+                imageUri={album.artworkUri ?? ''}
                 meta={
                   album.origin === 'drive'
                     ? `Drive · ${album.trackIds.length} tracce`
@@ -438,6 +452,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  thumb: {
+    width: 44,
+    height: 44,
+    borderRadius: 6,
+    backgroundColor: colors.surfaceRaised,
+  },
+  thumbFallback: {
+    width: 44,
+    height: 44,
+    borderRadius: 6,
+    backgroundColor: colors.surfaceRaised,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  thumbLetter: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
   },
   collectionName: {
     color: colors.text,

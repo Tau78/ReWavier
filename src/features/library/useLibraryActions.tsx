@@ -8,6 +8,7 @@ import type { Track } from '../../domain/models';
 import { userHasUsage } from '../../domain/session';
 import { ensurePeaks } from '../../audio/extractPeaks';
 import { hasDriveToken } from '../../cloud/driveApi';
+import { pickAndSaveAlbumArtwork } from '../../files/albumArtwork';
 import { pickAndImportAudio, shareSidecar } from '../../files/libraryFiles';
 import type { RootStackParamList } from '../../navigation/types';
 import { useLibraryStore } from '../../store/libraryStore';
@@ -253,6 +254,27 @@ export function useLibraryActions(
     {
       label: 'Sostituisci file',
       onPress: () => navigation.navigate('ReplaceFile', { albumId }),
+    },
+    {
+      label: useLibraryStore.getState().albums.find((item) => item.id === albumId)?.artworkUri
+        ? 'Cambia copertina'
+        : 'Aggiungi copertina',
+      onPress: () => {
+        void (async () => {
+          try {
+            const uri = await pickAndSaveAlbumArtwork(albumId);
+            if (!uri) {
+              return;
+            }
+            useLibraryStore.getState().setAlbumArtwork(albumId, uri);
+          } catch (error: unknown) {
+            Alert.alert(
+              'Copertina',
+              error instanceof Error ? error.message : 'Non riesco a usare questa immagine.',
+            );
+          }
+        })();
+      },
     },
     {
       label: 'Rinomina',

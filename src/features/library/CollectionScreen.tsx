@@ -8,9 +8,12 @@ import { isDownloaded } from '../../domain/audioFormats';
 import type { CollectionKind } from '../../domain/library';
 import type { RootStackParamList } from '../../navigation/types';
 import { useLibraryStore } from '../../store/libraryStore';
+import { usePlayerStore } from '../../store/playerStore';
 import { colors, layout } from '../../theme/colors';
 import { EmptyGraphic, KindRow } from '../../theme/graphics';
-import { openTrack } from './openTrack';
+import { AlbumHero } from './AlbumHero';
+import { AlbumNotes } from './AlbumNotes';
+import { openTrack, playQueue } from './openTrack';
 import { ReorderableTrackList } from './ReorderableTrackList';
 import { TrackRow } from './TrackRow';
 import { useLibraryActions } from './useLibraryActions';
@@ -59,6 +62,10 @@ export function CollectionScreen() {
   const [dragging, setDragging] = useState(false);
   const canReorder = kind !== 'smart';
   const album = kind === 'album' ? albums.find((item) => item.id === id) : undefined;
+  const playerTrackId = usePlayerStore((s) => s.track.id);
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const isPlayingThisAlbum =
+    Boolean(album) && isPlaying && tracks.some((track) => track.id === playerTrackId);
   const subtitle =
     kind === 'album'
       ? album?.origin === 'drive'
@@ -67,6 +74,26 @@ export function CollectionScreen() {
       : kind === 'smart'
         ? `${smartPlaylists.find((item) => item.id === id)?.conditions.length ?? 0} regole`
         : `${tracks.length} tracce`;
+
+  const playAlbum = () => {
+    if (isPlayingThisAlbum) {
+      usePlayerStore.getState().pause();
+      return;
+    }
+    if (playerTrackId && tracks.some((track) => track.id === playerTrackId)) {
+      usePlayerStore.getState().play();
+      return;
+    }
+    if (playQueue(tracks.map((track) => track.id))) {
+      return;
+    }
+    Alert.alert(
+      'Ascolto',
+      tracks.length === 0
+        ? 'Questo album è vuoto. Aggiungi un audio e poi tocca Play.'
+        : 'Nessuna traccia è ancora ascoltabile. Scaricala sul telefono e riprova.',
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
@@ -81,10 +108,14 @@ export function CollectionScreen() {
         </Pressable>
         <View style={styles.headerText}>
           <KindRow label={KIND_LABEL[kind]} />
-          <Text style={styles.title} numberOfLines={1}>
-            {title ?? 'Senza nome'}
-          </Text>
-          <Text style={styles.subtitle}>{subtitle}</Text>
+          {kind === 'album' ? null : (
+            <>
+              <Text style={styles.title} numberOfLines={1}>
+                {title ?? 'Senza nome'}
+              </Text>
+              <Text style={styles.subtitle}>{subtitle}</Text>
+            </>
+          )}
         </View>
         {kind === 'smart' ? (
           <Pressable
@@ -156,11 +187,29 @@ export function CollectionScreen() {
         )}
       </View>
 
-      {canReorder && tracks.length > 1 ? (
-        <Text style={styles.hint}>Tieni premuto una traccia e trascinala per riordinare.</Text>
-      ) : null}
-
-      <ScrollView contentContainerStyle={styles.scroll} scrollEnabled={!dragging}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        scrollEnabled={!dragging}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
+        {album ? (
+          <>
+            <AlbumHero
+              album={album}
+              trackCount={tracks.length}
+              isPlayingThisAlbum={isPlayingThisAlbum}
+              onPlay={playAlbum}
+            />
+            <AlbumNotes albumId={album.id} notes={album.notes} />
+          </>
+        ) : null}
+        {album ? <Text style={styles.sectionLabel}>Tracce</Text> : null}
+        {canReorder && tracks.length > 1 ? (
+          <Text style={[styles.hint, album && styles.hintInScroll]}>
+            Tieni premuto una traccia e trascinala per riordinare.
+          </Text>
+        ) : null}
         {childFolders.length > 0 ? (
           <View style={[styles.card, styles.cardGap]}>
             {childFolders.map((folder) => (
@@ -311,6 +360,18 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 13,
     lineHeight: 18,
+  },
+  hintInScroll: {
+    paddingHorizontal: 4,
+  },
+  sectionLabel: {
+    paddingHorizontal: 4,
+    paddingBottom: 8,
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
   scroll: {
     paddingHorizontal: 16,

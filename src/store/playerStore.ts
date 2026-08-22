@@ -64,8 +64,13 @@ export type PlayerActions = {
   deleteMarker: (id: string) => void;
   hideMarker: (id: string, hidden?: boolean) => void;
   toggleShowHidden: () => void;
-  loadTrack: (track: Track, markers?: Marker[], queueIds?: string[]) => void;
-  skipBy: (step: number) => boolean;
+  loadTrack: (
+    track: Track,
+    markers?: Marker[],
+    queueIds?: string[],
+    options?: { autoPlay?: boolean },
+  ) => void;
+  skipBy: (step: number, options?: { autoPlay?: boolean }) => boolean;
   setStartMs: (ms: number, options?: { persist?: boolean; seek?: boolean }) => void;
   setEndMs: (ms: number, options?: { persist?: boolean; seek?: boolean }) => void;
 };
@@ -80,6 +85,7 @@ const mockEngine = new MockAudioEngine(EMPTY_TRACK.durationMs);
 const fileEngine = new FileAudioEngine();
 let usingFile = false;
 let resumeAfterBubble = false;
+let lastAdvanceKey = '';
 
 function engine() {
   return usingFile ? fileEngine : mockEngine;
@@ -296,29 +302,34 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     });
   },
 
-  skipBy(step) {
+  skipBy(step, options) {
     const { queueIds, track } = get();
     if (queueIds.length < 2) {
       return false;
     }
-    const index = queueIds.indexOf(track.id);
-    const nextIndex = index < 0 ? 0 : index + step;
-    if (nextIndex < 0 || nextIndex >= queueIds.length) {
-      return false;
+    let index = queueIds.indexOf(track.id);
+    if (index < 0) {
+      index = 0;
     }
-    const nextId = queueIds[nextIndex];
-    const next = useLibraryStore.getState().getTrack(nextId);
-    if (!next) {
-      return false;
+    let nextIndex = index + step;
+    while (nextIndex >= 0 && nextIndex < queueIds.length) {
+      const nextId = queueIds[nextIndex];
+      const next = useLibraryStore.getState().getTrack(nextId);
+      if (next && playableUri(next)) {
+        const markers = useLibraryStore.getState().markersByTrackId[nextId] ?? [];
+        get().loadTrack(next, markers, queueIds, options);
+        return true;
+      }
+      nextIndex += step;
     }
-    const markers = useLibraryStore.getState().markersByTrackId[nextId] ?? [];
-    get().loadTrack(next, markers, queueIds);
-    return true;
+    return false;
   },
 
-  loadTrack(track, markers = [], queueIds) {
+  loadTrack(track, markers = [], queueIds, options) {
     resumeAfterBubble = false;
+    lastAdvanceKey = '';
     usingFile = false;
+    const shouldAutoPlay = options?.autoPlay === true;
     mockEngine.reset(track.durationMs);
     void fileEngine.unload();
     const range = resolveTrackRange(track);
@@ -369,6 +380,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
             track: boundsForDuration(state.track, durationMs),
           }));
         }
+        if (shouldAutoPlay) {
+          fileEngine.play();
+        }
       })
       .catch(() => {
         usingFile = false;
@@ -391,6 +405,22 @@ function onEngineFrame(positionMs: number, playing: boolean) {
       engine().seekTo(range.startMs);
       return;
     }
+  }
+  const finished =
+    !playing &&
+    Boolean(track.id) &&
+    range.endMs > range.startMs &&
+    positionMs >= range.endMs - 25 &&
+    !isCustomRange(range, track.durationMs);
+  const advanceKey = `${track.id}:${range.endMs}`;
+  if (finished && lastAdvanceKey !== advanceKey) {
+    lastAdvanceKey = advanceKey;
+    if (usePlayerStore.getState().skipBy(1, { autoPlay: true })) {
+      return;
+    }
+  }
+  if (playing || positionMs < range.endMs - 25) {
+    lastAdvanceKey = '';
   }
   usePlayerStore.setState({ positionMs, isPlaying: playing });
 }

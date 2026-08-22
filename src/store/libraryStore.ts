@@ -66,6 +66,8 @@ export type LibraryActions = {
   deleteFolder: (id: string) => void;
   moveFolder: (id: string, parentId: string | null) => void;
   renameAlbum: (id: string, name: string) => void;
+  setAlbumArtwork: (id: string, artworkUri?: string) => void;
+  setAlbumNotes: (id: string, notes: string) => void;
   deleteAlbum: (id: string) => void;
   renamePlaylist: (id: string, name: string) => void;
   deletePlaylist: (id: string) => void;
@@ -294,7 +296,29 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     }));
   },
 
+  setAlbumArtwork(id, artworkUri) {
+    const previous = get().albums.find((album) => album.id === id)?.artworkUri;
+    if (previous && previous !== artworkUri) {
+      void removeUri(previous);
+    }
+    set((state) => ({
+      albums: state.albums.map((album) =>
+        album.id === id ? { ...album, artworkUri } : album,
+      ),
+    }));
+  },
+
+  setAlbumNotes(id, notes) {
+    set((state) => ({
+      albums: state.albums.map((album) =>
+        album.id === id ? { ...album, notes } : album,
+      ),
+    }));
+  },
+
   deleteAlbum(id) {
+    const artworkUri = get().albums.find((album) => album.id === id)?.artworkUri;
+    void removeUri(artworkUri);
     set((state) => ({
       albums: state.albums.filter((album) => album.id !== id),
     }));
