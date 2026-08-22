@@ -19,6 +19,7 @@ type Route = RouteProp<RootStackParamList, 'ReplaceFile'>;
 export function ReplaceFileScreen() {
   const navigation = useNavigation<Nav>();
   const { trackId: initialTrackId, albumId } = useRoute<Route>().params ?? {};
+  const trackAlreadyChosen = Boolean(initialTrackId);
   const tracks = useLibraryStore((s) => s.tracks);
   const albums = useLibraryStore((s) => s.albums);
   const markersByTrackId = useLibraryStore((s) => s.markersByTrackId);
@@ -107,7 +108,7 @@ export function ReplaceFileScreen() {
         }
         Alert.alert(
           'File sostituito',
-          `${track.sourceFileName ?? track.title} è aggiornato (stesso nome). I marker non flaggati sono in Hide. Se l’album è su Drive, alla sync il file in nuvola verrà sovrascritto con lo stesso nome.`,
+          `${track.sourceFileName ?? track.title} è aggiornato (stesso nome). Gli appunti non segnati sono nascosti. Se l’album è su Drive, alla prossima sync il file in nuvola viene sostituito.`,
         );
         navigation.goBack();
       } catch (error) {
@@ -125,31 +126,42 @@ export function ReplaceFileScreen() {
           <Text style={styles.back}>‹</Text>
         </Pressable>
         <View>
-          <KindRow label="Album" />
+          <KindRow label={trackAlreadyChosen ? 'Traccia' : 'Album'} />
           <Text style={styles.title}>Sostituisci file</Text>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        <Text style={styles.step}>1. Quale file vuoi sostituire</Text>
-        <View style={styles.card}>
-          {albumTracks.length === 0 ? (
-            <Text style={styles.empty}>Nessuna traccia.</Text>
-          ) : (
-            albumTracks.map((item) => (
-              <Pressable
-                key={item.id}
-                onPress={() => selectTrack(item.id)}
-                style={[styles.row, trackId === item.id && styles.rowOn]}
-              >
-                <Text style={styles.rowTitle}>{item.title}</Text>
-                <Text style={styles.rowMeta}>{item.sourceFileName ?? item.artist}</Text>
-              </Pressable>
-            ))
-          )}
-        </View>
+        {trackAlreadyChosen ? (
+          <View style={[styles.card, styles.chosenCard]}>
+            <Text style={styles.rowTitle}>{track?.title ?? 'Questa traccia'}</Text>
+            <Text style={styles.rowMeta}>{track?.sourceFileName ?? track?.artist}</Text>
+          </View>
+        ) : (
+          <>
+            <Text style={styles.step}>1. Quale file vuoi sostituire</Text>
+            <View style={styles.card}>
+              {albumTracks.length === 0 ? (
+                <Text style={styles.empty}>Nessuna traccia.</Text>
+              ) : (
+                albumTracks.map((item) => (
+                  <Pressable
+                    key={item.id}
+                    onPress={() => selectTrack(item.id)}
+                    style={[styles.row, trackId === item.id && styles.rowOn]}
+                  >
+                    <Text style={styles.rowTitle}>{item.title}</Text>
+                    <Text style={styles.rowMeta}>{item.sourceFileName ?? item.artist}</Text>
+                  </Pressable>
+                ))
+              )}
+            </View>
+          </>
+        )}
 
-        <Text style={styles.step}>2. Nuova versione</Text>
+        <Text style={styles.step}>
+          {trackAlreadyChosen ? '1. Nuova versione' : '2. Nuova versione'}
+        </Text>
         <Pressable onPress={onPick} style={styles.pick}>
           <Text style={styles.pickLabel}>
             {picked ? picked.name : 'Scegli il nuovo audio'}
@@ -160,13 +172,15 @@ export function ReplaceFileScreen() {
           posto del file corrente.
         </Text>
 
-        <Text style={styles.step}>3. Quali marker vuoi mantenere</Text>
+        <Text style={styles.step}>
+          {trackAlreadyChosen ? '2. Quali appunti vuoi tenere' : '3. Quali appunti vuoi tenere'}
+        </Text>
         <Text style={styles.hint}>
-          Flaggati restano visibili. Gli altri vanno in Hide (storico).
+          Quelli segnati restano visibili. Gli altri si nascondono, ma restano nel telefono.
         </Text>
         <View style={styles.card}>
           {markers.length === 0 ? (
-            <Text style={styles.empty}>Nessun marker su questa traccia.</Text>
+            <Text style={styles.empty}>Nessun appunto su questa traccia.</Text>
           ) : (
             markers.map((marker) => {
               const on = keepIds.has(marker.id);
@@ -272,6 +286,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
     color: colors.textMuted,
     fontSize: 12,
+  },
+  chosenCard: {
+    marginTop: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
   empty: {
     color: colors.textMuted,
