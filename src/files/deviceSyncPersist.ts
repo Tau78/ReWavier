@@ -1,6 +1,7 @@
 import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
+import type { LinkedKind } from '../cloud/deviceSync/deviceRegistry';
 import { libraryDirectory } from './libraryPaths';
 
 export type DeviceSyncPrefs = {
@@ -8,6 +9,10 @@ export type DeviceSyncPrefs = {
   driveAudioFolderId?: string;
   lastDriveAt?: number;
   lastICloudAt?: number;
+  deviceId?: string;
+  deviceName?: string;
+  deviceKind?: LinkedKind;
+  unlinked?: boolean;
 };
 
 const FILE_NAME = 'device-sync.json';

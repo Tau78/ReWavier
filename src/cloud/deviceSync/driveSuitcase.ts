@@ -35,7 +35,7 @@ export type SuitcaseResult = {
   message: string;
 };
 
-async function ensureFolders(): Promise<{ rootId: string; audioId: string }> {
+export async function ensureDriveLibraryFolders(): Promise<{ rootId: string; audioId: string }> {
   const prefs = await loadDeviceSyncPrefs();
   let rootId = prefs.driveFolderId;
   if (rootId) {
@@ -100,7 +100,7 @@ export async function syncDriveSuitcase(): Promise<SuitcaseResult> {
     };
   }
 
-  const { rootId, audioId } = await ensureFolders();
+  const { rootId, audioId } = await ensureDriveLibraryFolders();
   let pushed = 0;
   let pulled = 0;
 

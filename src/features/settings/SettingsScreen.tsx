@@ -5,13 +5,12 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { runCloudSync } from '../../cloud/syncEngine';
 import { BAND_COLORS } from '../../domain/bandColors';
+import { LinkedDevicesCard } from './LinkedDevicesCard';
 import { createId } from '../../domain/library';
 import { userHasUsage, userUsages, type UsageType } from '../../domain/session';
 import type { RootStackParamList } from '../../navigation/types';
 import { useSessionStore } from '../../store/sessionStore';
-import { useSyncStore } from '../../store/syncStore';
 import { colors, layout } from '../../theme/colors';
 import { KindRow } from '../../theme/graphics';
 import { ColorSwatches, SavedBandRow } from '../auth/BandFields';
@@ -30,9 +29,6 @@ export function SettingsScreen() {
   const upsertBand = useSessionStore((s) => s.upsertBand);
   const removeBand = useSessionStore((s) => s.removeBand);
   const setActiveBand = useSessionStore((s) => s.setActiveBand);
-  const lastSyncedAt = useSyncStore((s) => s.lastSyncedAt);
-  const syncMessage = useSyncStore((s) => s.message);
-  const syncStatus = useSyncStore((s) => s.status);
   const version = Constants.expoConfig?.version ?? '1.0.0';
   const build = Constants.expoConfig?.ios?.buildNumber;
 
@@ -172,20 +168,7 @@ export function SettingsScreen() {
           </View>
         ) : null}
 
-        <Pressable onPress={() => void runCloudSync()} style={styles.card}>
-          <Text style={styles.rowLabel}>Altri telefoni</Text>
-          <Text style={styles.rowValue}>
-            {syncStatus === 'syncing'
-              ? 'Allineo…'
-              : lastSyncedAt
-                ? `Ultimo allineamento ${new Date(lastSyncedAt).toLocaleString('it-IT')}`
-                : 'Mai allineata'}
-          </Text>
-          <Text style={styles.rowHint}>
-            {syncMessage ||
-              'I brani restano sul telefono. Una copia va su iCloud tra due iPhone, e su Drive se colleghi Google (anche verso Android). Tocca per allineare ora.'}
-          </Text>
-        </Pressable>
+        <LinkedDevicesCard />
         <Pressable
           onPress={() =>
             Alert.alert(
