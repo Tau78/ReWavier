@@ -49,7 +49,7 @@ export function isImageName(fileName: string): boolean {
   return IMAGE_NAME.test(fileName);
 }
 
-export async function pickAndSaveAlbumArtwork(albumId: string): Promise<string | null> {
+export async function pickAndSaveArtwork(ownerId: string): Promise<string | null> {
   const result = await DocumentPicker.getDocumentAsync({
     multiple: false,
     copyToCacheDirectory: true,
@@ -63,9 +63,13 @@ export async function pickAndSaveAlbumArtwork(albumId: string): Promise<string |
     throw new Error('Scegli una foto o un’immagine.');
   }
   const ext = extensionFor(asset.name, asset.mimeType);
-  const dest = new File(artworkDirectory(), `${albumId}-${createId('art')}.${ext}`);
+  const dest = new File(artworkDirectory(), `${ownerId}-${createId('art')}.${ext}`);
   await LegacyFS.copyAsync({ from: asset.uri, to: dest.uri });
   return dest.uri;
+}
+
+export async function pickAndSaveAlbumArtwork(albumId: string): Promise<string | null> {
+  return pickAndSaveArtwork(albumId);
 }
 
 export async function removeAlbumArtwork(uri?: string): Promise<void> {

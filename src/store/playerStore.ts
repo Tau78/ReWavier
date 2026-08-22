@@ -100,6 +100,19 @@ function restorePlaybackAfterBubble() {
   engine().play();
 }
 
+export function refreshPlayingArtwork(trackId: string) {
+  const playing = usePlayerStore.getState().track;
+  if (playing.id !== trackId) {
+    return;
+  }
+  const next = useLibraryStore.getState().getTrack(trackId);
+  if (!next) {
+    return;
+  }
+  usePlayerStore.setState({ track: { ...playing, artworkUri: next.artworkUri } });
+  fileEngine.updateMetadata(nowPlayingMetadata(next));
+}
+
 export const usePlayerStore = create<PlayerStore>((set, get) => ({
   track: EMPTY_TRACK,
   peaks: [],

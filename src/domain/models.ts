@@ -15,6 +15,7 @@ export type Track = {
   remoteHash?: string;
   startMs?: number;
   endMs?: number;
+  artworkUri?: string;
 };
 
 export const MIN_RANGE_MS = 400;

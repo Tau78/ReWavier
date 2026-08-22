@@ -8,7 +8,7 @@ import type { Track } from '../../domain/models';
 import { userHasUsage } from '../../domain/session';
 import { ensurePeaks } from '../../audio/extractPeaks';
 import { hasDriveToken } from '../../cloud/driveApi';
-import { pickAndSaveAlbumArtwork } from '../../files/albumArtwork';
+import { pickAndSaveAlbumArtwork, pickAndSaveArtwork } from '../../files/albumArtwork';
 import { pickAndImportAudio, shareSidecar } from '../../files/libraryFiles';
 import type { RootStackParamList } from '../../navigation/types';
 import { useLibraryStore } from '../../store/libraryStore';
@@ -136,7 +136,47 @@ export function useLibraryActions(
     }
   };
 
+  const pickTrackArtwork = (track: Track) => {
+    if (track.artworkUri) {
+      Alert.alert('Copertina', 'Vuoi cambiare o togliere la foto di questa traccia?', [
+        { text: 'Annulla', style: 'cancel' },
+        {
+          text: 'Cambia',
+          onPress: () => {
+            void saveTrackArtwork(track.id);
+          },
+        },
+        {
+          text: 'Togli',
+          style: 'destructive',
+          onPress: () => useLibraryStore.getState().setTrackArtwork(track.id, undefined),
+        },
+      ]);
+      return;
+    }
+    void saveTrackArtwork(track.id);
+  };
+
+  const saveTrackArtwork = async (trackId: string) => {
+    try {
+      const uri = await pickAndSaveArtwork(trackId);
+      if (!uri) {
+        return;
+      }
+      useLibraryStore.getState().setTrackArtwork(trackId, uri);
+    } catch (error: unknown) {
+      Alert.alert(
+        'Copertina',
+        error instanceof Error ? error.message : 'Non riesco a usare questa immagine.',
+      );
+    }
+  };
+
   const trackActions = (track: Track): ActionItem[] => [
+    {
+      label: track.artworkUri ? 'Cambia copertina' : 'Aggiungi copertina',
+      onPress: () => pickTrackArtwork(track),
+    },
     {
       label: 'Rinomina',
       onPress: () => setPrompt({ type: 'rename-track', id: track.id, value: track.title }),
@@ -582,6 +622,7 @@ export function useLibraryActions(
     importAudio,
     importDriveAlbum,
     importIntoAlbum: (albumId: string) => importAudio(null, albumId),
+    pickTrackArtwork,
     openTrackMenu: (track: Track) => setMenu({ type: 'track', track }),
     openFolderMenu: (folder: Folder) => setMenu({ type: 'folder', folder }),
     openCreateMenu: () => setMenu({ type: 'create' }),

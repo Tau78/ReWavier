@@ -89,6 +89,17 @@ export class FileAudioEngine {
     this.emit();
   }
 
+  updateMetadata(metadata: AudioMetadata): void {
+    this.metadata = metadata;
+    if (this.player) {
+      try {
+        this.player.updateLockScreenMetadata(metadata);
+      } catch {
+        this.publishLockScreen();
+      }
+    }
+  }
+
   play(): void {
     this.player?.play();
     this.publishLockScreen();

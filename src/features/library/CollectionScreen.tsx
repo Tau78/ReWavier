@@ -301,6 +301,7 @@ export function CollectionScreen() {
                         'Questa traccia non è ancora sul telefono. Tocca ↓ per il download offline.',
                       );
                     }}
+                    onArtwork={() => actions.pickTrackArtwork(item.track)}
                     onMenu={() => actions.openTrackMenu(item.track)}
                     onDownload={() => {
                       void useLibraryStore.getState().downloadTrack(item.track.id).catch((error) => {

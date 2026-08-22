@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { isDownloaded } from '../../domain/audioFormats';
 import { formatTimecode, type Track } from '../../domain/models';
@@ -12,6 +12,7 @@ export function TrackRow({
   onLongPress,
   onDownload,
   onMenu,
+  onArtwork,
 }: {
   track: Track;
   noteCount: number;
@@ -20,8 +21,10 @@ export function TrackRow({
   onLongPress?: () => void;
   onDownload?: () => void;
   onMenu?: () => void;
+  onArtwork?: () => void;
 }) {
   const downloaded = isDownloaded(track);
+  const letter = (track.title.trim()[0] || '?').toUpperCase();
 
   return (
     <Pressable
@@ -32,6 +35,27 @@ export function TrackRow({
       accessibilityRole="button"
       accessibilityLabel={`${track.title}, ${track.artist}`}
     >
+      <Pressable
+        onPress={onArtwork}
+        disabled={!onArtwork}
+        style={styles.artHit}
+        accessibilityRole={onArtwork ? 'button' : undefined}
+        accessibilityLabel={
+          onArtwork
+            ? track.artworkUri
+              ? 'Cambia copertina della traccia'
+              : 'Aggiungi copertina della traccia'
+            : undefined
+        }
+      >
+        {track.artworkUri ? (
+          <Image source={{ uri: track.artworkUri }} style={styles.art} resizeMode="cover" />
+        ) : (
+          <View style={styles.artFallback}>
+            <Text style={styles.artLetter}>{letter}</Text>
+          </View>
+        )}
+      </Pressable>
       <View style={styles.meta}>
         <Text style={styles.title} numberOfLines={1}>
           {track.title}
@@ -87,6 +111,27 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.7,
     backgroundColor: colors.surfaceRaised,
+  },
+  artHit: {
+    width: 44,
+    height: 44,
+    borderRadius: 6,
+    overflow: 'hidden',
+    backgroundColor: colors.surfaceRaised,
+  },
+  art: {
+    width: 44,
+    height: 44,
+  },
+  artFallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  artLetter: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
   },
   meta: {
     flex: 1,

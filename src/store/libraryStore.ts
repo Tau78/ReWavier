@@ -76,6 +76,7 @@ export type LibraryActions = {
   renamePlaylist: (id: string, name: string) => void;
   deletePlaylist: (id: string) => void;
   renameTrack: (id: string, title: string) => void;
+  setTrackArtwork: (id: string, artworkUri?: string) => void;
   setTrackBounds: (id: string, startMs: number, endMs: number) => void;
   deleteTrack: (id: string) => void;
   moveTrack: (trackId: string, folderId: string | null) => void;
@@ -441,6 +442,21 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       .catch(() => undefined);
   },
 
+  setTrackArtwork(id, artworkUri) {
+    const previous = get().getTrack(id)?.artworkUri;
+    if (previous && previous !== artworkUri) {
+      void removeUri(previous);
+    }
+    set((state) => ({
+      tracks: state.tracks.map((track) =>
+        track.id === id ? { ...track, artworkUri } : track,
+      ),
+    }));
+    void import('./playerStore').then(({ refreshPlayingArtwork }) => {
+      refreshPlayingArtwork(id);
+    });
+  },
+
   setTrackBounds(id, startMs, endMs) {
     set((state) => ({
       tracks: state.tracks.map((track) =>
@@ -455,6 +471,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     const track = get().getTrack(id);
     void removeUri(track?.fileUri);
     void removeUri(track?.inboxUri);
+    void removeUri(track?.artworkUri);
     set((state) => ({
       tracks: state.tracks.filter((track) => track.id !== id),
       folders: state.folders.map((folder) => ({

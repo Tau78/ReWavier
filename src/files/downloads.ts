@@ -78,6 +78,7 @@ export function reconcileTrack(track: Track): Track {
         : undefined,
     downloaded: fileOk,
     downloadedAt: fileOk ? track.downloadedAt : undefined,
+    artworkUri: fileExists(track.artworkUri) ? track.artworkUri : undefined,
   };
 }
 

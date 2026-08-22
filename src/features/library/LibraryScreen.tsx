@@ -310,6 +310,7 @@ export function LibraryScreen() {
                 downloading={downloadingIds[track.id] != null}
                 onPress={() => play(track.id)}
                 onLongPress={() => actions.openTrackMenu(track)}
+                onArtwork={() => actions.pickTrackArtwork(track)}
                 onMenu={() => actions.openTrackMenu(track)}
                 onDownload={() => {
                   void useLibraryStore.getState().downloadTrack(track.id).catch((error) => {

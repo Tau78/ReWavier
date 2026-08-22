@@ -12,6 +12,6 @@ export function nowPlayingMetadata(track: Track): AudioMetadata {
     title: track.title,
     artist,
     albumTitle: album?.name,
-    artworkUrl: album?.artworkUri,
+    artworkUrl: track.artworkUri || album?.artworkUri,
   };
 }
