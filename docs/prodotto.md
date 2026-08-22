@@ -121,7 +121,9 @@ Dalla libreria, ingranaggio in alto a destra:
 
 ### App Review notes (App Store Connect)
 
-Incolla il blocco qui sotto nel campo **Notes** (App Review Information) e nella risposta in Resolution Center. Allega anche il video registrato su iPhone fisico (ultimo iOS), partendo dall’icona dell’app.
+Come si manda una recensione Store (vale per ogni app): `.cursor/skills/apple-release/SKILL.md`. Questo blocco è solo ReWavier, già compilato.
+
+Incolla il testo nel campo **Notes** (App Review Information) e nella risposta in Resolution Center. Allega anche il video registrato su iPhone fisico (ultimo iOS), partendo dall’icona dell’app. Username e password vanno anche nei **campi dedicati** (Sign-In Required), non solo qui.
 
 ```
 GUIDELINE 2.1 — APP REVIEW INFORMATION

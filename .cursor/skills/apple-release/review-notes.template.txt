@@ -1,0 +1,44 @@
+GUIDELINE 2.1 — APP REVIEW INFORMATION
+
+1) SCREEN RECORDING
+A screen recording on a physical iPhone (latest iOS) is attached to this reply. It starts at app launch and shows:
+- [login / registration with the demo account]
+- [core flow, button labels as in the UI, with English in parentheses]
+- [account deletion path, if the app has accounts]
+- [any permission prompt: which one, when it appears]
+No in-app purchases or subscriptions. [If IAP: where to buy, sandbox note.]
+[If notes/UGC are private:] Content is private, not a public social feed — no report/block flow.
+No App Tracking Transparency, location, contacts, or camera unless listed here.
+
+2) DEVICES AND OS TESTED BEFORE SUBMISSION
+- [exact model], [iOS version], TestFlight production build
+- [iPad model / “iPad supported” if tablet]
+Do not invent models. Ask the owner if unknown.
+
+3) WHAT THE APP DOES / WHO IT IS FOR
+[One short paragraph. Problem + who + what stays on device vs cloud.]
+
+4) HOW TO SET UP AND USE THE MAIN FEATURES
+SIGN IN — [which button]. Do not use [Apple/Google] unless that is the demo path.
+Email / username: [demo]
+Password: [demo]
+[Hardcoded / backend / expires-on date.] [First-run empty state, if expected.]
+Then:
+1. [step]
+2. [step]
+3. Account deletion: [path] → confirm → back to login.
+
+5) EXTERNAL SERVICES USED FOR CORE FEATURES
+- [Sign in with Apple / Google / iCloud / Drive / payments / AI / own backend]
+- None of: [ads, analytics, payment processor, AI] if unused
+No [app name] server unless you have one — say so.
+
+6) REGIONAL DIFFERENCES
+[Language.] Features and content are the same in every region. [Or list differences.]
+There is no geo-restricted catalog. [Or explain.]
+
+7) REGULATED INDUSTRY / PROTECTED MATERIAL
+Not a regulated industry. [Or: finance/health/legal + what proof you attach.]
+We do not ship licensed third-party catalogs unless listed. Users [import / create] their own content.
+
+Privacy policy: [https URL]
