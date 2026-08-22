@@ -4,6 +4,7 @@ import * as LegacyFS from 'expo-file-system/legacy';
 
 import { createId } from '../domain/library';
 import { fileExists, removeUri } from './downloads';
+import { persistLibraryUri } from './libraryUris';
 import { libraryDirectory } from './libraryPaths';
 
 const IMAGE_PICKER_TYPES = [
@@ -65,7 +66,7 @@ export async function pickAndSaveArtwork(ownerId: string): Promise<string | null
   const ext = extensionFor(asset.name, asset.mimeType);
   const dest = new File(artworkDirectory(), `${ownerId}-${createId('art')}.${ext}`);
   await LegacyFS.copyAsync({ from: asset.uri, to: dest.uri });
-  return dest.uri;
+  return persistLibraryUri(dest.uri) ?? dest.uri;
 }
 
 export async function pickAndSaveAlbumArtwork(albumId: string): Promise<string | null> {

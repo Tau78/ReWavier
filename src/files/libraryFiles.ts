@@ -106,7 +106,7 @@ export async function pickAndImportAudio(): Promise<ImportedBundle[]> {
   const bundles: ImportedBundle[] = [];
   for (const asset of audios) {
     const id = createId('track');
-    const inboxUri = await copyToInbox(asset.uri, id, asset.name);
+    const fileUri = await copyToDownloads(asset.uri, id, asset.name);
     const sidecar = sidecarByBase.get(audioBasename(asset.name).toLowerCase());
     bundles.push({
       track: {
@@ -114,12 +114,12 @@ export async function pickAndImportAudio(): Promise<ImportedBundle[]> {
         title: sidecar?.title || titleFromFileName(asset.name),
         artist: sidecar?.artist || 'Importata',
         durationMs: sidecar?.durationMs || 0,
-        inboxUri,
-        remoteUri: asset.uri,
+        fileUri,
         sourceFileName: asset.name,
         startMs: sidecar?.startMs,
         endMs: sidecar?.endMs,
-        downloaded: false,
+        downloaded: true,
+        downloadedAt: Date.now(),
         remoteSize: asset.size,
         remoteModifiedAt: asset.lastModified
           ? new Date(asset.lastModified).toISOString()

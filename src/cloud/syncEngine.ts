@@ -20,6 +20,7 @@ import {
   titleFromFileName,
 } from '../domain/sidecar';
 import { downloadsDirectory, inboxDirectory } from '../files/downloads';
+import { persistLibraryUri } from '../files/libraryUris';
 import { writeSidecarToLibrary } from '../files/libraryFiles';
 import { useLibraryStore } from '../store/libraryStore';
 import { usePlayerStore } from '../store/playerStore';
@@ -64,7 +65,8 @@ function metaFrom(remote: DriveFile): Pick<Track, 'driveFileId' | 'remoteModifie
 async function saveAudio(remote: DriveFile, trackId: string, downloaded: boolean): Promise<string> {
   const dir = downloaded ? downloadsDirectory() : inboxDirectory();
   const dest = new File(dir, `${trackId}-${remote.name.replace(/[/\\?%*:|"<>]/g, '-')}`);
-  return downloadDriveFile(remote.id, dest.uri);
+  const uri = await downloadDriveFile(remote.id, dest.uri);
+  return persistLibraryUri(uri) ?? uri;
 }
 
 export async function runCloudSync(): Promise<void> {

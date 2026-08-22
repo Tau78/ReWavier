@@ -1,6 +1,7 @@
 import type { AudioMetadata } from 'expo-audio';
 
 import type { Track } from '../domain/models';
+import { resolveLibraryUri } from '../files/libraryUris';
 import { useLibraryStore } from '../store/libraryStore';
 
 export function nowPlayingMetadata(track: Track): AudioMetadata {
@@ -12,6 +13,7 @@ export function nowPlayingMetadata(track: Track): AudioMetadata {
     title: track.title,
     artist,
     albumTitle: album?.name,
-    artworkUrl: track.artworkUri || album?.artworkUri,
+    artworkUrl:
+      resolveLibraryUri(track.artworkUri) || resolveLibraryUri(album?.artworkUri),
   };
 }

@@ -1,45 +1,33 @@
-import { Directory, File } from 'expo-file-system';
+import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
-import { isDownloaded, playableUri } from '../domain/audioFormats';
+import { isDownloaded } from '../domain/audioFormats';
 import type { Track } from '../domain/models';
-import { libraryDirectory } from './libraryPaths';
+import { downloadsDirectory, inboxDirectory } from './libraryPaths';
+import {
+  libraryFileExists,
+  persistLibraryUri,
+  recoverAudioRelative,
+  resolveLibraryUri,
+  resolvedPlayableUri,
+} from './libraryUris';
 
-function ensureDir(name: string): Directory {
-  const dir = new Directory(libraryDirectory(), name);
-  if (!dir.exists) {
-    dir.create();
-  }
-  return dir;
-}
-
-export function inboxDirectory(): Directory {
-  return ensureDir('inbox');
-}
-
-export function downloadsDirectory(): Directory {
-  return ensureDir('downloads');
-}
+export { downloadsDirectory, inboxDirectory } from './libraryPaths';
 
 function safeFileName(name: string): string {
   return name.replace(/[/\\?%*:|"<>]/g, '-');
 }
 
 export function fileExists(uri?: string): boolean {
-  if (!uri) {
-    return false;
-  }
-  try {
-    return new File(uri).exists === true;
-  } catch {
-    return false;
-  }
+  return libraryFileExists(uri);
 }
 
 export async function copyToInbox(sourceUri: string, trackId: string, fileName: string): Promise<string> {
-  const dest = new File(inboxDirectory(), `${trackId}-${safeFileName(fileName)}`);
-  await LegacyFS.copyAsync({ from: sourceUri, to: dest.uri });
-  return dest.uri;
+  const name = `${trackId}-${safeFileName(fileName)}`;
+  const dest = new File(inboxDirectory(), name);
+  const from = resolveLibraryUri(sourceUri) ?? sourceUri;
+  await LegacyFS.copyAsync({ from, to: dest.uri });
+  return `inbox/${name}`;
 }
 
 export async function copyToDownloads(
@@ -47,41 +35,42 @@ export async function copyToDownloads(
   trackId: string,
   fileName: string,
 ): Promise<string> {
-  const dest = new File(downloadsDirectory(), `${trackId}-${safeFileName(fileName)}`);
-  await LegacyFS.copyAsync({ from: sourceUri, to: dest.uri });
-  return dest.uri;
+  const name = `${trackId}-${safeFileName(fileName)}`;
+  const dest = new File(downloadsDirectory(), name);
+  const from = resolveLibraryUri(sourceUri) ?? sourceUri;
+  await LegacyFS.copyAsync({ from, to: dest.uri });
+  return `downloads/${name}`;
 }
 
 export async function removeUri(uri?: string): Promise<void> {
-  if (!uri || !fileExists(uri)) {
+  const resolved = resolveLibraryUri(uri);
+  if (!resolved || !fileExists(uri)) {
     return;
   }
   try {
-    await LegacyFS.deleteAsync(uri, { idempotent: true });
+    await LegacyFS.deleteAsync(resolved, { idempotent: true });
   } catch {
     // already gone
   }
 }
 
 export function reconcileTrack(track: Track): Track {
-  const fileOk = fileExists(track.fileUri);
-  const inboxOk = fileExists(track.inboxUri);
-  const remoteOk = fileExists(track.remoteUri);
+  const recovered = recoverAudioRelative(track);
+  const fileUri = recovered.fileUri;
+  const inboxUri = recovered.inboxUri;
+  const artworkUri = persistLibraryUri(track.artworkUri);
+  const remoteUri = track.remoteUri?.startsWith('http') ? track.remoteUri : undefined;
   return {
     ...track,
-    fileUri: fileOk ? track.fileUri : undefined,
-    inboxUri: inboxOk ? track.inboxUri : undefined,
-    remoteUri: track.remoteUri?.startsWith('http')
-      ? track.remoteUri
-      : remoteOk
-        ? track.remoteUri
-        : undefined,
-    downloaded: fileOk,
-    downloadedAt: fileOk ? track.downloadedAt : undefined,
-    artworkUri: fileExists(track.artworkUri) ? track.artworkUri : undefined,
+    fileUri,
+    inboxUri,
+    remoteUri,
+    downloaded: Boolean(fileUri),
+    downloadedAt: fileUri ? track.downloadedAt : undefined,
+    artworkUri: artworkUri && fileExists(artworkUri) ? artworkUri : undefined,
   };
 }
 
 export function trackNeedsDownload(track: Track): boolean {
-  return !isDownloaded(track) && Boolean(playableUri(track) || track.remoteUri);
+  return !isDownloaded(track) && Boolean(resolvedPlayableUri(track) || track.remoteUri);
 }

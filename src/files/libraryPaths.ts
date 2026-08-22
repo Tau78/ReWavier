@@ -7,3 +7,19 @@ export function libraryDirectory(): Directory {
   }
   return dir;
 }
+
+function ensureDir(name: string): Directory {
+  const dir = new Directory(libraryDirectory(), name);
+  if (!dir.exists) {
+    dir.create();
+  }
+  return dir;
+}
+
+export function inboxDirectory(): Directory {
+  return ensureDir('inbox');
+}
+
+export function downloadsDirectory(): Directory {
+  return ensureDir('downloads');
+}

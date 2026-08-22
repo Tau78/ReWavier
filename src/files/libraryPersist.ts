@@ -11,7 +11,13 @@ import {
 } from '../domain/library';
 import type { Marker, Track } from '../domain/models';
 import { fileExists, reconcileTrack } from './downloads';
+import { persistLibraryUri } from './libraryUris';
 import { libraryDirectory } from './libraryPaths';
+
+function persistAndKeep(uri?: string): string | undefined {
+  const stored = persistLibraryUri(uri);
+  return stored && fileExists(stored) ? stored : undefined;
+}
 
 export const LIBRARY_SNAPSHOT_VERSION = 2;
 const SNAPSHOT_NAME = 'library.json';
@@ -52,7 +58,7 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
         ...album,
         trackIds,
         separators: separators.length > 0 ? separators : undefined,
-        artworkUri: fileExists(album.artworkUri) ? album.artworkUri : undefined,
+        artworkUri: persistAndKeep(album.artworkUri),
         notes: album.notes?.trim() ? album.notes : undefined,
       };
     }),

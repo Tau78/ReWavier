@@ -17,7 +17,7 @@ import { ensurePeaks } from '../../audio/extractPeaks';
 import { pushTrackToSharedAlbum } from '../../cloud/syncEngine';
 import { createId } from '../../domain/library';
 import { formatTimecode } from '../../domain/models';
-import { copyToInbox } from '../../files/downloads';
+import { copyToDownloads } from '../../files/downloads';
 import type { RootStackParamList } from '../../navigation/types';
 import { useLibraryStore } from '../../store/libraryStore';
 import { useSessionStore } from '../../store/sessionStore';
@@ -168,7 +168,7 @@ export function RecordSketchScreen() {
     setSaving(true);
     try {
       const id = createId('track');
-      const inboxUri = await copyToInbox(uri, id, named.fileName);
+      const fileUri = await copyToDownloads(uri, id, named.fileName);
       useLibraryStore.getState().importBundles(
         [
           {
@@ -177,9 +177,10 @@ export function RecordSketchScreen() {
               title: named.title,
               artist: displayName,
               durationMs: elapsedMs,
-              inboxUri,
+              fileUri,
               sourceFileName: named.fileName,
-              downloaded: false,
+              downloaded: true,
+              downloadedAt: Date.now(),
             },
             markers: [],
           },

@@ -2,6 +2,7 @@ import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { Album } from '../../domain/library';
 import { pickAndSaveAlbumArtwork } from '../../files/albumArtwork';
+import { resolveLibraryUri } from '../../files/libraryUris';
 import { useLibraryStore } from '../../store/libraryStore';
 import { colors, layout } from '../../theme/colors';
 
@@ -29,6 +30,7 @@ export function AlbumHero({
   onPlay: () => void;
 }) {
   const letter = (album.name.trim()[0] || 'A').toUpperCase();
+  const artworkUri = resolveLibraryUri(album.artworkUri);
   const meta = album.artist?.trim()
     ? `${album.artist} · ${trackCount} ${trackCount === 1 ? 'traccia' : 'tracce'}`
     : `${trackCount} ${trackCount === 1 ? 'traccia' : 'tracce'}`;
@@ -73,8 +75,8 @@ export function AlbumHero({
           accessibilityLabel={album.artworkUri ? 'Cambia copertina' : 'Aggiungi copertina'}
           style={({ pressed }) => [styles.artHit, pressed && styles.pressed]}
         >
-          {album.artworkUri ? (
-            <Image source={{ uri: album.artworkUri }} style={styles.art} resizeMode="cover" />
+          {artworkUri ? (
+            <Image source={{ uri: artworkUri }} style={styles.art} resizeMode="cover" />
           ) : (
             <View style={styles.placeholder}>
               <Text style={styles.letter}>{letter}</Text>

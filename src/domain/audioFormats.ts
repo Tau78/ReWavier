@@ -1,3 +1,5 @@
+import { resolvedPlayableUri } from '../files/libraryUris';
+
 export const AUDIO_EXTENSIONS = [
   'wav',
   'aiff',
@@ -20,11 +22,13 @@ export function isAudioName(fileName: string): boolean {
 }
 
 export function playableUri(track: {
+  id?: string;
   fileUri?: string;
   inboxUri?: string;
   remoteUri?: string;
+  sourceFileName?: string;
 }): string | undefined {
-  return track.fileUri || track.inboxUri || track.remoteUri;
+  return resolvedPlayableUri(track);
 }
 
 export function isDownloaded(track: { downloaded?: boolean; fileUri?: string }): boolean {

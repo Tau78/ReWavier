@@ -2,6 +2,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { isDownloaded } from '../../domain/audioFormats';
 import { formatTimecode, type Track } from '../../domain/models';
+import { resolveLibraryUri } from '../../files/libraryUris';
 import { colors } from '../../theme/colors';
 
 export function TrackRow({
@@ -25,6 +26,7 @@ export function TrackRow({
 }) {
   const downloaded = isDownloaded(track);
   const letter = (track.title.trim()[0] || '?').toUpperCase();
+  const artworkUri = resolveLibraryUri(track.artworkUri);
 
   return (
     <Pressable
@@ -48,8 +50,8 @@ export function TrackRow({
             : undefined
         }
       >
-        {track.artworkUri ? (
-          <Image source={{ uri: track.artworkUri }} style={styles.art} resizeMode="cover" />
+        {artworkUri ? (
+          <Image source={{ uri: artworkUri }} style={styles.art} resizeMode="cover" />
         ) : (
           <View style={styles.artFallback}>
             <Text style={styles.artLetter}>{letter}</Text>

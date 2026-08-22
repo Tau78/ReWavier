@@ -14,6 +14,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { albumTrackCount, type CollectionKind } from '../../domain/library';
+import { resolveLibraryUri } from '../../files/libraryUris';
 import type { RootStackParamList } from '../../navigation/types';
 import { runCloudSync } from '../../cloud/syncEngine';
 import { useLibraryStore } from '../../store/libraryStore';
@@ -246,7 +247,7 @@ export function LibraryScreen() {
               <CollectionRow
                 key={album.id}
                 name={album.name}
-                imageUri={album.artworkUri ?? ''}
+                imageUri={resolveLibraryUri(album.artworkUri) ?? ''}
                 meta={
                   album.origin === 'drive'
                     ? `Drive · ${albumTrackCount(album.trackIds)} tracce`
