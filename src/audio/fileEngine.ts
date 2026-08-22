@@ -1,15 +1,31 @@
-import { Audio, type AVPlaybackStatus } from 'expo-av';
+import {
+  createAudioPlayer,
+  setAudioModeAsync,
+  type AudioMetadata,
+  type AudioPlayer,
+  type AudioStatus,
+} from 'expo-audio';
 
 import type { PlaybackListener } from './mockEngine';
 
+const LOCK_OPTIONS = {
+  showSeekBackward: true,
+  showSeekForward: true,
+} as const;
+
 export class FileAudioEngine {
-  private sound: Audio.Sound | null = null;
+  private player: AudioPlayer | null = null;
+  private statusSub: { remove: () => void } | null = null;
+  private metadata: AudioMetadata | undefined;
   private positionMs = 0;
   private playing = false;
   private durationMs = 0;
   private readonly listeners = new Set<PlaybackListener>();
 
   getPositionMs(): number {
+    if (this.player) {
+      return Math.round(this.player.currentTime * 1000);
+    }
     return this.positionMs;
   }
 
@@ -21,57 +37,70 @@ export class FileAudioEngine {
     return this.durationMs;
   }
 
-  async load(uri: string): Promise<number> {
+  async load(uri: string, metadata?: AudioMetadata): Promise<number> {
     await this.unload();
-    await Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: true,
+    this.metadata = metadata;
+    await setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      interruptionMode: 'doNotMix',
     });
-    const { sound, status } = await Audio.Sound.createAsync(
+    const player = createAudioPlayer(
       { uri },
-      { shouldPlay: false, progressUpdateIntervalMillis: 50 },
-      (next) => this.onStatus(next),
+      { updateInterval: 50, keepAudioSessionActive: true },
     );
-    this.sound = sound;
-    if (status.isLoaded) {
-      this.durationMs = status.durationMillis ?? 0;
-      this.positionMs = status.positionMillis ?? 0;
-      this.playing = status.isPlaying;
-    }
+    this.player = player;
+    this.statusSub = player.addListener('playbackStatusUpdate', (status) => this.onStatus(status));
+    const durationMs = await waitForDuration(player);
+    this.durationMs = durationMs;
+    this.positionMs = Math.round(player.currentTime * 1000);
+    this.playing = player.playing;
+    this.publishLockScreen();
     this.emit();
     return this.durationMs;
   }
 
   async unload(): Promise<void> {
-    if (this.sound) {
-      try {
-        await this.sound.unloadAsync();
-      } catch {
-        // already unloaded
-      }
-    }
-    this.sound = null;
+    const player = this.player;
+    this.statusSub?.remove();
+    this.statusSub = null;
+    this.player = null;
+    this.metadata = undefined;
     this.playing = false;
     this.positionMs = 0;
+    this.durationMs = 0;
+    if (player) {
+      try {
+        player.clearLockScreenControls();
+      } catch {
+        // already cleared
+      }
+      try {
+        player.pause();
+      } catch {
+        // already paused
+      }
+      try {
+        player.remove();
+      } catch {
+        // already released
+      }
+    }
     this.emit();
   }
 
   play(): void {
-    void this.sound?.playAsync();
+    this.player?.play();
+    this.publishLockScreen();
   }
 
   pause(): void {
-    void this.sound?.pauseAsync();
+    this.player?.pause();
   }
 
   stop(): void {
-    void (async () => {
-      if (!this.sound) {
-        return;
-      }
-      await this.sound.stopAsync();
-      await this.sound.setPositionAsync(0);
-    })();
+    void this.player?.seekTo(0);
+    this.player?.pause();
   }
 
   seekBy(deltaMs: number): void {
@@ -80,7 +109,8 @@ export class FileAudioEngine {
 
   seekTo(ms: number): void {
     const clamped = Math.min(this.durationMs, Math.max(0, ms));
-    void this.sound?.setPositionAsync(clamped);
+    this.positionMs = clamped;
+    void this.player?.seekTo(clamped / 1000);
   }
 
   subscribe(listener: PlaybackListener): () => void {
@@ -91,14 +121,22 @@ export class FileAudioEngine {
     };
   }
 
-  private onStatus(status: AVPlaybackStatus): void {
-    if (!status.isLoaded) {
+  private publishLockScreen() {
+    if (!this.player || !this.metadata) {
       return;
     }
-    this.positionMs = status.positionMillis ?? 0;
-    this.playing = status.isPlaying;
-    if (status.durationMillis) {
-      this.durationMs = status.durationMillis;
+    try {
+      this.player.setActiveForLockScreen(true, this.metadata, LOCK_OPTIONS);
+    } catch {
+      // Expo Go or older native binary without lock-screen controls
+    }
+  }
+
+  private onStatus(status: AudioStatus): void {
+    this.positionMs = Math.round((status.currentTime ?? 0) * 1000);
+    this.playing = status.playing;
+    if (status.duration) {
+      this.durationMs = Math.round(status.duration * 1000);
     }
     if (status.didJustFinish) {
       this.playing = false;
@@ -112,4 +150,30 @@ export class FileAudioEngine {
       listener(this.positionMs, this.playing);
     }
   }
+}
+
+function waitForDuration(player: AudioPlayer, timeoutMs = 20_000): Promise<number> {
+  if (player.isLoaded && player.duration > 0) {
+    return Promise.resolve(Math.round(player.duration * 1000));
+  }
+  return new Promise((resolve, reject) => {
+    const finish = (durationSec: number) => {
+      clearTimeout(timer);
+      sub.remove();
+      resolve(Math.round(durationSec * 1000));
+    };
+    const timer = setTimeout(() => {
+      sub.remove();
+      if (player.isLoaded) {
+        resolve(Math.round((player.duration || 0) * 1000));
+        return;
+      }
+      reject(new Error('Caricamento audio non riuscito'));
+    }, timeoutMs);
+    const sub = player.addListener('playbackStatusUpdate', (status) => {
+      if (status.isLoaded) {
+        finish(status.duration || player.duration || 0);
+      }
+    });
+  });
 }

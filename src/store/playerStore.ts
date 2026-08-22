@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { ensurePeaks } from '../audio/extractPeaks';
 import { FileAudioEngine } from '../audio/fileEngine';
 import { MockAudioEngine } from '../audio/mockEngine';
+import { nowPlayingMetadata } from '../audio/nowPlaying';
 import { playableUri } from '../domain/audioFormats';
 import { stampNewMarker } from '../domain/markers';
 import {
@@ -364,7 +365,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       return;
     }
     void fileEngine
-      .load(uri)
+      .load(uri, nowPlayingMetadata(track))
       .then((durationMs) => {
         if (get().track.id !== track.id) {
           return;

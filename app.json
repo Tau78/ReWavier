@@ -92,6 +92,12 @@
         }
       ],
       [
+        "expo-audio",
+        {
+          "microphonePermission": "ReWavier usa il microfono solo quando registri una bozza musicale."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#0D0D0F",
