@@ -66,6 +66,16 @@ export async function saveLocalAccounts(accounts: LocalAccount[]): Promise<void>
   await LegacyFS.writeAsStringAsync(accountsFile().uri, JSON.stringify(accounts));
 }
 
+/** Drops the matching email account. Demo login is hardcoded and is never stored here.
+ * Keep `scripts/check-account-delete.mjs` in sync with this filter. */
+export function accountsWithoutUser(
+  accounts: LocalAccount[],
+  user: { id: string; email: string },
+): LocalAccount[] {
+  const email = user.email.trim().toLowerCase();
+  return accounts.filter((item) => item.id !== user.id && item.email !== email);
+}
+
 export async function saveGoogleToken(token: string): Promise<void> {
   await SecureStore.setItemAsync(GOOGLE_TOKEN_KEY, token);
 }

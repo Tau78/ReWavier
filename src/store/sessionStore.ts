@@ -16,6 +16,7 @@ import {
   type UserBand,
 } from '../domain/session';
 import {
+  accountsWithoutUser,
   clearGoogleToken,
   loadLocalAccounts,
   loadSessionSnapshot,
@@ -58,6 +59,7 @@ export type SessionActions = {
   setActiveBand: (bandId: string) => void;
   connectDrive: (link: DriveLink) => void;
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
 };
 
 export type SessionStore = SessionState & SessionActions;
@@ -349,6 +351,18 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   async logout() {
+    await clearGoogleToken().catch(() => undefined);
+    set({ user: null });
+    persist(get());
+  },
+
+  async deleteAccount() {
+    const { user } = get();
+    if (!user) {
+      return;
+    }
+    const accounts = await loadLocalAccounts();
+    await saveLocalAccounts(accountsWithoutUser(accounts, user));
     await clearGoogleToken().catch(() => undefined);
     set({ user: null });
     persist(get());
