@@ -295,7 +295,7 @@ export function LibraryScreen() {
               <Text style={styles.emptyHint}>
                 {query.trim()
                   ? 'Prova un altro nome.'
-                  : 'Carica wav, aiff, mp4, mp3, aac o m4a. Tocca ↓ per il download offline.'}
+                  : 'Tocca Carica audio, oppure metti i file in File → ReWavier → Audio.'}
               </Text>
               {query.trim() ? null : <Text style={styles.emptyAction}>Carica audio</Text>}
             </Pressable>

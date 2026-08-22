@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { File } from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
 import { libraryDirectory } from '../files/libraryFiles';
@@ -176,7 +176,7 @@ export function WaveformDecoderHost() {
         containerStyle={styles.hidden}
         pointerEvents="none"
         originWhitelist={['*']}
-        allowingReadAccessToURL={libraryDirectory().uri}
+        allowingReadAccessToURL={Paths.document.uri}
         allowFileAccess
         allowFileAccessFromFileURLs
         allowUniversalAccessFromFileURLs

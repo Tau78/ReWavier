@@ -16,10 +16,12 @@ import {
   titleFromFileName,
   type SidecarFile,
 } from '../domain/sidecar';
+import { sidecarPathForTrack, type ImportedBundle } from './audioFolder';
 import { copyToDownloads, copyToInbox } from './downloads';
-import { libraryDirectory } from './libraryPaths';
+import { audioDirectory, libraryDirectory } from './libraryPaths';
 
 export { libraryDirectory } from './libraryPaths';
+export type { ImportedBundle } from './audioFolder';
 
 function libraryDir(): Directory {
   return libraryDirectory();
@@ -42,8 +44,8 @@ export async function writeSidecarToLibrary(
   markers: Marker[],
   authorSlug?: string,
 ): Promise<string> {
-  const name = sidecarNameForAudio(track.sourceFileName ?? `${track.title}.mp3`, authorSlug);
-  const dest = new File(libraryDir(), safeFileName(name));
+  const name = sidecarPathForTrack(track, authorSlug);
+  const dest = new File(audioDirectory(), safeFileName(name));
   dest.write(JSON.stringify(buildSidecar(track, markers), null, 2));
   return dest.uri;
 }
@@ -51,9 +53,11 @@ export async function writeSidecarToLibrary(
 export function removeSidecarFromLibrary(fileName: string, authorSlug?: string): void {
   const names = [sidecarNameForAudio(fileName, authorSlug), sidecarNameForAudio(fileName)];
   for (const name of new Set(names)) {
-    const dest = new File(libraryDir(), safeFileName(name));
-    if (dest.exists) {
-      dest.delete();
+    for (const dir of [audioDirectory(), libraryDir()]) {
+      const dest = new File(dir, safeFileName(name));
+      if (dest.exists) {
+        dest.delete();
+      }
     }
   }
 }
@@ -76,11 +80,6 @@ export async function shareSidecar(
     dialogTitle: `Salva ${name} accanto al file audio`,
   });
 }
-
-export type ImportedBundle = {
-  track: Track;
-  markers: Marker[];
-};
 
 export async function pickAndImportAudio(): Promise<ImportedBundle[]> {
   const result = await DocumentPicker.getDocumentAsync({

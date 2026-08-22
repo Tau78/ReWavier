@@ -1,0 +1,221 @@
+import { File } from 'expo-file-system';
+import * as LegacyFS from 'expo-file-system/legacy';
+
+import { createId } from '../domain/library';
+import { isAudioName } from '../domain/audioFormats';
+import { parseSidecar, sidecarNameForAudio, titleFromFileName } from '../domain/sidecar';
+import type { Marker, Track } from '../domain/models';
+import { uniqueAudioFileName } from './downloads';
+import { audioDirectory, downloadsDirectory, inboxDirectory, libraryDirectory } from './libraryPaths';
+import { persistLibraryUri, resolveLibraryUri } from './libraryUris';
+
+export type ImportedBundle = {
+  track: Track;
+  markers: Marker[];
+};
+
+const README_NAME = 'Come usare questa cartella.txt';
+const README_TEXT = `Questa è la cartella dei brani di ReWavier.
+
+Ogni brano ha accanto un file degli appunti, con lo stesso nome.
+
+Per ascoltarli su un altro telefono:
+1. Copia questa cartella Audio (Drive, AirDrop o un cavo).
+2. Sull’altro telefono mettila in File → Sul mio iPhone → ReWavier.
+3. Apri ReWavier: i brani e gli appunti riappaiono.
+`;
+
+function basename(uri: string): string {
+  const clean = uri.split('?')[0] ?? uri;
+  const parts = clean.replace(/\/$/, '').split('/');
+  return decodeURIComponent(parts[parts.length - 1] ?? '');
+}
+
+function stripLegacyPrefix(name: string, trackId?: string): string {
+  if (trackId && name.startsWith(`${trackId}-`)) {
+    return name.slice(trackId.length + 1);
+  }
+  const match = name.match(/^(track|file)-[a-z0-9]+-(.+)$/i);
+  return match?.[2] ?? name;
+}
+
+function writeReadme() {
+  const dest = new File(audioDirectory(), README_NAME);
+  if (dest.exists) {
+    return;
+  }
+  dest.write(README_TEXT);
+}
+
+async function moveIntoAudio(fromStored: string, preferredName: string): Promise<string | undefined> {
+  const from = resolveLibraryUri(fromStored);
+  if (!from) {
+    return undefined;
+  }
+  const already = persistLibraryUri(from);
+  if (already?.startsWith('Audio/') && new File(from).exists) {
+    return already;
+  }
+  const name = uniqueAudioFileName(preferredName);
+  const dest = new File(audioDirectory(), name);
+  try {
+    await LegacyFS.moveAsync({ from, to: dest.uri });
+  } catch {
+    try {
+      await LegacyFS.copyAsync({ from, to: dest.uri });
+      await LegacyFS.deleteAsync(from, { idempotent: true });
+    } catch {
+      return already;
+    }
+  }
+  return `Audio/${name}`;
+}
+
+async function migrateLooseFiles(dir: ReturnType<typeof downloadsDirectory>, prefix: 'downloads' | 'inbox') {
+  if (!dir.exists) {
+    return;
+  }
+  try {
+    for (const entry of dir.list()) {
+      const name = basename(entry.uri);
+      if (!name || !isAudioName(name)) {
+        continue;
+      }
+      await moveIntoAudio(`${prefix}/${name}`, stripLegacyPrefix(name));
+    }
+  } catch {
+    // folder unreadable
+  }
+}
+
+export async function migrateTracksToAudioFolder(tracks: Track[]): Promise<Track[]> {
+  writeReadme();
+  const next: Track[] = [];
+  for (const track of tracks) {
+    const source = track.fileUri || track.inboxUri;
+    if (!source) {
+      next.push(track);
+      continue;
+    }
+    const preferred = stripLegacyPrefix(
+      track.sourceFileName || basename(source) || `${track.title}.m4a`,
+      track.id,
+    );
+    const fileUri = await moveIntoAudio(source, preferred);
+    next.push({
+      ...track,
+      fileUri,
+      inboxUri: fileUri ? undefined : track.inboxUri,
+      downloaded: Boolean(fileUri) || track.downloaded,
+      sourceFileName: fileUri ? basename(fileUri) : track.sourceFileName,
+    });
+  }
+  await migrateLooseFiles(downloadsDirectory(), 'downloads');
+  await migrateLooseFiles(inboxDirectory(), 'inbox');
+  await migrateSidecars();
+  return next;
+}
+
+async function migrateSidecars() {
+  const lib = libraryDirectory();
+  if (!lib.exists) {
+    return;
+  }
+  try {
+    for (const entry of lib.list()) {
+      const name = basename(entry.uri);
+      if (!name.toLowerCase().endsWith('.rewavier.json')) {
+        continue;
+      }
+      const dest = new File(audioDirectory(), name);
+      if (dest.exists) {
+        continue;
+      }
+      const from = resolveLibraryUri(name) ?? entry.uri;
+      try {
+        await LegacyFS.moveAsync({ from, to: dest.uri });
+      } catch {
+        // leave the old note file where it is
+      }
+    }
+  } catch {
+    // folder unreadable
+  }
+}
+
+function claimedNames(tracks: Track[]): Set<string> {
+  const names = new Set<string>();
+  for (const track of tracks) {
+    for (const stored of [track.fileUri, track.inboxUri, track.sourceFileName]) {
+      if (stored) {
+        names.add(basename(stored));
+      }
+    }
+  }
+  return names;
+}
+
+export async function scanAudioFolder(tracks: Track[]): Promise<ImportedBundle[]> {
+  writeReadme();
+  const dir = audioDirectory();
+  const claimed = claimedNames(tracks);
+  const bundles: ImportedBundle[] = [];
+  let names: string[] = [];
+  try {
+    names = dir.list().map((entry) => basename(entry.uri)).filter(Boolean);
+  } catch {
+    return [];
+  }
+
+  for (const name of names) {
+    if (!isAudioName(name) || claimed.has(name)) {
+      continue;
+    }
+    let markers: Marker[] = [];
+    let title = titleFromFileName(name);
+    let artist = 'Dalla cartella';
+    let durationMs = 0;
+    let startMs: number | undefined;
+    let endMs: number | undefined;
+    const sidecarFile = new File(dir, sidecarNameForAudio(name));
+    if (sidecarFile.exists) {
+      try {
+        const parsed = parseSidecar(await sidecarFile.text());
+        if (parsed) {
+          markers = parsed.markers;
+          title = parsed.title || title;
+          artist = parsed.artist || artist;
+          durationMs = parsed.durationMs || 0;
+          startMs = parsed.startMs;
+          endMs = parsed.endMs;
+        }
+      } catch {
+        // sidecar unreadable
+      }
+    }
+    bundles.push({
+      track: {
+        id: createId('track'),
+        title,
+        artist,
+        durationMs,
+        fileUri: `Audio/${name}`,
+        sourceFileName: name,
+        startMs,
+        endMs,
+        downloaded: true,
+        downloadedAt: Date.now(),
+      },
+      markers,
+    });
+  }
+  return bundles;
+}
+
+export function sidecarPathForTrack(track: Track, authorSlug?: string): string {
+  const stored = persistLibraryUri(track.fileUri);
+  const audioName = stored?.startsWith('Audio/')
+    ? basename(stored)
+    : track.sourceFileName ?? `${track.title}.m4a`;
+  return sidecarNameForAudio(audioName, authorSlug);
+}

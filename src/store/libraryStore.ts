@@ -23,6 +23,7 @@ import {
   type LibrarySnapshot,
 } from '../files/libraryPersist';
 import { playableUri } from '../domain/audioFormats';
+import { migrateTracksToAudioFolder, scanAudioFolder } from '../files/audioFolder';
 import {
   copyToDownloads,
   removeUri,
@@ -727,17 +728,24 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
 
   async hydrate() {
     const snapshot = await loadLibrarySnapshot();
-    if (snapshot) {
-      set({
-        tracks: snapshot.tracks,
-        folders: snapshot.folders,
-        albums: snapshot.albums,
-        playlists: snapshot.playlists,
-        smartPlaylists: snapshot.smartPlaylists,
-        markersByTrackId: snapshot.markersByTrackId,
-      });
+    const migrated = await migrateTracksToAudioFolder(snapshot?.tracks ?? []);
+    const extras = await scanAudioFolder(migrated);
+    const markersByTrackId = { ...(snapshot?.markersByTrackId ?? {}) };
+    for (const bundle of extras) {
+      markersByTrackId[bundle.track.id] = bundle.markers;
     }
+    set({
+      tracks: [...migrated, ...extras.map((bundle) => bundle.track)],
+      folders: snapshot?.folders ?? get().folders,
+      albums: snapshot?.albums ?? get().albums,
+      playlists: snapshot?.playlists ?? get().playlists,
+      smartPlaylists: snapshot?.smartPlaylists ?? get().smartPlaylists,
+      markersByTrackId,
+    });
     persistReady = true;
+    if (extras.length > 0 || snapshot) {
+      schedulePersist();
+    }
   },
 
   getTrack(id) {

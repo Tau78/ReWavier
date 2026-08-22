@@ -188,18 +188,25 @@ export function SettingsScreen() {
                 : 'All’apertura l’app controlla se un compagno ha sostituito un audio o aggiunto note.')}
           </Text>
         </Pressable>
-        <View style={styles.card}>
-          <Text style={styles.rowLabel}>Dati</Text>
+        <Pressable
+          onPress={() =>
+            Alert.alert(
+              'Cartella dei brani',
+              'Apri l’app File. Poi Sul mio iPhone → ReWavier → Audio.\n\nPer ascoltarli su un altro telefono, copia quella cartella (Drive, AirDrop o un cavo) e mettila nello stesso posto. All’apertura ReWavier ritrova i brani e gli appunti.',
+            )
+          }
+          style={styles.card}
+        >
+          <Text style={styles.rowLabel}>Cartella dei brani</Text>
           <Text style={styles.rowValue}>
-            Catalogo, marker e download restano su questo dispositivo. Gli album Drive stanno
-            in Album: ↓ scarica offline, come su Spotify.
+            I brani stanno nella cartella Audio di ReWavier. La trovi in File, sul telefono.
           </Text>
-        </View>
+          <Text style={styles.rowHint}>Tocca per vedere come copiarla su un altro telefono.</Text>
+        </Pressable>
         <View style={styles.card}>
-          <Text style={styles.rowLabel}>Esporta marker</Text>
+          <Text style={styles.rowLabel}>Album da Drive</Text>
           <Text style={styles.rowValue}>
-            Tieni premuta una traccia e scegli Esporta marker se vuoi un JSON accanto
-            all’audio. Con Google collegato, all’apertura le note degli altri arrivano da Drive.
+            Un album collegato a Drive si aggiorna da solo. Tocca ↓ per tenerlo anche sul telefono.
           </Text>
         </View>
         <Pressable onPress={() => navigation.navigate('Privacy')} style={styles.card}>

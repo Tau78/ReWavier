@@ -3,7 +3,7 @@ import * as LegacyFS from 'expo-file-system/legacy';
 
 import { isDownloaded } from '../domain/audioFormats';
 import type { Track } from '../domain/models';
-import { downloadsDirectory, inboxDirectory } from './libraryPaths';
+import { audioDirectory, downloadsDirectory, inboxDirectory } from './libraryPaths';
 import {
   libraryFileExists,
   persistLibraryUri,
@@ -12,34 +12,51 @@ import {
   resolvedPlayableUri,
 } from './libraryUris';
 
-export { downloadsDirectory, inboxDirectory } from './libraryPaths';
+export { audioDirectory, downloadsDirectory, inboxDirectory } from './libraryPaths';
 
 function safeFileName(name: string): string {
-  return name.replace(/[/\\?%*:|"<>]/g, '-');
+  return name.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'traccia.m4a';
+}
+
+export function uniqueAudioFileName(fileName: string): string {
+  const safe = safeFileName(fileName);
+  const dir = audioDirectory();
+  if (!new File(dir, safe).exists) {
+    return safe;
+  }
+  const dot = safe.lastIndexOf('.');
+  const base = dot > 0 ? safe.slice(0, dot) : safe;
+  const ext = dot > 0 ? safe.slice(dot) : '';
+  for (let n = 2; n < 1000; n++) {
+    const candidate = `${base} ${n}${ext}`;
+    if (!new File(dir, candidate).exists) {
+      return candidate;
+    }
+  }
+  return `${base} ${Date.now()}${ext}`;
 }
 
 export function fileExists(uri?: string): boolean {
   return libraryFileExists(uri);
 }
 
-export async function copyToInbox(sourceUri: string, trackId: string, fileName: string): Promise<string> {
-  const name = `${trackId}-${safeFileName(fileName)}`;
-  const dest = new File(inboxDirectory(), name);
-  const from = resolveLibraryUri(sourceUri) ?? sourceUri;
-  await LegacyFS.copyAsync({ from, to: dest.uri });
-  return `inbox/${name}`;
+export async function copyToInbox(sourceUri: string, _trackId: string, fileName: string): Promise<string> {
+  return copyToDownloads(sourceUri, _trackId, fileName);
 }
 
 export async function copyToDownloads(
   sourceUri: string,
-  trackId: string,
+  _trackId: string,
   fileName: string,
 ): Promise<string> {
-  const name = `${trackId}-${safeFileName(fileName)}`;
-  const dest = new File(downloadsDirectory(), name);
+  const name = uniqueAudioFileName(fileName);
+  const dest = new File(audioDirectory(), name);
   const from = resolveLibraryUri(sourceUri) ?? sourceUri;
+  if (from === dest.uri) {
+    return `Audio/${name}`;
+  }
   await LegacyFS.copyAsync({ from, to: dest.uri });
-  return `downloads/${name}`;
+  return `Audio/${name}`;
 }
 
 export async function removeUri(uri?: string): Promise<void> {

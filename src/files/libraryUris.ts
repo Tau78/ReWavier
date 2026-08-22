@@ -1,8 +1,9 @@
-import { Directory, File } from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 
-import { downloadsDirectory, inboxDirectory, libraryDirectory } from './libraryPaths';
+import { audioDirectory, downloadsDirectory, inboxDirectory, libraryDirectory } from './libraryPaths';
 
-const LIBRARY_MARKER = '/rewavier/';
+const LEGACY_MARKER = '/rewavier/';
+const DOCUMENTS_MARKER = '/Documents/';
 
 function basename(uri: string): string {
   const clean = uri.split('?')[0] ?? uri;
@@ -10,8 +11,24 @@ function basename(uri: string): string {
   return decodeURIComponent(parts[parts.length - 1] ?? '');
 }
 
+function documentsRelative(uri: string): string | undefined {
+  const docs = Paths.document.uri.replace(/\/$/, '');
+  const clean = uri.split('?')[0] ?? uri;
+  if (clean.startsWith(`${docs}/`)) {
+    return decodeURIComponent(clean.slice(docs.length + 1));
+  }
+  const marker = clean.lastIndexOf(DOCUMENTS_MARKER);
+  if (marker >= 0) {
+    return decodeURIComponent(clean.slice(marker + DOCUMENTS_MARKER.length));
+  }
+  return undefined;
+}
+
 function fileFromRelative(relative: string): File {
   const parts = relative.split('/').filter(Boolean);
+  if (parts[0] === 'Audio') {
+    return new File(Paths.document, ...parts);
+  }
   return new File(libraryDirectory(), ...parts);
 }
 
@@ -22,9 +39,19 @@ export function persistLibraryUri(uri?: string): string | undefined {
   if (uri.startsWith('http://') || uri.startsWith('https://')) {
     return uri;
   }
-  const marker = uri.lastIndexOf(LIBRARY_MARKER);
+  const fromDocs = documentsRelative(uri);
+  if (fromDocs) {
+    if (fromDocs.startsWith('Audio/')) {
+      return fromDocs;
+    }
+    if (fromDocs.startsWith('rewavier/')) {
+      return fromDocs.slice('rewavier/'.length);
+    }
+    return fromDocs;
+  }
+  const marker = uri.lastIndexOf(LEGACY_MARKER);
   if (marker >= 0) {
-    return uri.slice(marker + LIBRARY_MARKER.length);
+    return uri.slice(marker + LEGACY_MARKER.length);
   }
   if (!uri.includes('://') && !uri.startsWith('/')) {
     return uri;
@@ -46,13 +73,9 @@ export function resolveLibraryUri(stored?: string): string | undefined {
       return undefined;
     }
   }
-  const marker = stored.lastIndexOf(LIBRARY_MARKER);
-  if (marker >= 0) {
-    try {
-      return fileFromRelative(stored.slice(marker + LIBRARY_MARKER.length)).uri;
-    } catch {
-      return stored;
-    }
+  const persisted = persistLibraryUri(stored);
+  if (persisted && persisted !== stored) {
+    return resolveLibraryUri(persisted);
   }
   return stored;
 }
@@ -103,17 +126,20 @@ export function recoverAudioRelative(track: {
 
   const wanted = track.sourceFileName?.replace(/[/\\?%*:|"<>]/g, '-');
   const prefix = `${track.id}-`;
+  const audio = listNames(audioDirectory());
   const downloads = listNames(downloadsDirectory());
   const inbox = listNames(inboxDirectory());
-  const downloadHit = downloads.find(
-    (name) => name.startsWith(prefix) || (wanted ? name.endsWith(wanted) : false),
-  );
+  const match = (names: string[]) =>
+    names.find((name) => name.startsWith(prefix) || (wanted ? name === wanted || name.endsWith(wanted) : false));
+  const audioHit = match(audio);
+  if (audioHit) {
+    return { fileUri: `Audio/${audioHit}` };
+  }
+  const downloadHit = match(downloads);
   if (downloadHit) {
     return { fileUri: `downloads/${downloadHit}` };
   }
-  const inboxHit = inbox.find(
-    (name) => name.startsWith(prefix) || (wanted ? name.endsWith(wanted) : false),
-  );
+  const inboxHit = match(inbox);
   if (inboxHit) {
     return { inboxUri: `inbox/${inboxHit}` };
   }

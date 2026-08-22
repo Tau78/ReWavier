@@ -67,7 +67,7 @@ export function OnboardingScreen() {
     connectDrive('files');
     Alert.alert(
       'Drive collegato da File',
-      'In Libreria → Album importa una cartella Drive. I file restano in nuvola, in app ascolti dalla cache.',
+      'In Libreria, apri un album e collega la cartella Drive. I brani arrivano da lì; sul telefono restano anche nella cartella ReWavier.',
     );
   };
 
