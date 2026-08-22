@@ -13,7 +13,7 @@ Cosa resta sul dispositivo
 • Cartelle, album, playlist e appunti che crei
 • Le impostazioni dell’app
 
-Non raccogliamo questi contenuti. Non li copiamo su un nostro archivio. Non li vendiamo.
+Se usi un altro telefono, ReWavier può copiare quella cartella su iCloud (due iPhone, stesso ID Apple) o su Google Drive (se colleghi Google, anche verso Android). La copia serve solo a ritrovare i tuoi brani. Non abbiamo un archivio nostro. Non vendiamo nulla.
 
 Cosa non facciamo
 • Non chiediamo nome, email o password

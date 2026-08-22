@@ -173,40 +173,39 @@ export function SettingsScreen() {
         ) : null}
 
         <Pressable onPress={() => void runCloudSync()} style={styles.card}>
-          <Text style={styles.rowLabel}>Sync Drive</Text>
+          <Text style={styles.rowLabel}>Altri telefoni</Text>
           <Text style={styles.rowValue}>
             {syncStatus === 'syncing'
-              ? 'Controllo in corso…'
+              ? 'Allineo…'
               : lastSyncedAt
-                ? `Ultimo controllo ${new Date(lastSyncedAt).toLocaleString('it-IT')}`
-                : 'Mai eseguita'}
+                ? `Ultimo allineamento ${new Date(lastSyncedAt).toLocaleString('it-IT')}`
+                : 'Mai allineata'}
           </Text>
           <Text style={styles.rowHint}>
             {syncMessage ||
-              (user?.provider === 'google'
-                ? 'Drive è collegato col login Google. All’apertura arrivano audio e note dei compagni.'
-                : 'All’apertura l’app controlla se un compagno ha sostituito un audio o aggiunto note.')}
+              'I brani restano sul telefono. Una copia va su iCloud tra due iPhone, e su Drive se colleghi Google (anche verso Android). Tocca per allineare ora.'}
           </Text>
         </Pressable>
         <Pressable
           onPress={() =>
             Alert.alert(
               'Cartella dei brani',
-              'Apri l’app File. Poi Sul mio iPhone → ReWavier → Audio.\n\nPer ascoltarli su un altro telefono, copia quella cartella (Drive, AirDrop o un cavo) e mettila nello stesso posto. All’apertura ReWavier ritrova i brani e gli appunti.',
+              'Apri l’app File.\n\nSul telefono: Sul mio iPhone → ReWavier → Audio.\n\nSu iCloud: iCloud Drive → ReWavier.\n\nSu Drive: cartella ReWavier. Stesso Google sull’altro telefono, anche Android.',
             )
           }
           style={styles.card}
         >
           <Text style={styles.rowLabel}>Cartella dei brani</Text>
           <Text style={styles.rowValue}>
-            I brani stanno nella cartella Audio di ReWavier. La trovi in File, sul telefono.
+            I brani stanno nella cartella Audio. La trovi in File, sul telefono.
           </Text>
-          <Text style={styles.rowHint}>Tocca per vedere come copiarla su un altro telefono.</Text>
+          <Text style={styles.rowHint}>Tocca per vedere dove sta la copia in nuvola.</Text>
         </Pressable>
         <View style={styles.card}>
-          <Text style={styles.rowLabel}>Album da Drive</Text>
+          <Text style={styles.rowLabel}>Album della band</Text>
           <Text style={styles.rowValue}>
-            Un album collegato a Drive si aggiorna da solo. Tocca ↓ per tenerlo anche sul telefono.
+            Un album collegato a una cartella Drive della band si aggiorna da solo. Tocca ↓ per
+            tenerlo anche sul telefono.
           </Text>
         </View>
         <Pressable onPress={() => navigation.navigate('Privacy')} style={styles.card}>

@@ -19,10 +19,11 @@ const README_TEXT = `Questa è la cartella dei brani di ReWavier.
 
 Ogni brano ha accanto un file degli appunti, con lo stesso nome.
 
-Per ascoltarli su un altro telefono:
-1. Copia questa cartella Audio (Drive, AirDrop o un cavo).
-2. Sull’altro telefono mettila in File → Sul mio iPhone → ReWavier.
-3. Apri ReWavier: i brani e gli appunti riappaiono.
+Due iPhone, stesso ID Apple: all’apertura ReWavier allinea anche iCloud Drive → ReWavier.
+
+iPhone e Android, o due Android: collega Google. ReWavier usa la cartella ReWavier su Drive.
+
+Puoi ancora copiare questa cartella a mano (AirDrop o un cavo).
 `;
 
 function basename(uri: string): string {

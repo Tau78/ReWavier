@@ -17,6 +17,7 @@
     "ios": {
       "bundleIdentifier": "app.rewavier",
       "buildNumber": "6",
+      "usesIcloudStorage": true,
       "usesAppleSignIn": true,
       "supportsTablet": true,
       "userInterfaceStyle": "dark",
@@ -32,7 +33,14 @@
         "LSSupportsOpeningDocumentsInPlace": true,
         "CFBundleAllowMixedLocalizations": true,
         "CFBundleDevelopmentRegion": "it",
-        "NSMicrophoneUsageDescription": "ReWavier usa il microfono solo quando registri una bozza musicale."
+        "NSMicrophoneUsageDescription": "ReWavier usa il microfono solo quando registri una bozza musicale.",
+        "NSUbiquitousContainers": {
+          "iCloud.app.rewavier": {
+            "NSUbiquitousContainerIsDocumentScopePublic": true,
+            "NSUbiquitousContainerSupportedFolderLevels": "Any",
+            "NSUbiquitousContainerName": "ReWavier"
+          }
+        }
       },
       "privacyManifests": {
         "NSPrivacyTracking": false,
@@ -95,6 +103,13 @@
         "expo-audio",
         {
           "microphonePermission": "ReWavier usa il microfono solo quando registri una bozza musicale."
+        }
+      ],
+      [
+        "@oleg_svetlichnyi/expo-icloud-storage",
+        {
+          "containerIdentifier": "iCloud.app.rewavier",
+          "containerName": "ReWavier"
         }
       ],
       [

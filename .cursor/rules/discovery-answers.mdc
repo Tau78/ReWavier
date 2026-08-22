@@ -54,6 +54,16 @@ Fonte codice: `src/features/discovery/lockedAnswers.ts`.
 | q29 | Account: **login ora** (Apple / email) |
 | q30 | Smart playlist «Con appunti»: **togli** |
 
+## Sync tra telefoni (22 agosto 2026)
+
+Non è una delle 30. L’utente ha scelto:
+
+- iPhone ↔ iPhone: **iCloud**
+- Android ↔ Android: **Drive**
+- iPhone ↔ Android: **Drive** (sull’iPhone si collega Google)
+
+I brani restano sul telefono (q04). La nuvola è la copia per l’altro dispositivo.
+
 ## Vincoli operativi
 
 - Non contraddire queste risposte.

@@ -68,6 +68,43 @@ export async function listDriveFolders(query?: string): Promise<DriveFile[]> {
   return [...files].sort((a, b) => (b.modifiedTime ?? '').localeCompare(a.modifiedTime ?? ''));
 }
 
+export async function getDriveFile(fileId: string): Promise<DriveFile | null> {
+  try {
+    return await driveGet<DriveFile>(
+      `/files/${encodeURIComponent(fileId)}?supportsAllDrives=true&fields=${encodeURIComponent(DRIVE_FIELDS)}`,
+    );
+  } catch {
+    return null;
+  }
+}
+
+export async function createDriveFolder(name: string, parentId?: string): Promise<DriveFile> {
+  const body: Record<string, unknown> = {
+    name,
+    mimeType: 'application/vnd.google-apps.folder',
+  };
+  if (parentId) {
+    body.parents = [parentId];
+  }
+  const call = async (access: string) =>
+    fetch(`${DRIVE}/files?supportsAllDrives=true&fields=${encodeURIComponent(DRIVE_FIELDS)}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${access}`,
+        'Content-Type': 'application/json; charset=UTF-8',
+      },
+      body: JSON.stringify(body),
+    });
+  let response = await call(await token());
+  if (response.status === 401) {
+    response = await call(await getValidGoogleAccessToken(true));
+  }
+  if (!response.ok) {
+    throw new Error(driveErrorMessage(response.status));
+  }
+  return (await response.json()) as DriveFile;
+}
+
 export async function findFolderByName(name: string): Promise<DriveFile | null> {
   const folders = await listDriveFolders(name);
   const lower = name.trim().toLowerCase();

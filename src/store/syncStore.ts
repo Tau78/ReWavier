@@ -39,7 +39,7 @@ export const useSyncStore = create<SyncStore>((set) => ({
   needsFileRefresh: false,
 
   start() {
-    set({ status: 'syncing', message: 'Controllo la cartella Drive…' });
+    set({ status: 'syncing', message: 'Allineo i brani…' });
   },
 
   finish(input) {

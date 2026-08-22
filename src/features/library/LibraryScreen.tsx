@@ -181,7 +181,7 @@ export function LibraryScreen() {
         >
           <Text style={styles.bannerText}>
             {syncStatus === 'syncing'
-              ? 'Controllo Drive…'
+              ? 'Allineo i brani…'
               : pendingReviews.length > 0
                 ? `${pendingReviews[0]?.title} è stato aggiornato. Tocca per rivedere i marker.`
                 : syncMessage ||

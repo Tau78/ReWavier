@@ -25,6 +25,7 @@ import { useLibraryStore } from '../store/libraryStore';
 import { usePlayerStore } from '../store/playerStore';
 import { useSessionStore } from '../store/sessionStore';
 import { useSyncStore, type AudioUpdate } from '../store/syncStore';
+import { runDeviceSync } from './deviceSync/runDeviceSync';
 import {
   downloadDriveFile,
   findChildByName,
@@ -83,18 +84,33 @@ export async function runCloudSync(): Promise<void> {
     return;
   }
   const albums = useLibraryStore.getState().albums.filter((album) => album.origin === 'drive');
+
+  sync.start();
+  let deviceMessage = '';
+  try {
+    deviceMessage = (await runDeviceSync()).message;
+  } catch {
+    deviceMessage = '';
+  }
+
   if (albums.length === 0) {
-    sync.finish({ lastSyncedAt: Date.now() });
+    sync.finish({
+      lastSyncedAt: Date.now(),
+      message: deviceMessage || null,
+    });
     return;
   }
 
-  sync.start();
   const google = await hasDriveToken();
   if (!google) {
     sync.finish({
       lastSyncedAt: Date.now(),
-      needsFileRefresh: true,
-      message: 'Collega Google oppure aggiorna i file da Drive (File).',
+      needsFileRefresh: albums.length > 0,
+      message:
+        deviceMessage ||
+        (albums.length > 0
+          ? 'Collega Google oppure aggiorna i file da Drive (File).'
+          : null),
     });
     return;
   }
@@ -262,7 +278,7 @@ export async function runCloudSync(): Promise<void> {
           ? `${reviews.length} file audio aggiornati sulla cartella Drive.`
           : notesPulled > 0
             ? `${notesPulled} note nuove dai compagni.`
-            : 'Album Drive allineati.',
+            : deviceMessage || 'Album Drive allineati.',
     });
   } catch (error) {
     sync.fail(error instanceof Error ? error.message : 'Sync Drive non riuscita');

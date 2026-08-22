@@ -40,3 +40,11 @@ export const LOCKED_DISCOVERY_NOTES: Record<string, string> = {
   q09: 'mix lezioni / progetti / cassetto',
   q11: 'persistenza device + Drive automatico + audio/waveform veri',
 };
+
+/** Decisione nuova (22 agosto 2026): sync tra telefoni. Non è una q01–q30. */
+export const DEVICE_SYNC_DECISION = {
+  at: '2026-08-22',
+  ios: 'icloud',
+  android: 'drive',
+  bridge: 'drive',
+} as const;
