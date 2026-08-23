@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -12,27 +12,14 @@ import { useLibraryStore } from './src/store/libraryStore';
 import { useSessionStore } from './src/store/sessionStore';
 import { colors } from './src/theme/colors';
 
-void SplashScreen.preventAutoHideAsync();
+void SplashScreen.hideAsync().catch(() => undefined);
 
 export default function App() {
-  const [ready, setReady] = useState(false);
+  const ready = useSessionStore((s) => s.hydrated);
 
   useEffect(() => {
-    let cancelled = false;
-    void Promise.all([
-      useLibraryStore.getState().hydrate(),
-      useSessionStore.getState().hydrate(),
-    ])
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) {
-          setReady(true);
-          void SplashScreen.hideAsync();
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
+    void useSessionStore.getState().hydrate();
+    void useLibraryStore.getState().hydrate();
   }, []);
 
   useEffect(() => {
@@ -48,15 +35,15 @@ export default function App() {
     return () => sub.remove();
   }, [ready]);
 
-  if (!ready) {
-    return null;
-  }
-
   return (
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider style={styles.root}>
-        <RootNavigator />
-        <WaveformDecoderHost />
+        {ready ? (
+          <>
+            <RootNavigator />
+            <WaveformDecoderHost />
+          </>
+        ) : null}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
