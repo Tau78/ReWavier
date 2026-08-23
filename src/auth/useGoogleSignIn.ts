@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
@@ -70,6 +71,17 @@ function decodeJwtEmail(idToken: string): { email: string; name: string; sub: st
   } catch {
     return { email: '', name: 'Google', sub: `google-${Date.now()}` };
   }
+}
+
+export function isGoogleConfigured(): boolean {
+  const ids = readClientIds();
+  if (ids.inExpoGo) {
+    return Boolean(ids.clientId);
+  }
+  if (Platform.OS === 'ios') {
+    return Boolean(ids.iosClientId);
+  }
+  return Boolean(ids.clientId);
 }
 
 export function useGoogleSignIn() {

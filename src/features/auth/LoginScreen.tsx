@@ -13,12 +13,25 @@ import {
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useGoogleSignIn } from '../../auth/useGoogleSignIn';
+import { isGoogleConfigured, useGoogleSignIn } from '../../auth/useGoogleSignIn';
 import { useSessionStore } from '../../store/sessionStore';
 import { colors, layout } from '../../theme/colors';
 import { BrandMark, ScreenAura } from '../../theme/graphics';
 
 function GoogleContinueButton({
+  busy,
+  run,
+}: {
+  busy: boolean;
+  run: (work: () => Promise<void>) => Promise<void>;
+}) {
+  if (!isGoogleConfigured()) {
+    return null;
+  }
+  return <GoogleContinueButtonConfigured busy={busy} run={run} />;
+}
+
+function GoogleContinueButtonConfigured({
   busy,
   run,
 }: {

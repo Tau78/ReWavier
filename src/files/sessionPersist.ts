@@ -1,9 +1,9 @@
-import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
 
 import type { SessionUser } from '../domain/session';
-import { libraryDirectory } from './libraryFiles';
+import { ensureDirAsync, pathExistsAsync } from './fsSafe';
+import { libraryDirectory } from './libraryPaths';
 
 const SESSION_NAME = 'session.json';
 const ACCOUNTS_NAME = 'accounts.json';
@@ -21,21 +21,21 @@ export type SessionSnapshot = {
   reservedColors: string[];
 };
 
-function sessionFile(): File {
-  return new File(libraryDirectory(), SESSION_NAME);
+function sessionFileUri(): string {
+  return `${libraryDirectory().uri}/${SESSION_NAME}`;
 }
 
-function accountsFile(): File {
-  return new File(libraryDirectory(), ACCOUNTS_NAME);
+function accountsFileUri(): string {
+  return `${libraryDirectory().uri}/${ACCOUNTS_NAME}`;
 }
 
 export async function loadSessionSnapshot(): Promise<SessionSnapshot> {
-  const file = sessionFile();
-  if (!file.exists) {
+  const uri = sessionFileUri();
+  if (!(await pathExistsAsync(uri))) {
     return { user: null, reservedColors: [] };
   }
   try {
-    const parsed = JSON.parse(await LegacyFS.readAsStringAsync(file.uri)) as SessionSnapshot;
+    const parsed = JSON.parse(await LegacyFS.readAsStringAsync(uri)) as SessionSnapshot;
     return {
       user: parsed.user ?? null,
       reservedColors: Array.isArray(parsed.reservedColors) ? parsed.reservedColors : [],
@@ -46,16 +46,17 @@ export async function loadSessionSnapshot(): Promise<SessionSnapshot> {
 }
 
 export async function saveSessionSnapshot(snapshot: SessionSnapshot): Promise<void> {
-  await LegacyFS.writeAsStringAsync(sessionFile().uri, JSON.stringify(snapshot));
+  await ensureDirAsync(libraryDirectory().uri);
+  await LegacyFS.writeAsStringAsync(sessionFileUri(), JSON.stringify(snapshot));
 }
 
 export async function loadLocalAccounts(): Promise<LocalAccount[]> {
-  const file = accountsFile();
-  if (!file.exists) {
+  const uri = accountsFileUri();
+  if (!(await pathExistsAsync(uri))) {
     return [];
   }
   try {
-    const parsed = JSON.parse(await LegacyFS.readAsStringAsync(file.uri)) as LocalAccount[];
+    const parsed = JSON.parse(await LegacyFS.readAsStringAsync(uri)) as LocalAccount[];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -63,7 +64,8 @@ export async function loadLocalAccounts(): Promise<LocalAccount[]> {
 }
 
 export async function saveLocalAccounts(accounts: LocalAccount[]): Promise<void> {
-  await LegacyFS.writeAsStringAsync(accountsFile().uri, JSON.stringify(accounts));
+  await ensureDirAsync(libraryDirectory().uri);
+  await LegacyFS.writeAsStringAsync(accountsFileUri(), JSON.stringify(accounts));
 }
 
 export async function saveGoogleToken(token: string): Promise<void> {

@@ -13,7 +13,7 @@ Se il messaggio dell’utente è **VAI** (anche `vai`, o inizia con VAI), è un 
 2. Leggi `.cursor/skills/vai/SKILL.md` se serve il dettaglio.
 3. Esegui `bash scripts/vai.sh` dalla root del repo (con rete).
 4. Prima dello script, imposta `VAI_MESSAGE` (1–2 frasi sul *perché*, dallo `git diff`).
-5. Se `eas build` è già in corso in un terminale, aggiungi `--skip-build` (non inviare a TestFlight una build vecchia).
+5. Se `xcodebuild` è già in corso, aggiungi `--skip-build`.
 
 ## Permessi
 

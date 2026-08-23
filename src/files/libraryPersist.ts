@@ -1,4 +1,3 @@
-import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
 import {
@@ -13,6 +12,7 @@ import type { Marker, Track } from '../domain/models';
 import { fileExists, reconcileTrack } from './downloads';
 import { persistLibraryUri } from './libraryUris';
 import { libraryDirectory } from './libraryPaths';
+import { ensureDirAsync, pathExistsAsync } from './fsSafe';
 
 function persistAndKeep(uri?: string): string | undefined {
   const stored = persistLibraryUri(uri);
@@ -32,8 +32,8 @@ export type LibrarySnapshot = {
   markersByTrackId: Record<string, Marker[]>;
 };
 
-function snapshotFile(): File {
-  return new File(libraryDirectory(), SNAPSHOT_NAME);
+function snapshotFileUri(): string {
+  return `${libraryDirectory().uri}/${SNAPSHOT_NAME}`;
 }
 
 export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
@@ -74,12 +74,12 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
 }
 
 export async function loadLibrarySnapshot(): Promise<LibrarySnapshot | null> {
-  const file = snapshotFile();
-  if (!file.exists) {
+  const uri = snapshotFileUri();
+  if (!(await pathExistsAsync(uri))) {
     return null;
   }
   try {
-    const parsed = JSON.parse(await LegacyFS.readAsStringAsync(file.uri)) as LibrarySnapshot;
+    const parsed = JSON.parse(await LegacyFS.readAsStringAsync(uri)) as LibrarySnapshot;
     if (!Array.isArray(parsed.tracks)) {
       return null;
     }
@@ -93,9 +93,9 @@ export async function loadLibrarySnapshot(): Promise<LibrarySnapshot | null> {
 }
 
 export async function saveLibrarySnapshot(snapshot: LibrarySnapshot): Promise<void> {
-  const file = snapshotFile();
+  await ensureDirAsync(libraryDirectory().uri);
   await LegacyFS.writeAsStringAsync(
-    file.uri,
+    snapshotFileUri(),
     JSON.stringify({ ...snapshot, version: LIBRARY_SNAPSHOT_VERSION }),
   );
 }

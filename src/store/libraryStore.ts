@@ -728,24 +728,16 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
 
   async hydrate() {
     const snapshot = await loadLibrarySnapshot();
-    const migrated = await migrateTracksToAudioFolder(snapshot?.tracks ?? []);
-    const extras = await scanAudioFolder(migrated);
-    const markersByTrackId = { ...(snapshot?.markersByTrackId ?? {}) };
-    for (const bundle of extras) {
-      markersByTrackId[bundle.track.id] = bundle.markers;
-    }
     set({
-      tracks: [...migrated, ...extras.map((bundle) => bundle.track)],
-      folders: snapshot?.folders ?? get().folders,
-      albums: snapshot?.albums ?? get().albums,
-      playlists: snapshot?.playlists ?? get().playlists,
-      smartPlaylists: snapshot?.smartPlaylists ?? get().smartPlaylists,
-      markersByTrackId,
+      tracks: snapshot?.tracks ?? [],
+      folders: snapshot?.folders ?? [],
+      albums: snapshot?.albums ?? [],
+      playlists: snapshot?.playlists ?? [],
+      smartPlaylists: snapshot?.smartPlaylists ?? [],
+      markersByTrackId: snapshot?.markersByTrackId ?? {},
     });
     persistReady = true;
-    if (extras.length > 0 || snapshot) {
-      schedulePersist();
-    }
+    void finishLibraryHydrate(snapshot != null);
   },
 
   getTrack(id) {
@@ -798,3 +790,24 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
 }));
 
 useLibraryStore.subscribe(schedulePersist);
+
+async function finishLibraryHydrate(hadSnapshot: boolean) {
+  try {
+    const { tracks, markersByTrackId: currentMarkers } = useLibraryStore.getState();
+    const migrated = await migrateTracksToAudioFolder(tracks);
+    const extras = await scanAudioFolder(migrated);
+    const markersByTrackId = { ...currentMarkers };
+    for (const bundle of extras) {
+      markersByTrackId[bundle.track.id] = bundle.markers;
+    }
+    useLibraryStore.setState({
+      tracks: [...migrated, ...extras.map((bundle) => bundle.track)],
+      markersByTrackId,
+    });
+    if (extras.length > 0 || hadSnapshot) {
+      schedulePersist();
+    }
+  } catch {
+    // file system busy (iCloud, Files) — keep snapshot already loaded
+  }
+}

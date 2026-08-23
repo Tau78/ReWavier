@@ -21,18 +21,22 @@ Dalla root del repo, con rete. Lo script fa, in ordine:
 2. Merge su `main` se sei su un altro branch
 3. Push su `origin`
 4. FTP di `docs/` solo se il contenuto è cambiato rispetto all’ultimo upload
-5. Build iOS production (`eas --auto-submit`, non aspetta la fine)
-6. TestFlight: Apple riceve la build appena è pronta
+5. Build iOS con **Xcode sul Mac** (`scripts/xcode-testflight.sh`: prebuild, archive, upload)
+6. TestFlight: Apple riceve la build subito dopo l’upload (5–15 min di elaborazione)
+
+Prerequisito Mac: Xcode installato + Apple ID in Xcode → Settings → Accounts. Non usa la quota EAS cloud.
 
 ## Messaggio di commit
 
 Dal `git diff`, 1–2 frasi sul **perché**. Esporta `VAI_MESSAGE`. Se VAI arriva con altro lavoro, **fallo prima**, poi rilascia così entra nel commit.
 
+Il numero build iOS in `app.json` viene incrementato automaticamente prima del commit (salvo `--skip-build`).
+
 ## Flag
 
-- `--skip-build` se `eas build` è già in corso in un terminale (niente invio della build vecchia)
+- `--skip-build` se `xcodebuild` è già in corso, o per saltare del tutto la build
 - `--skip-ftp` solo se l’utente lo chiede
-- `--skip-submit` solo se l’utente dice di non mandare a TestFlight
+- `--skip-submit` archivia con Xcode ma **non** carica su TestFlight
 
 ## FTP
 

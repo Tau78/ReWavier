@@ -23,6 +23,23 @@ done
 log() { printf '== VAI == %s\n' "$*"; }
 die() { printf '== VAI == ERRORE: %s\n' "$*" >&2; exit 1; }
 
+bump_ios_build_number() {
+  node <<'NODE'
+const fs = require('fs');
+const path = 'app.json';
+const app = JSON.parse(fs.readFileSync(path, 'utf8'));
+const current = parseInt(app.expo.ios?.buildNumber || '0', 10);
+const next = Number.isFinite(current) ? current + 1 : 1;
+app.expo.ios.buildNumber = String(next);
+fs.writeFileSync(path, `${JSON.stringify(app, null, 2)}\n`);
+console.log(next);
+NODE
+}
+
+xcode_build_running() {
+  pgrep -f 'xcodebuild.*ReWavier' >/dev/null 2>&1
+}
+
 load_env_file() {
   local f="$1"
   [[ -f "$f" ]] || return 0
@@ -68,6 +85,11 @@ NEVER_COMMIT=(
 )
 
 # --- 1. commit ---
+if [[ "$SKIP_BUILD" != "1" ]]; then
+  next_build="$(bump_ios_build_number)"
+  log "Build number iOS: $next_build"
+fi
+
 if [[ -n "$(git status --porcelain)" ]]; then
   git add -A
   for f in "${NEVER_COMMIT[@]}"; do
@@ -189,56 +211,22 @@ else
   fi
 fi
 
-# Solo una build *di questo repo*. Un eas di un altro progetto non blocca VAI.
-rewavier_build_running() {
-  local pids pid cwd cmd
-  pids="$(pgrep -f 'eas build' || true)"
-  [[ -z "$pids" ]] && return 1
-  for pid in $pids; do
-    cwd="$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1)"
-    if [[ "$cwd" == "$ROOT" ]]; then
-      return 0
-    fi
-    cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
-    if [[ "$cmd" == *"$ROOT"* ]]; then
-      return 0
-    fi
-  done
-  return 1
-}
-
-# --- 5. build iOS + 6. TestFlight ---
-submit_latest() {
-  if [[ "$SKIP_SUBMIT" == "1" ]]; then
-    log "TestFlight: saltato (--skip-submit)."
-    return 0
-  fi
-  log "TestFlight: invio l’ultima build pronta (non aspetto Apple)."
-  if ! npx eas-cli submit --platform ios --profile production --latest --non-interactive --no-wait; then
-    log "TestFlight: invio fallito."
-    return 1
-  fi
-  log "TestFlight: richiesta inviata. Su iPhone arriva dopo l’elaborazione di Apple."
-}
-
+# --- 5. build iOS + 6. TestFlight (Xcode locale, senza quota EAS) ---
 if [[ "$SKIP_BUILD" == "1" ]]; then
   log "Build: saltata (--skip-build)."
-  if rewavier_build_running; then
-    log "TestFlight: la build è ancora in corso, Apple la riceverà a fine lavoro."
-  else
-    submit_latest || true
-  fi
-elif rewavier_build_running; then
-  log "Build: eas di ReWavier è già in corso, non ne lancio un'altra."
-  log "TestFlight: aspetto che finisca quella in corso (niente invio della vecchia)."
-elif [[ "$SKIP_SUBMIT" == "1" ]]; then
-  log "Build: avvio iOS production (non aspetto la fine)."
-  npx eas-cli build --platform ios --profile production --non-interactive --no-wait
-  log "Build: richiesta inviata. TestFlight saltato (--skip-submit)."
+elif xcode_build_running; then
+  log "Build: xcodebuild ReWavier è già in corso, non ne lancio un'altra."
+elif ! command -v xcodebuild >/dev/null; then
+  die "Manca Xcode (xcodebuild). Installa Xcode dal Mac App Store."
 else
-  log "Build: avvio iOS production e, a fine lavoro, invio a TestFlight."
-  npx eas-cli build --platform ios --profile production --non-interactive --no-wait --auto-submit
-  log "Build + TestFlight: richiesta inviata. Su iPhone arriva dopo Apple."
+  if [[ "$SKIP_SUBMIT" == "1" ]]; then
+    log "Build: archivio locale con Xcode (senza upload TestFlight)."
+    bash "$ROOT/scripts/xcode-testflight.sh" --no-upload
+  else
+    log "Build: archivio + upload TestFlight con Xcode (non passa da Expo)."
+    bash "$ROOT/scripts/xcode-testflight.sh"
+    log "TestFlight: upload inviato. Su iPhone arriva dopo l’elaborazione di Apple."
+  fi
 fi
 
 log "Fatto. HEAD $(git rev-parse --short HEAD) su $(git rev-parse --abbrev-ref HEAD)."

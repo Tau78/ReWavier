@@ -46,6 +46,7 @@ module.exports = {
       googleIosClientId: iosClientId,
       googleExpoIosClientId: expoIosClientId,
       googleWebClientId: webClientId,
+      iosBuildNumber: appJson.expo.ios?.buildNumber ?? '',
     },
     ios: {
       ...appJson.expo.ios,
