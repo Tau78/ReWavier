@@ -197,6 +197,10 @@ export function useLibraryActions(
       },
     },
     {
+      label: 'Resoconto',
+      onPress: () => navigation.navigate('LessonRecap', { kind: 'track', id: track.id }),
+    },
+    {
       label: track.downloaded ? 'Rimuovi download' : 'Scarica offline',
       onPress: () => {
         void (track.downloaded
@@ -283,7 +287,7 @@ export function useLibraryActions(
       onPress: () => navigation.navigate('RecordSketch', { albumId }),
     },
     {
-      label: 'Resoconto lezione',
+      label: 'Resoconto',
       onPress: () => navigation.navigate('LessonRecap', { kind: 'album', id: albumId }),
     },
     {
@@ -445,7 +449,7 @@ export function useLibraryActions(
       onPress: () => navigation.navigate('RecordSketch', { folderId: folder.id }),
     },
     {
-      label: 'Resoconto lezione',
+      label: 'Resoconto',
       onPress: () => navigation.navigate('LessonRecap', { kind: 'folder', id: folder.id }),
     },
     {

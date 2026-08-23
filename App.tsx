@@ -1,14 +1,19 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useCallback, useEffect } from 'react';
 import { AppState, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as SplashScreen from 'expo-splash-screen';
 
+import { hideNativeSplash } from './src/app/hideSplash';
+import { StartupErrorBoundary } from './src/app/StartupErrorBoundary';
 import { LoginScreen } from './src/features/auth/LoginScreen';
 import { OnboardingScreen } from './src/features/auth/OnboardingScreen';
 import { StartupScreen } from './src/features/splash/StartupScreen';
 import { flushLibraryPersist, useLibraryStore } from './src/store/libraryStore';
 import { useSessionStore } from './src/store/sessionStore';
 import { colors } from './src/theme/colors';
+
+void SplashScreen.preventAutoHideAsync().catch(() => undefined);
 
 const AuthenticatedApp = lazy(() =>
   import('./src/app/AuthenticatedApp').then((mod) => ({ default: mod.AuthenticatedApp })),
@@ -18,6 +23,7 @@ export default function App() {
   const user = useSessionStore((s) => s.user);
 
   useEffect(() => {
+    hideNativeSplash();
     void useSessionStore.getState().hydrate().catch(() => undefined);
     void useLibraryStore.getState().hydrate().catch(() => undefined);
   }, []);
@@ -31,24 +37,30 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
+  const onRootLayout = useCallback(() => {
+    hideNativeSplash();
+  }, []);
+
   return (
-    <GestureHandlerRootView style={styles.root}>
+    <GestureHandlerRootView style={styles.root} onLayout={onRootLayout}>
       <SafeAreaProvider style={styles.root}>
-        {!user ? (
-          <LoginScreen />
-        ) : !user.onboarded ? (
-          <OnboardingScreen />
-        ) : (
-          <Suspense
-            fallback={
-              <View style={styles.root}>
-                <StartupScreen />
-              </View>
-            }
-          >
-            <AuthenticatedApp />
-          </Suspense>
-        )}
+        <StartupErrorBoundary>
+          {!user ? (
+            <LoginScreen />
+          ) : !user.onboarded ? (
+            <OnboardingScreen />
+          ) : (
+            <Suspense
+              fallback={
+                <View style={styles.root}>
+                  <StartupScreen />
+                </View>
+              }
+            >
+              <AuthenticatedApp />
+            </Suspense>
+          )}
+        </StartupErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

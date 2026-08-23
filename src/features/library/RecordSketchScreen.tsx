@@ -259,7 +259,11 @@ export function RecordSketchScreen() {
         }
       }
       discardOk.current = true;
-      navigation.goBack();
+      if (notesRef.current.length > 0) {
+        navigation.replace('NoteHeat', { trackId: id });
+      } else {
+        navigation.goBack();
+      }
     } catch (error) {
       Alert.alert('Salvataggio', error instanceof Error ? error.message : 'Non riesco a salvare la bozza');
     } finally {

@@ -12,5 +12,6 @@ export type RootStackParamList = {
   DriveFolder: { albumId?: string };
   SyncReview: undefined;
   RecordSketch: { folderId?: string; albumId?: string };
-  LessonRecap: { kind: 'album' | 'folder'; id: string };
+  LessonRecap: { kind: 'album' | 'folder' | 'track'; id: string };
+  NoteHeat: { trackId: string };
 };

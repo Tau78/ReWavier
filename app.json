@@ -7,6 +7,10 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "backgroundColor": "#0D0D0F",
+    "splash": {
+      "backgroundColor": "#0D0D0F",
+      "resizeMode": "contain"
+    },
     "primaryColor": "#FF6B35",
     "description": "Ascolta un brano, metti in pausa e annota il momento esatto sulla waveform.",
     "platforms": [
@@ -15,7 +19,7 @@
     ],
     "ios": {
       "bundleIdentifier": "app.rewavier",
-      "buildNumber": "28",
+      "buildNumber": "30",
       "usesIcloudStorage": true,
       "entitlements": {
         "com.apple.developer.icloud-container-identifiers": [
@@ -124,7 +128,14 @@
       ],
       "expo-web-browser",
       "expo-secure-store",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      "expo-asset",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0D0D0F"
+        }
+      ]
     ],
     "extra": {
       "googleIosClientId": "1049963169218-o6tcahpfsdijj2lm811bmjs4vjaglb7v.apps.googleusercontent.com",

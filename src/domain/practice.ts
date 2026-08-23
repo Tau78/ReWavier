@@ -111,7 +111,7 @@ export function markersNearTime(
     .sort((a, b) => a.createdAt - b.createdAt || a.timestampMs - b.timestampMs);
 }
 
-export type LessonRecapRow = {
+export type RecapRow = {
   key: string;
   trackTitle: string;
   timestampMs: number;
@@ -120,11 +120,11 @@ export type LessonRecapRow = {
   color: string;
 };
 
-export function lessonRecapRows(
+export function recapRows(
   tracks: Track[],
   markersByTrackId: Record<string, Marker[]>,
-): LessonRecapRow[] {
-  const rows: LessonRecapRow[] = [];
+): RecapRow[] {
+  const rows: RecapRow[] = [];
   for (const track of tracks) {
     const markers = [...(markersByTrackId[track.id] ?? [])]
       .filter((marker) => marker.hidden !== true)
@@ -143,10 +143,10 @@ export function lessonRecapRows(
   return rows;
 }
 
-export function buildLessonRecapText(collectionName: string, rows: LessonRecapRow[]): string {
+export function buildRecapText(collectionName: string, rows: RecapRow[]): string {
   const header =
     rows.length === 0
-      ? 'Nessun appunto in questa lezione.'
+      ? 'Nessun appunto qui.'
       : rows.length === 1
         ? '1 appunto'
         : `${rows.length} appunti`;

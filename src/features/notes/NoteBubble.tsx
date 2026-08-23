@@ -3,6 +3,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -10,12 +11,20 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
-import { canEditMarker, markerAuthorLabel, markerColor } from '../../domain/markers';
+import {
+  canEditMarker,
+  markerAuthorLabel,
+  markerColor,
+  visibleMarkers,
+} from '../../domain/markers';
 import { formatTimecode } from '../../domain/models';
 import { markersNearTime } from '../../domain/practice';
+import { shareMarkerClip } from '../../files/shareMarkerClip';
 import { usePlayerStore } from '../../store/playerStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { colors, layout } from '../../theme/colors';
+
+const THREAD_VISIBLE_ROWS = 4;
 
 function hapticSuccess() {
   try {
@@ -34,12 +43,14 @@ export function NoteBubble() {
   const setDraft = usePlayerStore((s) => s.setDraft);
   const saveBubble = usePlayerStore((s) => s.saveBubble);
   const replyAt = usePlayerStore((s) => s.replyAt);
+  const openMarker = usePlayerStore((s) => s.openMarker);
+  const track = usePlayerStore((s) => s.track);
   const user = useSessionStore((s) => s.user);
 
   const isEditing = bubble.markerId != null;
   const current = markers.find((marker) => marker.id === bubble.markerId);
-  const thread = markersNearTime(markers, bubble.timestampMs).filter(
-    (marker) => marker.id !== bubble.markerId && marker.hidden !== true,
+  const thread = visibleMarkers(markersNearTime(markers, bubble.timestampMs)).filter(
+    (marker) => marker.id !== bubble.markerId,
   );
   const readOnly = isEditing && current != null && !canEditMarker(current, user);
   const canSave = !readOnly && bubble.draft.trim().length > 0;
@@ -58,6 +69,19 @@ export function NoteBubble() {
       return;
     }
     deleteMarker(bubble.markerId);
+  };
+
+  const onShareClip = () => {
+    const timestampMs = bubble.timestampMs;
+    const noteText = bubble.draft.trim() || current?.text || '';
+    closeBubble();
+    setTimeout(() => {
+      void shareMarkerClip({
+        track,
+        timestampMs,
+        noteText,
+      });
+    }, Platform.OS === 'ios' ? 400 : 50);
   };
 
   return (
@@ -98,21 +122,43 @@ export function NoteBubble() {
               {thread.length > 0 ? (
                 <View style={styles.thread} accessibilityLabel="Altri appunti sullo stesso momento">
                   <Text style={styles.threadTitle}>Stesso momento</Text>
-                  {thread.map((marker) => {
-                    const who = markerAuthorLabel(marker);
-                    const pinColor = markerColor(marker);
-                    return (
-                      <View key={marker.id} style={styles.threadRow}>
-                        <View style={[styles.threadDot, { backgroundColor: pinColor }]} />
-                        <View style={styles.threadCopy}>
-                          <Text style={[styles.threadWho, { color: pinColor }]} numberOfLines={1}>
-                            {who === 'Tu' ? 'Tu dici:' : `${who} dice:`}
-                          </Text>
-                          <Text style={styles.threadText}>{marker.text.trim() || '—'}</Text>
-                        </View>
-                      </View>
-                    );
-                  })}
+                  <ScrollView
+                    style={thread.length > THREAD_VISIBLE_ROWS ? styles.threadList : undefined}
+                    contentContainerStyle={styles.threadRows}
+                    keyboardShouldPersistTaps="handled"
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator={thread.length > THREAD_VISIBLE_ROWS}
+                  >
+                    {thread.map((marker) => {
+                      const who = markerAuthorLabel(marker);
+                      const pinColor = markerColor(marker);
+                      const whoLine = who === 'Tu' ? 'Tu dici:' : `${who} dice:`;
+                      return (
+                        <Pressable
+                          key={marker.id}
+                          onPress={() => openMarker(marker.id)}
+                          accessibilityRole="button"
+                          accessibilityLabel={
+                            who === 'Tu' ? 'Apri il tuo appunto' : `Apri l'appunto di ${who}`
+                          }
+                          style={({ pressed }) => [
+                            styles.threadRow,
+                            pressed && styles.threadRowPressed,
+                          ]}
+                        >
+                          <View style={[styles.threadDot, { backgroundColor: pinColor }]} />
+                          <View style={styles.threadCopy}>
+                            <Text style={[styles.threadWho, { color: pinColor }]} numberOfLines={1}>
+                              {whoLine}
+                            </Text>
+                            <Text style={styles.threadText} numberOfLines={1}>
+                              {marker.text.trim() || '—'}
+                            </Text>
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
                 </View>
               ) : null}
 
@@ -127,6 +173,16 @@ export function NoteBubble() {
                   <Text style={styles.replyLabel}>Rispondi</Text>
                 </Pressable>
               ) : null}
+
+              <Pressable
+                onPress={onShareClip}
+                hitSlop={layout.hitSlop}
+                accessibilityRole="button"
+                accessibilityLabel="Invia 12 secondi"
+                style={styles.replyHit}
+              >
+                <Text style={styles.replyLabel}>Invia 12 secondi</Text>
+              </Pressable>
 
               <TextInput
                 style={styles.input}
@@ -261,7 +317,7 @@ const styles = StyleSheet.create({
   },
   thread: {
     marginTop: 14,
-    gap: 10,
+    gap: 8,
   },
   threadTitle: {
     fontSize: 12,
@@ -269,10 +325,20 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     letterSpacing: 0.3,
   },
+  threadList: {
+    maxHeight: 184,
+  },
+  threadRows: {
+    gap: 8,
+  },
   threadRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
+    paddingVertical: 2,
+  },
+  threadRowPressed: {
+    opacity: 0.7,
   },
   threadDot: {
     width: 8,
@@ -289,9 +355,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   threadText: {
-    marginTop: 2,
+    marginTop: 1,
     fontSize: 14,
-    lineHeight: 20,
+    lineHeight: 18,
     color: colors.text,
   },
   replyHit: {

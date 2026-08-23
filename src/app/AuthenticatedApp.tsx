@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 
+import { ClipExtractorHost } from '../audio/ClipExtractorHost';
 import { WaveformDecoderHost } from '../audio/WaveformDecoderHost';
 import { runCloudSync } from '../cloud/syncEngine';
 import { AppStack } from '../navigation/AppStack';
@@ -33,6 +34,7 @@ export function AuthenticatedApp() {
     <>
       <AppStack />
       <WaveformDecoderHost />
+      <ClipExtractorHost />
     </>
   );
 }

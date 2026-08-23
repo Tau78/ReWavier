@@ -27,6 +27,7 @@ import {
   markerById,
   resolveExerciseRange,
 } from '../../domain/practice';
+import { shareMarkerClip } from '../../files/shareMarkerClip';
 import { suppressPausePrompt, usePlayerStore } from '../../store/playerStore';
 import { colors } from '../../theme/colors';
 import { ActionMenu } from '../library/ActionMenu';
@@ -1043,6 +1044,16 @@ export function Waveform() {
                 {
                   label: 'Ascolta intorno',
                   onPress: () => listenAround(menuMarker.timestampMs),
+                },
+                {
+                  label: 'Invia questi 12 secondi',
+                  onPress: () => {
+                    void shareMarkerClip({
+                      track,
+                      timestampMs: menuMarker.timestampMs,
+                      noteText: menuMarker.text,
+                    });
+                  },
                 },
                 {
                   label:
