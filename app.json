@@ -16,8 +16,19 @@
     ],
     "ios": {
       "bundleIdentifier": "app.rewavier",
-      "buildNumber": "8",
+      "buildNumber": "9",
       "usesIcloudStorage": true,
+      "entitlements": {
+        "com.apple.developer.icloud-container-identifiers": [
+          "iCloud.app.rewavier"
+        ],
+        "com.apple.developer.ubiquity-container-identifiers": [
+          "iCloud.app.rewavier"
+        ],
+        "com.apple.developer.icloud-services": [
+          "CloudDocuments"
+        ]
+      },
       "usesAppleSignIn": true,
       "supportsTablet": true,
       "userInterfaceStyle": "dark",
