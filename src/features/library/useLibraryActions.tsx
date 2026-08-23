@@ -283,6 +283,10 @@ export function useLibraryActions(
       onPress: () => navigation.navigate('RecordSketch', { albumId }),
     },
     {
+      label: 'Resoconto lezione',
+      onPress: () => navigation.navigate('LessonRecap', { kind: 'album', id: albumId }),
+    },
+    {
       label: 'Collega cartella Drive',
       onPress: () => navigation.navigate('DriveFolder', { albumId }),
     },
@@ -439,6 +443,10 @@ export function useLibraryActions(
     {
       label: 'Registra bozza qui',
       onPress: () => navigation.navigate('RecordSketch', { folderId: folder.id }),
+    },
+    {
+      label: 'Resoconto lezione',
+      onPress: () => navigation.navigate('LessonRecap', { kind: 'folder', id: folder.id }),
     },
     {
       label: 'Elimina cartella',

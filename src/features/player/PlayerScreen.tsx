@@ -1,20 +1,67 @@
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Alert, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 
 import { formatTimecode } from '../../domain/models';
+import { markersNearTime } from '../../domain/practice';
 import { NoteBubble } from '../notes/NoteBubble';
-import { usePlayerStore } from '../../store/playerStore';
+import { isPausePromptSuppressed, usePlayerStore } from '../../store/playerStore';
 import { colors, layout } from '../../theme/colors';
 import { AddNoteButton } from './AddNoteButton';
 import { PlaybackControls } from './PlaybackControls';
 import { Waveform } from './Waveform';
+
+function usePauseNotePrompt() {
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const bubbleVisible = usePlayerStore((s) => s.bubble.visible);
+  const trackId = usePlayerStore((s) => s.track.id);
+  const loadState = usePlayerStore((s) => s.loadState);
+  const focused = useIsFocused();
+  const askedThisPause = useRef(false);
+
+  useEffect(() => {
+    if (isPlaying) {
+      askedThisPause.current = false;
+      return;
+    }
+    if (!focused || bubbleVisible || !trackId || loadState === 'loading' || loadState === 'error') {
+      return;
+    }
+    if (isPausePromptSuppressed()) {
+      return;
+    }
+    const atMs = usePlayerStore.getState().positionMs;
+    const timer = setTimeout(() => {
+      const state = usePlayerStore.getState();
+      if (askedThisPause.current || state.isPlaying || state.bubble.visible) {
+        return;
+      }
+      if (isPausePromptSuppressed()) {
+        return;
+      }
+      if (markersNearTime(state.markers, atMs).length > 0) {
+        return;
+      }
+      askedThisPause.current = true;
+      Alert.alert('Segno qui?', `Vuoi un appunto a ${formatTimecode(atMs)}?`, [
+        { text: 'No, grazie', style: 'cancel' },
+        {
+          text: 'Sì',
+          onPress: () => usePlayerStore.getState().pressAddNote(),
+        },
+      ]);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [isPlaying, focused, bubbleVisible, trackId, loadState]);
+}
 
 export function PlayerScreen() {
   const navigation = useNavigation();
   const track = usePlayerStore((s) => s.track);
   const positionMs = usePlayerStore((s) => s.positionMs);
   const canGoBack = navigation.canGoBack();
+  usePauseNotePrompt();
 
   return (
     <SafeAreaView style={styles.safe}>

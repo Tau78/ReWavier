@@ -178,6 +178,9 @@ export async function scanAudioFolder(tracks: Track[]): Promise<ImportedBundle[]
     let durationMs = 0;
     let startMs: number | undefined;
     let endMs: number | undefined;
+    let exerciseOpenId: string | undefined;
+    let exerciseCloseId: string | undefined;
+    let practiceHoleId: string | undefined;
     const sidecarFile = new File(dir, sidecarNameForAudio(name));
     if (sidecarFile.exists) {
       try {
@@ -189,6 +192,9 @@ export async function scanAudioFolder(tracks: Track[]): Promise<ImportedBundle[]
           durationMs = parsed.durationMs || 0;
           startMs = parsed.startMs;
           endMs = parsed.endMs;
+          exerciseOpenId = parsed.exerciseOpenId;
+          exerciseCloseId = parsed.exerciseCloseId;
+          practiceHoleId = parsed.practiceHoleId;
         }
       } catch {
         // sidecar unreadable
@@ -204,6 +210,9 @@ export async function scanAudioFolder(tracks: Track[]): Promise<ImportedBundle[]
         sourceFileName: name,
         startMs,
         endMs,
+        exerciseOpenId,
+        exerciseCloseId,
+        practiceHoleId,
         downloaded: true,
         downloadedAt: Date.now(),
       },

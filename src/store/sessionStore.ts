@@ -105,12 +105,11 @@ async function hashPassword(email: string, password: string): Promise<string> {
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
-  hydrated: false,
+  hydrated: true,
   user: null,
   reservedColors: [],
 
   async hydrate() {
-    set({ hydrated: true });
     try {
       const snapshot = await loadSessionSnapshot();
       set({

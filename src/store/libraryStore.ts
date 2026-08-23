@@ -17,6 +17,7 @@ import {
   type SmartPlaylist,
 } from '../domain/library';
 import { type Marker, type Track } from '../domain/models';
+import { withPractice, type PracticeIds } from '../domain/practice';
 import {
   loadLibrarySnapshot,
   saveLibrarySnapshot,
@@ -81,6 +82,7 @@ export type LibraryActions = {
   renameTrack: (id: string, title: string) => void;
   setTrackArtwork: (id: string, artworkUri?: string) => void;
   setTrackBounds: (id: string, startMs: number, endMs: number) => void;
+  setTrackPractice: (id: string, practice: PracticeIds) => void;
   deleteTrack: (id: string) => void;
   moveTrack: (trackId: string, folderId: string | null) => void;
   addTrackToFolder: (trackId: string, folderId: string) => 'added' | 'exists';
@@ -495,6 +497,16 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     set((state) => ({
       tracks: state.tracks.map((track) =>
         track.id === id ? { ...track, startMs, endMs } : track,
+      ),
+    }));
+    const track = get().getTrack(id);
+    persistSidecar(track, get().markersByTrackId[id] ?? []);
+  },
+
+  setTrackPractice(id, practice) {
+    set((state) => ({
+      tracks: state.tracks.map((track) =>
+        track.id === id ? withPractice(track, practice) : track,
       ),
     }));
     const track = get().getTrack(id);

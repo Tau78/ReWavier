@@ -10,8 +10,9 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
-import { canEditMarker } from '../../domain/markers';
+import { canEditMarker, markerAuthorLabel, markerColor } from '../../domain/markers';
 import { formatTimecode } from '../../domain/models';
+import { markersNearTime } from '../../domain/practice';
 import { usePlayerStore } from '../../store/playerStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { colors, layout } from '../../theme/colors';
@@ -32,12 +33,17 @@ export function NoteBubble() {
   const hideMarker = usePlayerStore((s) => s.hideMarker);
   const setDraft = usePlayerStore((s) => s.setDraft);
   const saveBubble = usePlayerStore((s) => s.saveBubble);
+  const replyAt = usePlayerStore((s) => s.replyAt);
   const user = useSessionStore((s) => s.user);
 
   const isEditing = bubble.markerId != null;
   const current = markers.find((marker) => marker.id === bubble.markerId);
+  const thread = markersNearTime(markers, bubble.timestampMs).filter(
+    (marker) => marker.id !== bubble.markerId,
+  );
   const readOnly = isEditing && current != null && !canEditMarker(current, user);
   const canSave = !readOnly && bubble.draft.trim().length > 0;
+  const canReply = isEditing || thread.length > 0;
 
   const persistNote = () => {
     if (!canSave) {
@@ -89,6 +95,27 @@ export function NoteBubble() {
                     : 'Nuovo appunto'}
               </Text>
 
+              {thread.length > 0 ? (
+                <View style={styles.thread} accessibilityLabel="Altri appunti sullo stesso momento">
+                  <Text style={styles.threadTitle}>Stesso momento</Text>
+                  {thread.map((marker) => {
+                    const who = markerAuthorLabel(marker);
+                    const pinColor = markerColor(marker);
+                    return (
+                      <View key={marker.id} style={styles.threadRow}>
+                        <View style={[styles.threadDot, { backgroundColor: pinColor }]} />
+                        <View style={styles.threadCopy}>
+                          <Text style={[styles.threadWho, { color: pinColor }]} numberOfLines={1}>
+                            {who === 'Tu' ? 'Tu dici:' : `${who} dice:`}
+                          </Text>
+                          <Text style={styles.threadText}>{marker.text.trim() || '—'}</Text>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              ) : null}
+
               <TextInput
                 style={styles.input}
                 value={bubble.draft}
@@ -114,6 +141,17 @@ export function NoteBubble() {
                 </Pressable>
 
                 <View style={styles.actionsRight}>
+                  {canReply ? (
+                    <Pressable
+                      onPress={() => replyAt(bubble.timestampMs)}
+                      hitSlop={layout.hitSlop}
+                      accessibilityRole="button"
+                      accessibilityLabel="Rispondi sullo stesso momento"
+                    >
+                      <Text style={styles.replyLabel}>Rispondi</Text>
+                    </Pressable>
+                  ) : null}
+
                   {isEditing && !readOnly ? (
                     <Pressable
                       onPress={() => {
@@ -219,6 +257,46 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 13,
     color: colors.textMuted,
+  },
+  thread: {
+    marginTop: 14,
+    gap: 10,
+  },
+  threadTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.textMuted,
+    letterSpacing: 0.3,
+  },
+  threadRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  threadDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 5,
+  },
+  threadCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  threadWho: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  threadText: {
+    marginTop: 2,
+    fontSize: 14,
+    lineHeight: 20,
+    color: colors.text,
+  },
+  replyLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.accent,
   },
   input: {
     marginTop: 16,

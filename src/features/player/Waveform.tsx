@@ -22,14 +22,21 @@ import {
   resolveTrackRange,
   type Marker,
 } from '../../domain/models';
-import { usePlayerStore } from '../../store/playerStore';
+import {
+  holeRangeForMarker,
+  markerById,
+  resolveExerciseRange,
+} from '../../domain/practice';
+import { suppressPausePrompt, usePlayerStore } from '../../store/playerStore';
 import { colors } from '../../theme/colors';
+import { ActionMenu } from '../library/ActionMenu';
 
 const OVERVIEW_HEIGHT = 48;
 const ZOOM_HEIGHT = 120;
 const DEFAULT_DETAIL_MS = 12_000;
 const MIN_WINDOW_MS = 800;
 const DRAG_THRESHOLD = 8;
+const LONG_PRESS_MS = 480;
 const PIN_HIT = 44;
 const HANDLE_HIT = 28;
 const PLAYHEAD_HALF = 7;
@@ -291,6 +298,7 @@ function ZoomMarkerPin({
   tapeWidth,
   px,
   durationMs,
+  onLongPress,
 }: {
   marker: Marker;
   tapeStartMs: number;
@@ -298,16 +306,19 @@ function ZoomMarkerPin({
   tapeWidth: number;
   px: number;
   durationMs: number;
+  onLongPress: (id: string) => void;
 }) {
   const openMarker = usePlayerStore((s) => s.openMarker);
   const moveMarker = usePlayerStore((s) => s.moveMarker);
   const [dragMs, setDragMs] = useState<number | null>(null);
 
-  const latest = useRef({ marker, tapeStartMs, tapeSpanMs, px, durationMs });
-  latest.current = { marker, tapeStartMs, tapeSpanMs, px, durationMs };
+  const latest = useRef({ marker, tapeStartMs, tapeSpanMs, px, durationMs, onLongPress });
+  latest.current = { marker, tapeStartMs, tapeSpanMs, px, durationMs, onLongPress };
 
   const originMs = useRef(marker.timestampMs);
   const didDrag = useRef(false);
+  const didLong = useRef(false);
+  const longTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const pan = useRef(
     PanResponder.create({
@@ -318,7 +329,20 @@ function ZoomMarkerPin({
       onPanResponderGrant: () => {
         originMs.current = latest.current.marker.timestampMs;
         didDrag.current = false;
+        didLong.current = false;
         setDragMs(originMs.current);
+        if (longTimer.current) {
+          clearTimeout(longTimer.current);
+        }
+        longTimer.current = setTimeout(() => {
+          longTimer.current = null;
+          if (didDrag.current) {
+            return;
+          }
+          didLong.current = true;
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+          latest.current.onLongPress(latest.current.marker.id);
+        }, LONG_PRESS_MS);
       },
       onPanResponderMove: (_, gesture) => {
         const { px: scale, durationMs: dur } = latest.current;
@@ -327,11 +351,26 @@ function ZoomMarkerPin({
         }
         if (Math.abs(gesture.dx) >= DRAG_THRESHOLD || Math.abs(gesture.dy) >= DRAG_THRESHOLD) {
           didDrag.current = true;
+          if (longTimer.current) {
+            clearTimeout(longTimer.current);
+            longTimer.current = null;
+          }
+        }
+        if (didLong.current) {
+          return;
         }
         setDragMs(clampTime(originMs.current + gesture.dx / scale, dur));
       },
       onPanResponderRelease: (_, gesture) => {
+        if (longTimer.current) {
+          clearTimeout(longTimer.current);
+          longTimer.current = null;
+        }
         const { marker: m, px: scale, durationMs: dur } = latest.current;
+        if (didLong.current) {
+          setDragMs(null);
+          return;
+        }
         if (!didDrag.current) {
           setDragMs(null);
           openMarker(m.id);
@@ -342,6 +381,10 @@ function ZoomMarkerPin({
         moveMarker(m.id, next);
       },
       onPanResponderTerminate: () => {
+        if (longTimer.current) {
+          clearTimeout(longTimer.current);
+          longTimer.current = null;
+        }
         setDragMs(null);
       },
     }),
@@ -368,7 +411,7 @@ function ZoomMarkerPin({
       {...pan.panHandlers}
       accessibilityRole="adjustable"
       accessibilityLabel={`${says} ${preview || formatTimecode(displayMs)}`}
-      accessibilityHint="Tocca per aprire, trascina per spostare"
+      accessibilityHint="Tocca per aprire, tieni premuto per ascoltare intorno o l’esercizio, trascina per spostare"
     >
       {dragging ? <Text style={styles.dragTime}>{formatTimecode(displayMs)}</Text> : null}
       {!dragging ? (
@@ -478,6 +521,7 @@ function RangeHandle({
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
         originMs.current = latest.current.timeMs;
+        suppressPausePrompt(2500);
         pause();
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       },
@@ -532,6 +576,12 @@ export function Waveform() {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const openMarker = usePlayerStore((s) => s.openMarker);
   const playFrom = usePlayerStore((s) => s.playFrom);
+  const listenAround = usePlayerStore((s) => s.listenAround);
+  const setExerciseBound = usePlayerStore((s) => s.setExerciseBound);
+  const setPracticeHole = usePlayerStore((s) => s.setPracticeHole);
+  const clearExercise = usePlayerStore((s) => s.clearExercise);
+  const clearPracticeHole = usePlayerStore((s) => s.clearPracticeHole);
+  const [menuMarkerId, setMenuMarkerId] = useState<string | null>(null);
   const cuePoints = useMemo(
     () => [...visiblePins].sort((a, b) => a.timestampMs - b.timestampMs),
     [visiblePins],
@@ -553,6 +603,12 @@ export function Waveform() {
   const overviewSpan = clampWindowMs(overviewWindowMs, durationMs);
   const range = resolveTrackRange(track);
   const customRange = isCustomRange(range, track.durationMs);
+  const exercise = resolveExerciseRange(track, markers);
+  const openMarkerBound = markerById(markers, track.exerciseOpenId);
+  const closeMarkerBound = markerById(markers, track.exerciseCloseId);
+  const holeMarker = markerById(markers, track.practiceHoleId);
+  const holeSpan = holeMarker ? holeRangeForMarker(holeMarker, durationMs) : null;
+  const menuMarker = markerById(markers, menuMarkerId ?? undefined);
   const window = useMemo(
     () => getTimeWindow(positionMs, durationMs, detailSpan),
     [positionMs, durationMs, detailSpan],
@@ -742,6 +798,8 @@ export function Waveform() {
                 <Pressable
                   key={marker.id}
                   onPress={() => openMarker(marker.id)}
+                  onLongPress={() => setMenuMarkerId(marker.id)}
+                  delayLongPress={LONG_PRESS_MS}
                   hitSlop={8}
                   style={[
                     styles.overviewDot,
@@ -778,6 +836,79 @@ export function Waveform() {
           />
         </View>
         </GestureDetector>
+        {exercise || openMarkerBound || closeMarkerBound || holeSpan ? (
+          <View style={styles.practiceBlock} accessibilityLabel="Esercizio e silenzio">
+            <View style={styles.practiceLane}>
+              {exercise ? (
+                <View
+                  style={[
+                    styles.practiceFill,
+                    {
+                      left: `${(exercise.startMs / durationMs) * 100}%`,
+                      width: `${((exercise.endMs - exercise.startMs) / durationMs) * 100}%`,
+                    },
+                  ]}
+                />
+              ) : null}
+              {openMarkerBound && !exercise ? (
+                <View
+                  style={[
+                    styles.practiceTick,
+                    { left: `${(openMarkerBound.timestampMs / durationMs) * 100}%` },
+                  ]}
+                />
+              ) : null}
+              {closeMarkerBound && !exercise ? (
+                <View
+                  style={[
+                    styles.practiceTick,
+                    styles.practiceTickClose,
+                    { left: `${(closeMarkerBound.timestampMs / durationMs) * 100}%` },
+                  ]}
+                />
+              ) : null}
+              {holeSpan ? (
+                <View
+                  style={[
+                    styles.practiceHole,
+                    {
+                      left: `${(holeSpan.startMs / durationMs) * 100}%`,
+                      width: `${Math.max(1.2, ((holeSpan.endMs - holeSpan.startMs) / durationMs) * 100)}%`,
+                    },
+                  ]}
+                />
+              ) : null}
+            </View>
+            {exercise ? (
+              <View style={styles.practiceMeta}>
+                <Text style={styles.practiceLabel}>
+                  Esercizio · {formatTimecode(exercise.startMs)} – {formatTimecode(exercise.endMs)}
+                </Text>
+                <Pressable onPress={clearExercise} hitSlop={8} accessibilityRole="button">
+                  <Text style={styles.practiceClear}>Togli</Text>
+                </Pressable>
+              </View>
+            ) : openMarkerBound || closeMarkerBound ? (
+              <Text style={styles.practiceHint}>
+                {openMarkerBound && !closeMarkerBound
+                  ? `Inizio a ${formatTimecode(openMarkerBound.timestampMs)} · tieni premuto un altro appunto per la fine`
+                  : closeMarkerBound && !openMarkerBound
+                    ? `Fine a ${formatTimecode(closeMarkerBound.timestampMs)} · tieni premuto un altro appunto per l’inizio`
+                    : 'Scegli inizio e fine più lontani'}
+              </Text>
+            ) : null}
+            {holeSpan && holeMarker ? (
+              <View style={styles.practiceMeta}>
+                <Text style={styles.practiceLabel}>
+                  Silenzio · {formatTimecode(holeMarker.timestampMs)}
+                </Text>
+                <Pressable onPress={clearPracticeHole} hitSlop={8} accessibilityRole="button">
+                  <Text style={styles.practiceClear}>Togli</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
         {cuePoints.length > 0 ? (
           <ScrollView
             horizontal
@@ -793,9 +924,11 @@ export function Waveform() {
                 <Pressable
                   key={marker.id}
                   onPress={() => playFrom(marker.timestampMs)}
+                  onLongPress={() => setMenuMarkerId(marker.id)}
+                  delayLongPress={LONG_PRESS_MS}
                   accessibilityRole="button"
                   accessibilityLabel={`Parti da ${formatTimecode(marker.timestampMs)}${preview ? `. ${preview}` : ''}`}
-                  accessibilityHint="Parte da questo punto"
+                  accessibilityHint="Parte da questo punto. Tieni premuto per ascoltare intorno o l’esercizio."
                   style={({ pressed }) => [
                     styles.cueChip,
                     { borderColor: pinColor },
@@ -861,6 +994,7 @@ export function Waveform() {
                     tapeWidth={Math.max(tapeWidth, zoomWidth)}
                     px={scale}
                     durationMs={durationMs}
+                    onLongPress={setMenuMarkerId}
                   />
                 ))}
                 <RangeHandle
@@ -896,6 +1030,50 @@ export function Waveform() {
         </View>
         </GestureDetector>
       </View>
+      <ActionMenu
+        visible={menuMarker != null}
+        title={
+          menuMarker
+            ? `${formatTimecode(menuMarker.timestampMs)}${markerPreview(menuMarker.text) ? ` · ${markerPreview(menuMarker.text)}` : ''}`
+            : 'Appunto'
+        }
+        actions={
+          menuMarker
+            ? [
+                {
+                  label: 'Ascolta intorno',
+                  onPress: () => listenAround(menuMarker.timestampMs),
+                },
+                {
+                  label:
+                    track.practiceHoleId === menuMarker.id
+                      ? 'Togli il silenzio'
+                      : 'Togli il suono qui',
+                  onPress: () => setPracticeHole(menuMarker.id),
+                },
+                {
+                  label:
+                    track.exerciseOpenId === menuMarker.id
+                      ? 'Togli inizio esercizio'
+                      : 'Inizio esercizio',
+                  onPress: () => setExerciseBound(menuMarker.id, 'open'),
+                },
+                {
+                  label:
+                    track.exerciseCloseId === menuMarker.id
+                      ? 'Togli fine esercizio'
+                      : 'Fine esercizio',
+                  onPress: () => setExerciseBound(menuMarker.id, 'close'),
+                },
+                {
+                  label: 'Apri appunto',
+                  onPress: () => openMarker(menuMarker.id),
+                },
+              ]
+            : []
+        }
+        onClose={() => setMenuMarkerId(null)}
+      />
     </View>
   );
 }
@@ -1000,6 +1178,68 @@ const styles = StyleSheet.create({
     marginTop: 1,
     color: colors.textMuted,
     fontSize: 11,
+  },
+  practiceBlock: {
+    paddingTop: 10,
+    paddingHorizontal: 2,
+    gap: 6,
+  },
+  practiceLane: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.surfaceRaised,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  practiceFill: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255,107,53,0.55)',
+    borderRadius: 4,
+  },
+  practiceTick: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 3,
+    marginLeft: -1.5,
+    backgroundColor: colors.accent,
+    borderRadius: 1,
+  },
+  practiceTickClose: {
+    backgroundColor: colors.waveform,
+  },
+  practiceHole: {
+    position: 'absolute',
+    top: 1,
+    bottom: 1,
+    backgroundColor: 'rgba(13,13,15,0.72)',
+    borderRadius: 3,
+  },
+  practiceMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  practiceLabel: {
+    flex: 1,
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+  },
+  practiceHint: {
+    color: colors.textMuted,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  practiceClear: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '700',
   },
   overviewTrack: {
     height: OVERVIEW_HEIGHT,

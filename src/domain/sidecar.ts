@@ -15,6 +15,9 @@ export type SidecarFile = {
   markers: Marker[];
   startMs?: number;
   endMs?: number;
+  exerciseOpenId?: string;
+  exerciseCloseId?: string;
+  practiceHoleId?: string;
 };
 
 export function audioBasename(fileName: string): string {
@@ -96,6 +99,9 @@ export function buildSidecar(track: Track, markers: Marker[]): SidecarFile {
     markers,
     startMs: track.startMs,
     endMs: track.endMs,
+    exerciseOpenId: track.exerciseOpenId,
+    exerciseCloseId: track.exerciseCloseId,
+    practiceHoleId: track.practiceHoleId,
   };
 }
 
@@ -114,6 +120,9 @@ export function parseSidecar(raw: string): SidecarFile | null {
       durationMs: data.durationMs ?? 0,
       startMs: typeof data.startMs === 'number' ? data.startMs : undefined,
       endMs: typeof data.endMs === 'number' ? data.endMs : undefined,
+      exerciseOpenId: typeof data.exerciseOpenId === 'string' ? data.exerciseOpenId : undefined,
+      exerciseCloseId: typeof data.exerciseCloseId === 'string' ? data.exerciseCloseId : undefined,
+      practiceHoleId: typeof data.practiceHoleId === 'string' ? data.practiceHoleId : undefined,
       markers: data.markers.map((marker) =>
         normalizeMarker({
           id: marker.id,

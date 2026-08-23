@@ -15,6 +15,9 @@ export type Track = {
   remoteHash?: string;
   startMs?: number;
   endMs?: number;
+  exerciseOpenId?: string;
+  exerciseCloseId?: string;
+  practiceHoleId?: string;
   artworkUri?: string;
 };
 

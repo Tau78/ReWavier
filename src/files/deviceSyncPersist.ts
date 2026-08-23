@@ -1,7 +1,7 @@
-import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
 import type { LinkedKind } from '../cloud/deviceSync/deviceRegistry';
+import { pathExistsAsync, withTimeout } from './fsSafe';
 import { libraryDirectory } from './libraryPaths';
 
 export type DeviceSyncPrefs = {
@@ -17,22 +17,27 @@ export type DeviceSyncPrefs = {
 
 const FILE_NAME = 'device-sync.json';
 
-function prefsFile(): File {
-  return new File(libraryDirectory(), FILE_NAME);
+function prefsFileUri(): string {
+  return `${libraryDirectory().uri}/${FILE_NAME}`;
 }
 
 export async function loadDeviceSyncPrefs(): Promise<DeviceSyncPrefs> {
-  const file = prefsFile();
-  if (!file.exists) {
+  const uri = prefsFileUri();
+  const exists = await withTimeout(pathExistsAsync(uri), 2000, false);
+  if (!exists) {
     return {};
   }
   try {
-    return JSON.parse(await LegacyFS.readAsStringAsync(file.uri)) as DeviceSyncPrefs;
+    const raw = await withTimeout(LegacyFS.readAsStringAsync(uri), 3000, '');
+    if (!raw) {
+      return {};
+    }
+    return JSON.parse(raw) as DeviceSyncPrefs;
   } catch {
     return {};
   }
 }
 
 export async function saveDeviceSyncPrefs(prefs: DeviceSyncPrefs): Promise<void> {
-  await LegacyFS.writeAsStringAsync(prefsFile().uri, JSON.stringify(prefs));
+  await LegacyFS.writeAsStringAsync(prefsFileUri(), JSON.stringify(prefs));
 }

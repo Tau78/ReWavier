@@ -16,6 +16,16 @@ import {
   type NoteBubbleState,
   type Track,
 } from '../domain/models';
+import {
+  activePlayRange,
+  holeRangeForMarker,
+  listenAroundWindow,
+  markerById,
+  practiceFromTrack,
+  resolveExerciseRange,
+  withPractice,
+  type PracticeIds,
+} from '../domain/practice';
 
 const EMPTY_TRACK: Track = {
   id: '',
@@ -79,6 +89,12 @@ export type PlayerActions = {
   skipBy: (step: number, options?: { autoPlay?: boolean }) => boolean;
   setStartMs: (ms: number, options?: { persist?: boolean; seek?: boolean }) => void;
   setEndMs: (ms: number, options?: { persist?: boolean; seek?: boolean }) => void;
+  listenAround: (ms: number) => void;
+  setExerciseBound: (markerId: string, role: 'open' | 'close') => void;
+  setPracticeHole: (markerId: string) => void;
+  clearExercise: () => void;
+  clearPracticeHole: () => void;
+  replyAt: (timestampMs?: number) => void;
 };
 
 export type PlayerStore = PlayerState & PlayerActions;
@@ -97,6 +113,30 @@ let pendingSeekMs: number | null = null;
 let resumeAfterBubble = false;
 let lastAdvanceKey = '';
 let lastLoadErrorTrackId = '';
+let aroundUntilMs: number | null = null;
+let holeTimer: ReturnType<typeof setTimeout> | null = null;
+let holeBusy = false;
+let suppressPausePromptUntil = 0;
+
+export function suppressPausePrompt(ms = 2000) {
+  suppressPausePromptUntil = Math.max(suppressPausePromptUntil, Date.now() + ms);
+}
+
+export function isPausePromptSuppressed(): boolean {
+  return Date.now() < suppressPausePromptUntil;
+}
+
+function clearHoleTimer() {
+  if (holeTimer != null) {
+    clearTimeout(holeTimer);
+    holeTimer = null;
+  }
+  holeBusy = false;
+}
+
+function persistPractice(track: Track, practice: PracticeIds) {
+  useLibraryStore.getState().setTrackPractice(track.id, practice);
+}
 
 function engine() {
   return usingFile ? fileEngine : mockEngine;
@@ -145,6 +185,9 @@ export function clearPlayerIfTrackDeleted(trackId: string): void {
   pendingSeekMs = null;
   resumeAfterBubble = false;
   lastAdvanceKey = '';
+  aroundUntilMs = null;
+  clearHoleTimer();
+  suppressPausePrompt(2500);
   usingFile = false;
   mockEngine.reset(EMPTY_TRACK.durationMs);
   void fileEngine.unload();
@@ -185,9 +228,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
   play() {
     const state = get();
-    const { track, loadState } = state;
+    const { track, loadState, markers } = state;
     const uri = playableUri(track);
-    const range = resolveTrackRange(track);
+    const range = activePlayRange(track, markers);
 
     if (uri && loadState === 'loading') {
       pendingPlay = true;
@@ -210,6 +253,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
   pause() {
     pendingPlay = false;
+    aroundUntilMs = null;
+    clearHoleTimer();
     const state = get();
     pauseEngines(state);
     if (trackHasPlayableUri(state.track) && state.loadState !== 'ready') {
@@ -219,8 +264,11 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
   stop() {
     pendingPlay = false;
+    aroundUntilMs = null;
+    clearHoleTimer();
+    suppressPausePrompt(2500);
     const state = get();
-    const range = resolveTrackRange(state.track);
+    const range = activePlayRange(state.track, state.markers);
     if (mockDrivesPlayback(state)) {
       engine().pause();
       engine().seekTo(range.startMs);
@@ -240,8 +288,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
   seekTo(ms) {
     const state = get();
-    const range = resolveTrackRange(state.track);
+    const range = activePlayRange(state.track, state.markers);
     const next = Math.min(range.endMs, Math.max(range.startMs, ms));
+    suppressPausePrompt(800);
     const uri = playableUri(state.track);
 
     if (uri && (state.loadState === 'loading' || state.loadState === 'error')) {
@@ -255,7 +304,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
   playFrom(ms) {
     const state = get();
-    const range = resolveTrackRange(state.track);
+    const range = activePlayRange(state.track, state.markers);
     const next = Math.min(range.endMs, Math.max(range.startMs, ms));
     const uri = playableUri(state.track);
 
@@ -292,6 +341,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     if (persist) {
       useLibraryStore.getState().setTrackBounds(track.id, startMs, current.endMs);
     }
+    suppressPausePrompt(1500);
   },
 
   setEndMs(ms, options) {
@@ -311,10 +361,12 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     if (persist) {
       useLibraryStore.getState().setTrackBounds(track.id, current.startMs, endMs);
     }
+    suppressPausePrompt(1500);
   },
 
   pressAddNote() {
     const state = get();
+    suppressPausePrompt(4000);
     resumeAfterBubble = mockDrivesPlayback(state)
       ? engine().isPlaying()
       : state.isPlaying;
@@ -335,6 +387,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
   openMarker(id) {
     const state = get();
+    suppressPausePrompt(4000);
     const marker = state.markers.find((item) => item.id === id);
     if (!marker) {
       return;
@@ -448,9 +501,120 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     const { markers, bubble, track } = get();
     const next = markers.filter((marker) => marker.id !== id);
     persistMarkers(track.id, next);
+    const practice = practiceFromTrack(track);
+    const touched =
+      practice.exerciseOpenId === id ||
+      practice.exerciseCloseId === id ||
+      practice.practiceHoleId === id;
+    const nextPractice = touched
+      ? {
+          exerciseOpenId: practice.exerciseOpenId === id ? undefined : practice.exerciseOpenId,
+          exerciseCloseId: practice.exerciseCloseId === id ? undefined : practice.exerciseCloseId,
+          practiceHoleId: practice.practiceHoleId === id ? undefined : practice.practiceHoleId,
+        }
+      : practice;
+    if (touched) {
+      persistPractice(track, nextPractice);
+    }
     set({
       markers: next,
+      track: touched ? withPractice(track, nextPractice) : track,
       bubble: bubble.markerId === id ? { ...HIDDEN_BUBBLE } : bubble,
+    });
+  },
+
+  listenAround(ms) {
+    const state = get();
+    const file = resolveTrackRange(state.track);
+    const window = listenAroundWindow(ms, Math.max(state.track.durationMs, 0));
+    const start = Math.max(file.startMs, window.startMs);
+    const end = Math.min(file.endMs, Math.max(start + 80, window.endMs));
+    aroundUntilMs = end;
+    clearHoleTimer();
+    suppressPausePrompt(end - start + 2500);
+    const uri = playableUri(state.track);
+    if (uri && state.loadState === 'loading') {
+      pendingSeekMs = start;
+      pendingPlay = true;
+      set({ positionMs: start, isPlaying: true });
+      return;
+    }
+    if (uri && state.loadState === 'error') {
+      set({ positionMs: start });
+      return;
+    }
+    engine().seekTo(start);
+    set({ positionMs: start });
+    engine().play();
+  },
+
+  setExerciseBound(markerId, role) {
+    const { track, markers } = get();
+    if (!markers.some((marker) => marker.id === markerId)) {
+      return;
+    }
+    const practice = practiceFromTrack(track);
+    if (role === 'open') {
+      practice.exerciseOpenId = practice.exerciseOpenId === markerId ? undefined : markerId;
+      if (practice.exerciseOpenId === markerId && practice.exerciseCloseId === markerId) {
+        practice.exerciseCloseId = undefined;
+      }
+    } else {
+      practice.exerciseCloseId = practice.exerciseCloseId === markerId ? undefined : markerId;
+      if (practice.exerciseCloseId === markerId && practice.exerciseOpenId === markerId) {
+        practice.exerciseOpenId = undefined;
+      }
+    }
+    persistPractice(track, practice);
+    set({ track: withPractice(track, practice) });
+  },
+
+  setPracticeHole(markerId) {
+    const { track, markers } = get();
+    if (!markers.some((marker) => marker.id === markerId)) {
+      return;
+    }
+    const practice = practiceFromTrack(track);
+    practice.practiceHoleId = practice.practiceHoleId === markerId ? undefined : markerId;
+    persistPractice(track, practice);
+    set({ track: withPractice(track, practice) });
+  },
+
+  clearExercise() {
+    const { track } = get();
+    const practice = {
+      ...practiceFromTrack(track),
+      exerciseOpenId: undefined,
+      exerciseCloseId: undefined,
+    };
+    persistPractice(track, practice);
+    set({ track: withPractice(track, practice) });
+  },
+
+  clearPracticeHole() {
+    const { track } = get();
+    const practice = { ...practiceFromTrack(track), practiceHoleId: undefined };
+    persistPractice(track, practice);
+    set({ track: withPractice(track, practice) });
+  },
+
+  replyAt(timestampMs) {
+    const state = get();
+    suppressPausePrompt(4000);
+    resumeAfterBubble = false;
+    pendingPlay = false;
+    pauseEngines(state);
+    if (trackHasPlayableUri(state.track) && state.loadState !== 'ready') {
+      set({ isPlaying: false });
+    }
+    const ts = timestampMs ?? state.bubble.timestampMs;
+    set({
+      bubble: {
+        visible: true,
+        timestampMs: ts,
+        markerId: null,
+        draft: '',
+      },
     });
   },
 
@@ -481,6 +645,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     const gen = ++loadGeneration;
     resumeAfterBubble = false;
     lastAdvanceKey = '';
+    aroundUntilMs = null;
+    clearHoleTimer();
+    suppressPausePrompt(2500);
     pendingPlay = options?.autoPlay === true;
     pendingSeekMs = null;
     usingFile = false;
@@ -588,28 +755,69 @@ function boundsForDuration(track: Track, durationMs: number): Track {
 }
 
 function onEngineFrame(positionMs: number, playing: boolean) {
-  const { track } = usePlayerStore.getState();
-  const range = resolveTrackRange(track);
-  if (playing && range.endMs > range.startMs && positionMs >= range.endMs - 25) {
-    if (isCustomRange(range, track.durationMs)) {
-      engine().seekTo(range.startMs);
+  const state = usePlayerStore.getState();
+  const { track, markers } = state;
+  const fileRange = resolveTrackRange(track);
+  const playRange = activePlayRange(track, markers);
+  const exercise = resolveExerciseRange(track, markers);
+
+  if (playing && aroundUntilMs != null && positionMs >= aroundUntilMs - 25) {
+    aroundUntilMs = null;
+    suppressPausePrompt(2500);
+    pauseEngines(state);
+    usePlayerStore.setState({ positionMs, isPlaying: false });
+    return;
+  }
+
+  const holeMarker = markerById(markers, track.practiceHoleId);
+  if (playing && holeMarker && !holeBusy && aroundUntilMs == null) {
+    const hole = holeRangeForMarker(holeMarker, track.durationMs);
+    if (positionMs >= hole.startMs && positionMs < hole.endMs - 20) {
+      holeBusy = true;
+      const wait = Math.max(80, hole.endMs - positionMs);
+      suppressPausePrompt(wait + 1500);
+      pauseEngines(state);
+      const gen = loadGeneration;
+      const trackId = track.id;
+      holeTimer = setTimeout(() => {
+        holeTimer = null;
+        holeBusy = false;
+        if (gen !== loadGeneration) {
+          return;
+        }
+        const current = usePlayerStore.getState();
+        if (current.track.id !== trackId) {
+          return;
+        }
+        engine().seekTo(hole.endMs);
+        engine().play();
+      }, wait);
+      usePlayerStore.setState({ positionMs, isPlaying: false });
+      return;
+    }
+  }
+
+  if (playing && playRange.endMs > playRange.startMs && positionMs >= playRange.endMs - 25) {
+    if (exercise || isCustomRange(fileRange, track.durationMs)) {
+      engine().seekTo(playRange.startMs);
       return;
     }
   }
   const finished =
     !playing &&
     Boolean(track.id) &&
-    range.endMs > range.startMs &&
-    positionMs >= range.endMs - 25 &&
-    !isCustomRange(range, track.durationMs);
-  const advanceKey = `${track.id}:${range.endMs}`;
+    fileRange.endMs > fileRange.startMs &&
+    positionMs >= fileRange.endMs - 25 &&
+    !exercise &&
+    !isCustomRange(fileRange, track.durationMs);
+  const advanceKey = `${track.id}:${fileRange.endMs}`;
   if (finished && lastAdvanceKey !== advanceKey) {
     lastAdvanceKey = advanceKey;
     if (usePlayerStore.getState().skipBy(1, { autoPlay: true })) {
       return;
     }
   }
-  if (playing || positionMs < range.endMs - 25) {
+  if (playing || positionMs < fileRange.endMs - 25) {
     lastAdvanceKey = '';
   }
   usePlayerStore.setState({ positionMs, isPlaying: playing });

@@ -1,70 +1,103 @@
-import { useCallback, useEffect, useState } from 'react';
-import { AppState, StyleSheet } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import * as SplashScreen from 'expo-splash-screen';
+import { Component, type ErrorInfo, type ReactNode, useEffect, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
-import { WaveformDecoderHost } from './src/audio/WaveformDecoderHost';
-import { runCloudSync } from './src/cloud/syncEngine';
-import { RootNavigator } from './src/navigation/RootNavigator';
-import { flushLibraryPersist, waitForLibraryHydrated } from './src/store/libraryStore';
-import { useLibraryStore } from './src/store/libraryStore';
-import { useSessionStore } from './src/store/sessionStore';
-import { colors } from './src/theme/colors';
+type MainModule = { default: React.ComponentType };
+
+class BootErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('BootErrorBoundary', error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <View style={boot.root}>
+          <Text style={boot.title}>ReWavier</Text>
+          <Text style={boot.body}>
+            Qualcosa non è partito. Chiudi l’app dal multitasking e riaprila.
+          </Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 export default function App() {
-  const [decoderReady, setDecoderReady] = useState(false);
-
-  const hideSplash = useCallback(() => {
-    void SplashScreen.hideAsync().catch(() => undefined);
-  }, []);
+  const [Main, setMain] = useState<React.ComponentType | null>(null);
+  const [bootError, setBootError] = useState<string | null>(null);
 
   useEffect(() => {
-    hideSplash();
-    void useSessionStore.getState().hydrate().catch(() => undefined);
-    void useLibraryStore.getState().hydrate().catch(() => undefined);
-    const decoderTimer = setTimeout(() => setDecoderReady(true), 1500);
-    return () => clearTimeout(decoderTimer);
-  }, [hideSplash]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      await waitForLibraryHydrated();
-      if (!cancelled) {
-        void runCloudSync();
-      }
-    })();
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        void (async () => {
-          await waitForLibraryHydrated();
-          void runCloudSync();
-        })();
-      }
-      if (state === 'background' || state === 'inactive') {
-        void flushLibraryPersist().catch(() => undefined);
-      }
-    });
+    let alive = true;
+    void import('./src/app/AppMain')
+      .then((mod: MainModule) => {
+        if (alive) {
+          setMain(() => mod.default);
+        }
+      })
+      .catch((err: unknown) => {
+        if (alive) {
+          setBootError(err instanceof Error ? err.message : 'Caricamento fallito');
+        }
+      });
     return () => {
-      cancelled = true;
-      sub.remove();
+      alive = false;
     };
   }, []);
 
+  if (bootError) {
+    return (
+      <View style={boot.root}>
+        <Text style={boot.title}>ReWavier</Text>
+        <Text style={boot.body}>{bootError}</Text>
+      </View>
+    );
+  }
+
+  if (!Main) {
+    return (
+      <View style={boot.root}>
+        <Text style={boot.title}>ReWavier</Text>
+        <ActivityIndicator color="#FF6B35" style={boot.spinner} />
+      </View>
+    );
+  }
+
   return (
-    <GestureHandlerRootView style={styles.root} onLayout={hideSplash}>
-      <SafeAreaProvider style={styles.root}>
-        <RootNavigator />
-        {decoderReady ? <WaveformDecoderHost /> : null}
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <BootErrorBoundary>
+      <Main />
+    </BootErrorBoundary>
   );
 }
 
-const styles = StyleSheet.create({
+const boot = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: '#0D0D0F',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  title: {
+    color: '#FF6B35',
+    fontSize: 24,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  body: {
+    marginTop: 12,
+    color: '#8E8E93',
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+  },
+  spinner: {
+    marginTop: 20,
   },
 });
