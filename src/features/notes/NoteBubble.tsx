@@ -39,7 +39,7 @@ export function NoteBubble() {
   const isEditing = bubble.markerId != null;
   const current = markers.find((marker) => marker.id === bubble.markerId);
   const thread = markersNearTime(markers, bubble.timestampMs).filter(
-    (marker) => marker.id !== bubble.markerId,
+    (marker) => marker.id !== bubble.markerId && marker.hidden !== true,
   );
   const readOnly = isEditing && current != null && !canEditMarker(current, user);
   const canSave = !readOnly && bubble.draft.trim().length > 0;
@@ -116,6 +116,18 @@ export function NoteBubble() {
                 </View>
               ) : null}
 
+              {canReply ? (
+                <Pressable
+                  onPress={() => replyAt(bubble.timestampMs)}
+                  hitSlop={layout.hitSlop}
+                  accessibilityRole="button"
+                  accessibilityLabel="Rispondi sullo stesso momento"
+                  style={styles.replyHit}
+                >
+                  <Text style={styles.replyLabel}>Rispondi</Text>
+                </Pressable>
+              ) : null}
+
               <TextInput
                 style={styles.input}
                 value={bubble.draft}
@@ -141,17 +153,6 @@ export function NoteBubble() {
                 </Pressable>
 
                 <View style={styles.actionsRight}>
-                  {canReply ? (
-                    <Pressable
-                      onPress={() => replyAt(bubble.timestampMs)}
-                      hitSlop={layout.hitSlop}
-                      accessibilityRole="button"
-                      accessibilityLabel="Rispondi sullo stesso momento"
-                    >
-                      <Text style={styles.replyLabel}>Rispondi</Text>
-                    </Pressable>
-                  ) : null}
-
                   {isEditing && !readOnly ? (
                     <Pressable
                       onPress={() => {
@@ -293,9 +294,13 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: colors.text,
   },
+  replyHit: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+  },
   replyLabel: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
     color: colors.accent,
   },
   input: {

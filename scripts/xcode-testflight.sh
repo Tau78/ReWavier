@@ -17,8 +17,8 @@ for arg in "$@"; do
   esac
 done
 
-echo "→ Sync native iOS project from app.json"
-npx expo prebuild --platform ios --no-install
+echo "→ Sync native iOS project from app.json (clean)"
+npx expo prebuild --platform ios --clean --no-install
 
 echo "→ CocoaPods"
 (cd ios && pod install)
@@ -56,7 +56,7 @@ xcodebuild \
   DEVELOPMENT_TEAM=YSU7PL673A \
   CODE_SIGN_STYLE=Automatic \
   -allowProvisioningUpdates \
-  archive
+  clean archive
 
 if [[ "$UPLOAD" == "0" ]]; then
   echo ""

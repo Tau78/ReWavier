@@ -6,7 +6,6 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
     "backgroundColor": "#0D0D0F",
     "primaryColor": "#FF6B35",
     "description": "Ascolta un brano, metti in pausa e annota il momento esatto sulla waveform.",
@@ -16,7 +15,7 @@
     ],
     "ios": {
       "bundleIdentifier": "app.rewavier",
-      "buildNumber": "24",
+      "buildNumber": "25",
       "usesIcloudStorage": true,
       "entitlements": {
         "com.apple.developer.icloud-container-identifiers": [
@@ -31,7 +30,6 @@
       },
       "usesAppleSignIn": true,
       "supportsTablet": true,
-      "userInterfaceStyle": "dark",
       "config": {
         "usesNonExemptEncryption": false
       },
@@ -45,6 +43,7 @@
         "CFBundleAllowMixedLocalizations": true,
         "CFBundleDevelopmentRegion": "it",
         "NSMicrophoneUsageDescription": "ReWavier usa il microfono solo quando registri una bozza musicale.",
+        "UIUserInterfaceStyle": "Dark",
         "NSUbiquitousContainers": {
           "iCloud.app.rewavier": {
             "NSUbiquitousContainerIsDocumentScopePublic": true,
@@ -121,15 +120,6 @@
         {
           "containerIdentifier": "iCloud.app.rewavier",
           "containerName": "ReWavier"
-        }
-      ],
-      [
-        "expo-splash-screen",
-        {
-          "backgroundColor": "#0D0D0F",
-          "dark": {
-            "backgroundColor": "#0D0D0F"
-          }
         }
       ],
       "expo-web-browser",
