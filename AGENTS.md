@@ -16,11 +16,11 @@ All user-facing text (app, alerts, Store, privacy) is for someone who has never 
 
 # VAI
 
-The word **VAI** means run `scripts/vai.sh` (commit, merge to main, push, FTP docs if changed, iOS build, TestFlight). Follow `.cursor/rules/vai.mdc`.
+The word **VAI** means run `scripts/vai.sh` (commit, merge to main, push, FTP docs if changed, iOS build via **Xcode local**, TestFlight). Follow `.cursor/rules/vai.mdc`. Does not use EAS Build cloud. If this machine has no Xcode, the script uses EAS.
 
 # Apple release
 
-TestFlight (VAI) is not App Store Review. Before Submit for Review, or after Guideline 2.1 Information Needed, read `.cursor/skills/apple-release/SKILL.md`. Fill `review-notes.template.txt`. Do not call the store listing ready without the review packet (7-point notes, demo login, physical iPhone recording, privacy URL, real screenshots). To reuse on the next app, copy that skill folder — see `.cursor/skills/apple-release/INSTALL.md`.
+TestFlight (VAI / `scripts/xcode-testflight.sh`) ≠ App Store review. Before Submit for Review, or after Guideline 2.1 Information Needed, read `.cursor/skills/apple-release/SKILL.md`. Fill `review-notes.template.txt`. Do not call the store listing ready without the review packet (7-point notes, demo login, physical iPhone recording, privacy URL, real screenshots). To reuse on the next app, copy that skill folder — see `.cursor/skills/apple-release/INSTALL.md`.
 
 # Mac mini + iPhone
 

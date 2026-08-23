@@ -1,48 +1,37 @@
-import { useEffect } from 'react';
-import { AppState, StyleSheet } from 'react-native';
+import { lazy, Suspense, useCallback, useEffect } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import * as SplashScreen from 'expo-splash-screen';
 
-import { WaveformDecoderHost } from './src/audio/WaveformDecoderHost';
-import { runCloudSync } from './src/cloud/syncEngine';
-import { RootNavigator } from './src/navigation/RootNavigator';
-import { useLibraryStore } from './src/store/libraryStore';
-import { useSessionStore } from './src/store/sessionStore';
+import { hideNativeSplash } from './src/app/hideSplash';
+import { StartupErrorBoundary } from './src/app/StartupErrorBoundary';
 import { colors } from './src/theme/colors';
 
-void SplashScreen.hideAsync().catch(() => undefined);
+const AppRoot = lazy(() => import('./src/app/AppRoot'));
 
 export default function App() {
-  const ready = useSessionStore((s) => s.hydrated);
-
   useEffect(() => {
-    void useSessionStore.getState().hydrate();
-    void useLibraryStore.getState().hydrate();
+    hideNativeSplash();
+    const retry = setTimeout(hideNativeSplash, 100);
+    const retry2 = setTimeout(hideNativeSplash, 500);
+    return () => {
+      clearTimeout(retry);
+      clearTimeout(retry2);
+    };
   }, []);
 
-  useEffect(() => {
-    if (!ready) {
-      return;
-    }
-    void runCloudSync();
-    const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        void runCloudSync();
-      }
-    });
-    return () => sub.remove();
-  }, [ready]);
+  const onRootLayout = useCallback(() => {
+    hideNativeSplash();
+  }, []);
 
   return (
-    <GestureHandlerRootView style={styles.root}>
+    <GestureHandlerRootView style={styles.root} onLayout={onRootLayout}>
       <SafeAreaProvider style={styles.root}>
-        {ready ? (
-          <>
-            <RootNavigator />
-            <WaveformDecoderHost />
-          </>
-        ) : null}
+        <StartupErrorBoundary>
+          <Suspense fallback={<View style={styles.root} />}>
+            <AppRoot />
+          </Suspense>
+        </StartupErrorBoundary>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
