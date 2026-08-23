@@ -217,7 +217,17 @@ if [[ "$SKIP_BUILD" == "1" ]]; then
 elif xcode_build_running; then
   log "Build: xcodebuild ReWavier è già in corso, non ne lancio un'altra."
 elif ! command -v xcodebuild >/dev/null; then
-  die "Manca Xcode (xcodebuild). Installa Xcode dal Mac App Store."
+  if [[ -z "${EXPO_TOKEN:-}" ]]; then
+    die "Manca Xcode qui. Imposta EXPO_TOKEN e rilancia, oppure esegui VAI sul Mac."
+  fi
+  log "Build: niente Xcode su questa macchina, uso EAS cloud."
+  if [[ "$SKIP_SUBMIT" == "1" ]]; then
+    npx eas-cli build --platform ios --profile production --non-interactive --no-wait
+    log "Build: richiesta EAS inviata. TestFlight saltato (--skip-submit)."
+  else
+    npx eas-cli build --platform ios --profile production --non-interactive --no-wait --auto-submit
+    log "Build + TestFlight: richiesta EAS inviata. Su iPhone arriva dopo Apple."
+  fi
 else
   if [[ "$SKIP_SUBMIT" == "1" ]]; then
     log "Build: archivio locale con Xcode (senza upload TestFlight)."
