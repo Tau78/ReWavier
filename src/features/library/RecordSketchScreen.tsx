@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ensurePeaks } from '../../audio/extractPeaks';
 import { pushTrackToSharedAlbum } from '../../cloud/syncEngine';
 import { createId } from '../../domain/library';
+import { stampNewMarker } from '../../domain/markers';
 import { formatTimecode } from '../../domain/models';
 import { copyToDownloads } from '../../files/downloads';
 import type { RootStackParamList } from '../../navigation/types';
@@ -46,7 +49,8 @@ export function RecordSketchScreen() {
   const { folderId, albumId } = useRoute<Route>().params ?? {};
   const folders = useLibraryStore((s) => s.folders);
   const albums = useLibraryStore((s) => s.albums);
-  const displayName = useSessionStore((s) => s.user?.displayName) ?? 'Bozza';
+  const user = useSessionStore((s) => s.user);
+  const displayName = user?.displayName ?? 'Bozza';
 
   const recordingRef = useRef<Audio.Recording | null>(null);
   const [recording, setRecording] = useState(false);
@@ -57,7 +61,11 @@ export function RecordSketchScreen() {
   const [destAlbumId, setDestAlbumId] = useState<string | undefined>(albumId);
   const [saving, setSaving] = useState(false);
   const [namingFolder, setNamingFolder] = useState(false);
+  const [liveNotes, setLiveNotes] = useState<{ id: string; timestampMs: number; text: string }[]>([]);
+  const [draft, setDraft] = useState<{ id: string; timestampMs: number; text: string } | null>(null);
   const discardOk = useRef(false);
+  const notesRef = useRef(liveNotes);
+  notesRef.current = liveNotes;
   const destAlbum = albums.find((album) => album.id === destAlbumId);
   const sharedDrive = destAlbum?.origin === 'drive' && Boolean(destAlbum.driveFolderId);
 
@@ -106,30 +114,64 @@ export function RecordSketchScreen() {
     });
   }, [navigation, uri, recording, saving]);
 
+  const commitDraft = () => {
+    if (!draft?.text.trim()) {
+      setDraft(null);
+      return notesRef.current;
+    }
+    const next = [...notesRef.current, { ...draft, text: draft.text.trim() }].sort(
+      (left, right) => left.timestampMs - right.timestampMs,
+    );
+    notesRef.current = next;
+    setLiveNotes(next);
+    setDraft(null);
+    return next;
+  };
+
+  const startNote = () => {
+    commitDraft();
+    setDraft({
+      id: createId('mark'),
+      timestampMs: elapsedMs,
+      text: '',
+    });
+  };
+
   const start = async () => {
     const permission = await Audio.requestPermissionsAsync();
     if (!permission.granted) {
       Alert.alert('Microfono', 'Per registrare una bozza serve il permesso microfono.');
       return;
     }
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-    });
-    const created = await Audio.Recording.createAsync(
-      Audio.RecordingOptionsPresets.HIGH_QUALITY,
-      (status) => {
-        if (status.isRecording) {
-          setElapsedMs(status.durationMillis ?? 0);
-        }
-      },
-      200,
-    );
-    recordingRef.current = created.recording;
-    setRecording(true);
-    setUri(null);
-    setElapsedMs(0);
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+      });
+      const created = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        (status) => {
+          if (status.isRecording) {
+            setElapsedMs(status.durationMillis ?? 0);
+          }
+        },
+        200,
+      );
+      recordingRef.current = created.recording;
+      setRecording(true);
+      setUri(null);
+      setElapsedMs(0);
+      setLiveNotes([]);
+      setDraft(null);
+    } catch {
+      recordingRef.current = null;
+      setRecording(false);
+      Alert.alert(
+        'Registrazione',
+        'Registrazione non avviata. Chiudi altre app che usano il microfono e riprova.',
+      );
+    }
   };
 
   const stop = async () => {
@@ -139,6 +181,7 @@ export function RecordSketchScreen() {
     if (!active) {
       return;
     }
+    commitDraft();
     try {
       await active.stopAndUnloadAsync();
       setUri(active.getURI());
@@ -182,7 +225,18 @@ export function RecordSketchScreen() {
               downloaded: true,
               downloadedAt: Date.now(),
             },
-            markers: [],
+            markers: notesRef.current.map((note) =>
+              stampNewMarker(
+                {
+                  id: note.id,
+                  timestampMs: note.timestampMs,
+                  text: note.text,
+                  createdAt: Date.now(),
+                  updatedAt: Date.now(),
+                },
+                user,
+              ),
+            ),
           },
         ],
         { folderId: destFolderId, albumId: destAlbumId },
@@ -215,6 +269,10 @@ export function RecordSketchScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
       <View style={styles.header}>
         <Pressable
           onPress={() => navigation.goBack()}
@@ -230,8 +288,8 @@ export function RecordSketchScreen() {
         </View>
       </View>
       <Text style={styles.hint}>
-        Idea, riff o melodia al volo. Dopo il salvataggio è una traccia come le altre:
-        waveform, marker e Drive se l’album è condiviso.
+        Idea, riff o melodia al volo. Mentre registri, tocca + per un appunto su quel
+        momento: il microfono non si ferma.
       </Text>
 
       <View style={styles.nameBox}>
@@ -255,6 +313,58 @@ export function RecordSketchScreen() {
       >
         <Text style={styles.recLabel}>{recording ? 'Stop' : uri ? 'Riregistra' : 'Registra'}</Text>
       </Pressable>
+
+      {recording ? (
+        <Pressable
+          onPress={startNote}
+          style={styles.addNote}
+          accessibilityRole="button"
+          accessibilityLabel="Aggiungi appunto"
+          accessibilityHint="Lascia un appunto su questo momento. La registrazione continua."
+        >
+          <Text style={styles.addNotePlus}>+</Text>
+          <Text style={styles.addNoteLabel}>Appunto su questo momento</Text>
+        </Pressable>
+      ) : null}
+
+      {draft ? (
+        <View style={styles.draftBox}>
+          <Text style={styles.draftTime}>{formatTimecode(draft.timestampMs)}</Text>
+          <TextInput
+            style={styles.draftInput}
+            value={draft.text}
+            onChangeText={(text) => setDraft({ ...draft, text })}
+            placeholder="Scrivi l’appunto…"
+            placeholderTextColor={colors.textMuted}
+            autoFocus
+            multiline
+            selectionColor={colors.accent}
+          />
+          <View style={styles.draftActions}>
+            <Pressable onPress={() => setDraft(null)} hitSlop={layout.hitSlop}>
+              <Text style={styles.draftCancel}>Annulla</Text>
+            </Pressable>
+            <Pressable
+              onPress={commitDraft}
+              disabled={draft.text.trim().length === 0}
+              style={[styles.draftSave, draft.text.trim().length === 0 && styles.saveOff]}
+            >
+              <Text style={styles.draftSaveLabel}>Fatto</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      {liveNotes.length > 0 ? (
+        <ScrollView style={styles.notesScroll} keyboardShouldPersistTaps="handled">
+          {liveNotes.map((note) => (
+            <View key={note.id} style={styles.noteRow}>
+              <Text style={styles.noteTime}>{formatTimecode(note.timestampMs)}</Text>
+              <Text style={styles.noteText}>{note.text}</Text>
+            </View>
+          ))}
+        </ScrollView>
+      ) : null}
 
       {uri ? (
         <>
@@ -330,12 +440,14 @@ export function RecordSketchScreen() {
           />
         </>
       ) : null}
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
+  flex: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -373,6 +485,78 @@ const styles = StyleSheet.create({
   },
   recOn: { backgroundColor: colors.danger },
   recLabel: { color: colors.text, fontSize: 14, fontWeight: '800' },
+  addNote: {
+    alignSelf: 'center',
+    marginTop: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.accent,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  addNotePlus: {
+    color: colors.accent,
+    fontSize: 28,
+    fontWeight: '700',
+    lineHeight: 30,
+    marginTop: -2,
+  },
+  addNoteLabel: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  draftBox: {
+    marginHorizontal: 16,
+    marginTop: 16,
+    backgroundColor: colors.surface,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    padding: 14,
+  },
+  draftTime: {
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  draftInput: {
+    marginTop: 10,
+    minHeight: 64,
+    color: colors.text,
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  draftActions: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  draftCancel: { color: colors.textMuted, fontSize: 16, fontWeight: '500' },
+  draftSave: {
+    backgroundColor: colors.accent,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  draftSaveLabel: { color: colors.text, fontSize: 16, fontWeight: '700' },
+  notesScroll: { flexGrow: 0, maxHeight: 160, marginTop: 12, paddingHorizontal: 16 },
+  noteRow: {
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  noteTime: {
+    color: colors.accent,
+    fontSize: 12,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+  },
+  noteText: { marginTop: 4, color: colors.text, fontSize: 15, lineHeight: 20 },
   formScroll: { flex: 1, marginTop: 16 },
   form: { paddingHorizontal: 16, paddingBottom: 16 },
   addFolder: { color: colors.accent, fontSize: 16, fontWeight: '700' },

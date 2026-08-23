@@ -47,9 +47,7 @@ function GoogleContinueButtonConfigured({
           if (result.type === 'dismiss' || result.type === 'cancel') {
             return;
           }
-          if (result.type !== 'success') {
-            throw new Error('Login Google non riuscito. Riprova con Apple o email.');
-          }
+          await google.completeGoogleSignIn(result);
         });
       }}
       disabled={busy}

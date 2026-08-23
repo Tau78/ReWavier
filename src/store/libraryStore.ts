@@ -42,6 +42,7 @@ export type LibraryState = {
   markersByTrackId: Record<string, Marker[]>;
   peaksByTrackId: Record<string, number[]>;
   downloadingIds: Record<string, number>;
+  libraryHydrated: boolean;
 };
 
 export type LibraryActions = {
@@ -81,6 +82,7 @@ export type LibraryActions = {
   setTrackBounds: (id: string, startMs: number, endMs: number) => void;
   deleteTrack: (id: string) => void;
   moveTrack: (trackId: string, folderId: string | null) => void;
+  addTrackToFolder: (trackId: string, folderId: string) => 'added' | 'exists';
   importBundles: (
     bundles: ImportedBundle[],
     dest?: { folderId?: string | null; albumId?: string },
@@ -143,6 +145,35 @@ function snapshotFrom(state: LibraryState): LibrarySnapshot {
 
 let persistReady = false;
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
+let libraryHydratePromise: Promise<void> | undefined;
+
+export function waitForLibraryHydrated(): Promise<void> {
+  if (useLibraryStore.getState().libraryHydrated) {
+    return Promise.resolve();
+  }
+  if (libraryHydratePromise) {
+    return libraryHydratePromise;
+  }
+  return new Promise((resolve) => {
+    const unsub = useLibraryStore.subscribe((state) => {
+      if (state.libraryHydrated) {
+        unsub();
+        resolve();
+      }
+    });
+  });
+}
+
+export async function flushLibraryPersist(): Promise<void> {
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = undefined;
+  }
+  if (!persistReady) {
+    return;
+  }
+  await saveLibrarySnapshot(snapshotFrom(useLibraryStore.getState()));
+}
 
 function schedulePersist() {
   if (!persistReady) {
@@ -165,6 +196,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   markersByTrackId: {},
   peaksByTrackId: {},
   downloadingIds: {},
+  libraryHydrated: false,
 
   setTrackMarkers(trackId, markers) {
     set((state) => ({
@@ -494,6 +526,8 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         Object.entries(state.peaksByTrackId).filter(([key]) => key !== id),
       ),
     }));
+    const { clearPlayerIfTrackDeleted } = require('./playerStore') as typeof import('./playerStore');
+    clearPlayerIfTrackDeleted(id);
   },
 
   moveTrack(trackId, folderId) {
@@ -506,6 +540,22 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         return { ...folder, trackIds: without };
       }),
     }));
+  },
+
+  addTrackToFolder(trackId, folderId) {
+    const folder = get().folders.find((item) => item.id === folderId);
+    if (!folder) {
+      return 'exists';
+    }
+    if (folder.trackIds.includes(trackId)) {
+      return 'exists';
+    }
+    set((state) => ({
+      folders: state.folders.map((item) =>
+        item.id === folderId ? { ...item, trackIds: [...item.trackIds, trackId] } : item,
+      ),
+    }));
+    return 'added';
   },
 
   importBundles(bundles, dest = {}) {
@@ -727,17 +777,25 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   async hydrate() {
-    const snapshot = await loadLibrarySnapshot();
-    set({
-      tracks: snapshot?.tracks ?? [],
-      folders: snapshot?.folders ?? [],
-      albums: snapshot?.albums ?? [],
-      playlists: snapshot?.playlists ?? [],
-      smartPlaylists: snapshot?.smartPlaylists ?? [],
-      markersByTrackId: snapshot?.markersByTrackId ?? {},
-    });
-    persistReady = true;
-    void finishLibraryHydrate(snapshot != null);
+    const run = async () => {
+      try {
+        const snapshot = await loadLibrarySnapshot();
+        set({
+          tracks: snapshot?.tracks ?? [],
+          folders: snapshot?.folders ?? [],
+          albums: snapshot?.albums ?? [],
+          playlists: snapshot?.playlists ?? [],
+          smartPlaylists: snapshot?.smartPlaylists ?? [],
+          markersByTrackId: snapshot?.markersByTrackId ?? {},
+        });
+        persistReady = true;
+        await finishLibraryHydrate(snapshot != null);
+      } finally {
+        set({ libraryHydrated: true });
+      }
+    };
+    libraryHydratePromise = run();
+    await libraryHydratePromise;
   },
 
   getTrack(id) {

@@ -74,7 +74,9 @@ export async function importLooseAudioFiles(): Promise<number> {
 }
 
 export async function applyRemoteSnapshot(remote: LibrarySnapshot): Promise<void> {
-  const local = (await loadLibrarySnapshot()) ?? snapshotFromStore();
+  const disk = await loadLibrarySnapshot();
+  const live = snapshotFromStore();
+  const local = disk ? mergeLibrarySnapshots(disk, live) : live;
   const merged = sanitizeSnapshot(mergeLibrarySnapshots(local, remote));
   useLibraryStore.setState({
     tracks: merged.tracks,

@@ -83,7 +83,7 @@ export async function getValidGoogleAccessToken(forceRefresh = false): Promise<s
   if (auth.refreshToken && auth.clientId) {
     return (await refreshAccess(auth)).accessToken;
   }
-  if (forceRefresh) {
+  if (forceRefresh || (auth.expiresAt && auth.expiresAt <= Date.now())) {
     throw new Error('Sessione Google scaduta. Accedi di nuovo con Google.');
   }
   return auth.accessToken;

@@ -39,6 +39,8 @@ function createMarkerId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
+export type LoadState = 'idle' | 'loading' | 'ready' | 'error';
+
 export type PlayerState = {
   track: Track;
   peaks: number[];
@@ -48,6 +50,7 @@ export type PlayerState = {
   bubble: NoteBubbleState;
   queueIds: string[];
   showHidden: boolean;
+  loadState: LoadState;
 };
 
 export type PlayerActions = {
@@ -56,6 +59,7 @@ export type PlayerActions = {
   stop: () => void;
   seekBy: (deltaMs: number) => void;
   seekTo: (ms: number) => void;
+  playFrom: (ms: number) => void;
   pressAddNote: () => void;
   openMarker: (id: string) => void;
   setDraft: (text: string) => void;
@@ -69,7 +73,7 @@ export type PlayerActions = {
     track: Track,
     markers?: Marker[],
     queueIds?: string[],
-    options?: { autoPlay?: boolean },
+    options?: { autoPlay?: boolean; startAtMs?: number },
   ) => void;
   skipBy: (step: number, options?: { autoPlay?: boolean }) => boolean;
   setStartMs: (ms: number, options?: { persist?: boolean; seek?: boolean }) => void;
@@ -85,6 +89,10 @@ function persistMarkers(trackId: string, markers: Marker[]) {
 const mockEngine = new MockAudioEngine(EMPTY_TRACK.durationMs);
 const fileEngine = new FileAudioEngine();
 let usingFile = false;
+let loadGeneration = 0;
+let loadChain: Promise<void> = Promise.resolve();
+let pendingPlay = false;
+let pendingSeekMs: number | null = null;
 let resumeAfterBubble = false;
 let lastAdvanceKey = '';
 
@@ -92,12 +100,61 @@ function engine() {
   return usingFile ? fileEngine : mockEngine;
 }
 
+function trackHasPlayableUri(track: Track): boolean {
+  return Boolean(playableUri(track));
+}
+
+function mockDrivesPlayback(state: Pick<PlayerState, 'track'>): boolean {
+  return !trackHasPlayableUri(state.track);
+}
+
 function restorePlaybackAfterBubble() {
   if (!resumeAfterBubble) {
     return;
   }
   resumeAfterBubble = false;
-  engine().play();
+  usePlayerStore.getState().play();
+}
+
+function readPositionMs(state: PlayerState): number {
+  if (trackHasPlayableUri(state.track) && state.loadState === 'loading') {
+    return state.positionMs;
+  }
+  return engine().getPositionMs();
+}
+
+function pauseEngines(state: PlayerState): void {
+  if (mockDrivesPlayback(state)) {
+    engine().pause();
+    return;
+  }
+  pendingPlay = false;
+  if (state.loadState === 'ready') {
+    fileEngine.pause();
+  }
+}
+
+export function clearPlayerIfTrackDeleted(trackId: string): void {
+  if (usePlayerStore.getState().track.id !== trackId) {
+    return;
+  }
+  loadGeneration += 1;
+  pendingPlay = false;
+  pendingSeekMs = null;
+  resumeAfterBubble = false;
+  lastAdvanceKey = '';
+  usingFile = false;
+  mockEngine.reset(EMPTY_TRACK.durationMs);
+  void fileEngine.unload();
+  usePlayerStore.setState({
+    track: EMPTY_TRACK,
+    peaks: [],
+    markers: [],
+    positionMs: 0,
+    isPlaying: false,
+    bubble: { ...HIDDEN_BUBBLE },
+    loadState: 'idle',
+  });
 }
 
 export function refreshPlayingArtwork(trackId: string) {
@@ -122,39 +179,105 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   bubble: { ...HIDDEN_BUBBLE },
   queueIds: [],
   showHidden: false,
+  loadState: 'idle',
 
   play() {
-    const { track } = get();
+    const state = get();
+    const { track, loadState } = state;
+    const uri = playableUri(track);
     const range = resolveTrackRange(track);
-    const positionMs = engine().getPositionMs();
+
+    if (uri && loadState === 'loading') {
+      pendingPlay = true;
+      set({ isPlaying: true });
+      return;
+    }
+    if (uri && loadState === 'error') {
+      return;
+    }
+    if (uri && loadState !== 'ready') {
+      return;
+    }
+
+    const positionMs = readPositionMs(state);
     if (positionMs < range.startMs || positionMs >= range.endMs - 40) {
-      engine().seekTo(range.startMs);
+      get().seekTo(range.startMs);
     }
     engine().play();
   },
 
   pause() {
-    engine().pause();
+    pendingPlay = false;
+    const state = get();
+    pauseEngines(state);
+    if (trackHasPlayableUri(state.track) && state.loadState !== 'ready') {
+      set({ isPlaying: false });
+    }
   },
 
   stop() {
-    engine().pause();
-    engine().seekTo(resolveTrackRange(get().track).startMs);
+    pendingPlay = false;
+    const state = get();
+    const range = resolveTrackRange(state.track);
+    if (mockDrivesPlayback(state)) {
+      engine().pause();
+      engine().seekTo(range.startMs);
+      return;
+    }
+    pendingSeekMs = null;
+    if (state.loadState === 'ready') {
+      fileEngine.pause();
+      fileEngine.seekTo(range.startMs);
+    }
+    set({ positionMs: range.startMs, isPlaying: false });
   },
 
   seekBy(deltaMs) {
-    get().seekTo(engine().getPositionMs() + deltaMs);
+    get().seekTo(readPositionMs(get()) + deltaMs);
   },
 
   seekTo(ms) {
-    const range = resolveTrackRange(get().track);
-    engine().seekTo(Math.min(range.endMs, Math.max(range.startMs, ms)));
+    const state = get();
+    const range = resolveTrackRange(state.track);
+    const next = Math.min(range.endMs, Math.max(range.startMs, ms));
+    const uri = playableUri(state.track);
+
+    if (uri && (state.loadState === 'loading' || state.loadState === 'error')) {
+      pendingSeekMs = next;
+      set({ positionMs: next });
+      return;
+    }
+
+    engine().seekTo(next);
+  },
+
+  playFrom(ms) {
+    const state = get();
+    const range = resolveTrackRange(state.track);
+    const next = Math.min(range.endMs, Math.max(range.startMs, ms));
+    const uri = playableUri(state.track);
+
+    if (uri && state.loadState === 'loading') {
+      pendingSeekMs = next;
+      pendingPlay = true;
+      set({ positionMs: next, isPlaying: true });
+      return;
+    }
+    if (uri && state.loadState === 'error') {
+      set({ positionMs: next });
+      return;
+    }
+
+    engine().seekTo(next);
+    set({ positionMs: next });
+    engine().play();
   },
 
   setStartMs(ms, options) {
     const persist = options?.persist ?? false;
     const seek = options?.seek ?? true;
-    const { track } = get();
+    const state = get();
+    const { track } = state;
     const duration = Math.max(track.durationMs, 1);
     const current = resolveTrackRange(track);
     const minSpan = Math.min(MIN_RANGE_MS, duration);
@@ -162,7 +285,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     const next = { ...track, startMs, endMs: current.endMs };
     set({ track: next });
     if (seek) {
-      engine().seekTo(startMs);
+      get().seekTo(startMs);
     }
     if (persist) {
       useLibraryStore.getState().setTrackBounds(track.id, startMs, current.endMs);
@@ -172,7 +295,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   setEndMs(ms, options) {
     const persist = options?.persist ?? false;
     const seek = options?.seek ?? true;
-    const { track } = get();
+    const state = get();
+    const { track } = state;
     const duration = Math.max(track.durationMs, 1);
     const current = resolveTrackRange(track);
     const minSpan = Math.min(MIN_RANGE_MS, duration);
@@ -180,7 +304,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     const next = { ...track, startMs: current.startMs, endMs };
     set({ track: next });
     if (seek) {
-      engine().seekTo(endMs);
+      get().seekTo(endMs);
     }
     if (persist) {
       useLibraryStore.getState().setTrackBounds(track.id, current.startMs, endMs);
@@ -188,9 +312,15 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   pressAddNote() {
-    resumeAfterBubble = engine().isPlaying();
-    engine().pause();
-    const timestampMs = engine().getPositionMs();
+    const state = get();
+    resumeAfterBubble = mockDrivesPlayback(state)
+      ? engine().isPlaying()
+      : state.isPlaying;
+    pauseEngines(state);
+    if (trackHasPlayableUri(state.track) && state.loadState !== 'ready') {
+      set({ isPlaying: false });
+    }
+    const timestampMs = readPositionMs(state);
     set({
       bubble: {
         visible: true,
@@ -202,13 +332,19 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   openMarker(id) {
-    const marker = get().markers.find((item) => item.id === id);
+    const state = get();
+    const marker = state.markers.find((item) => item.id === id);
     if (!marker) {
       return;
     }
     resumeAfterBubble = false;
-    engine().pause();
-    engine().seekTo(marker.timestampMs);
+    pendingPlay = false;
+    pauseEngines(state);
+    if (trackHasPlayableUri(state.track) && state.loadState !== 'ready') {
+      set({ positionMs: marker.timestampMs, isPlaying: false });
+    } else {
+      engine().seekTo(marker.timestampMs);
+    }
     set({
       bubble: {
         visible: true,
@@ -340,28 +476,39 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   loadTrack(track, markers = [], queueIds, options) {
+    const gen = ++loadGeneration;
     resumeAfterBubble = false;
     lastAdvanceKey = '';
+    pendingPlay = options?.autoPlay === true;
+    pendingSeekMs = null;
     usingFile = false;
-    const shouldAutoPlay = options?.autoPlay === true;
-    mockEngine.reset(track.durationMs);
-    void fileEngine.unload();
     const range = resolveTrackRange(track);
-    mockEngine.seekTo(range.startMs);
+    const cueMs =
+      options?.startAtMs != null
+        ? Math.min(range.endMs, Math.max(range.startMs, options.startAtMs))
+        : range.startMs;
+    const uri = playableUri(track);
+
+    if (!uri) {
+      mockEngine.reset(track.durationMs);
+      mockEngine.seekTo(cueMs);
+    }
+
     set({
       track: { ...track, startMs: range.startMs, endMs: range.endMs },
       peaks: useLibraryStore.getState().peaksByTrackId[track.id] ?? [],
       markers,
-      positionMs: range.startMs,
+      positionMs: cueMs,
       isPlaying: false,
       bubble: { ...HIDDEN_BUBBLE },
       queueIds: queueIds ?? get().queueIds,
+      loadState: uri ? 'loading' : 'idle',
     });
-    const uri = playableUri(track);
+
     if (uri) {
       void ensurePeaks(track)
         .then((peaks) => {
-          if (get().track.id !== track.id || peaks.length === 0) {
+          if (gen !== loadGeneration || get().track.id !== track.id || peaks.length === 0) {
             return;
           }
           set({ peaks });
@@ -373,34 +520,53 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
           }
         })
         .catch(() => undefined);
-    }
-    if (!uri) {
-      return;
-    }
-    void fileEngine
-      .load(uri, nowPlayingMetadata(track))
-      .then((durationMs) => {
-        if (get().track.id !== track.id) {
+
+      loadChain = loadChain.then(async () => {
+        if (gen !== loadGeneration) {
           return;
         }
-        usingFile = true;
-        const startMs = resolveTrackRange(get().track).startMs;
-        if (startMs > 0) {
-          fileEngine.seekTo(startMs);
+        try {
+          const durationMs = await fileEngine.load(uri, nowPlayingMetadata(track));
+          if (gen !== loadGeneration || get().track.id !== track.id) {
+            return;
+          }
+          usingFile = true;
+          set({ loadState: 'ready' });
+
+          const nextRange = resolveTrackRange(get().track);
+          const seekMs =
+            pendingSeekMs ??
+            (options?.startAtMs != null
+              ? Math.min(nextRange.endMs, Math.max(nextRange.startMs, options.startAtMs))
+              : nextRange.startMs);
+          pendingSeekMs = null;
+
+          if (seekMs > 0) {
+            fileEngine.seekTo(seekMs);
+            set({ positionMs: seekMs });
+          }
+          if (durationMs > 0 && durationMs !== get().track.durationMs) {
+            useLibraryStore.getState().updateTrackDuration(track.id, durationMs);
+            set((state) => ({
+              track: boundsForDuration(state.track, durationMs),
+            }));
+          }
+          if (pendingPlay) {
+            pendingPlay = false;
+            fileEngine.play();
+          }
+        } catch {
+          if (gen !== loadGeneration || get().track.id !== track.id) {
+            return;
+          }
+          usingFile = false;
+          pendingPlay = false;
+          pendingSeekMs = null;
+          set({ loadState: 'error', isPlaying: false });
         }
-        if (durationMs > 0 && durationMs !== get().track.durationMs) {
-          useLibraryStore.getState().updateTrackDuration(track.id, durationMs);
-          set((state) => ({
-            track: boundsForDuration(state.track, durationMs),
-          }));
-        }
-        if (shouldAutoPlay) {
-          fileEngine.play();
-        }
-      })
-      .catch(() => {
-        usingFile = false;
       });
+      return;
+    }
   },
 }));
 
@@ -440,6 +606,10 @@ function onEngineFrame(positionMs: number, playing: boolean) {
 }
 
 mockEngine.subscribe((positionMs, playing) => {
+  const state = usePlayerStore.getState();
+  if (!mockDrivesPlayback(state)) {
+    return;
+  }
   if (!usingFile) {
     onEngineFrame(positionMs, playing);
   }

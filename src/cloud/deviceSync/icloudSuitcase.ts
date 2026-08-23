@@ -100,25 +100,40 @@ export async function syncICloudSuitcase(): Promise<SuitcaseResult> {
   const remoteNames = (await api.readDirAsync(AUDIO_DIR, { isFullPath: false })).map(fileName);
   const localFiles = listLocalBagFiles();
   const localByName = new Map(localFiles.map((file) => [file.name.toLowerCase(), file]));
+  const remoteByName = new Map(
+    remoteNames
+      .filter((name) => name && !name.startsWith('.'))
+      .map((name) => [name.toLowerCase(), name]),
+  );
 
   for (const name of remoteNames) {
     if (!name || name.startsWith('.')) {
       continue;
     }
-    if (localByName.has(name.toLowerCase())) {
+    const local = localByName.get(name.toLowerCase());
+    const remotePath = `${root}/${AUDIO_DIR}/${name}`;
+    if (!local) {
+      await api.downloadFileAsync(remotePath, audioDirectory().uri);
+      pulled += 1;
       continue;
     }
-    await api.downloadFileAsync(`${root}/${AUDIO_DIR}/${name}`, audioDirectory().uri);
-    pulled += 1;
+    const remoteSize = icloudFileSize(remotePath);
+    if (remoteSize !== undefined && local.size !== undefined && remoteSize !== local.size) {
+      await api.downloadFileAsync(remotePath, audioDirectory().uri);
+      pulled += 1;
+    }
   }
 
   await importLooseAudioFiles();
 
   for (const local of listLocalBagFiles()) {
     const dest = `${AUDIO_DIR}/${local.name}`;
-    const exists = await api.isExistAsync(dest, false);
-    if (exists) {
-      continue;
+    const remoteName = remoteByName.get(local.name.toLowerCase());
+    if (remoteName) {
+      const remoteSize = icloudFileSize(`${root}/${AUDIO_DIR}/${remoteName}`);
+      if (remoteSize !== undefined && local.size !== undefined && remoteSize === local.size) {
+        continue;
+      }
     }
     await api.uploadFileAsync({ destinationPath: dest, filePath: local.uri });
     pushed += 1;
@@ -147,4 +162,16 @@ export async function syncICloudSuitcase(): Promise<SuitcaseResult> {
 
 function asFileUri(path: string): string {
   return path.startsWith('file:') ? path : `file://${path}`;
+}
+
+function icloudFileSize(fullPath: string): number | undefined {
+  try {
+    const file = new File(asFileUri(fullPath));
+    if (!file.exists) {
+      return undefined;
+    }
+    return typeof file.size === 'number' ? file.size : undefined;
+  } catch {
+    return undefined;
+  }
 }

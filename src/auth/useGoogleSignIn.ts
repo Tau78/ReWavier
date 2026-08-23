@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
@@ -73,6 +72,32 @@ function decodeJwtEmail(idToken: string): { email: string; name: string; sub: st
   }
 }
 
+export async function completeGoogleSignIn(
+  response: AuthSession.AuthSessionResult,
+  clientId: string,
+): Promise<void> {
+  if (response.type !== 'success') {
+    throw new Error('Login Google non riuscito. Riprova con Apple o email.');
+  }
+  const idToken = response.params.id_token ?? response.authentication?.idToken;
+  const accessToken = response.authentication?.accessToken ?? response.params.access_token;
+  const refreshToken = response.authentication?.refreshToken ?? response.params.refresh_token;
+  const expiresIn = response.authentication?.expiresIn;
+  const profile = idToken
+    ? decodeJwtEmail(idToken)
+    : { email: '', name: 'Google', sub: `google-${Date.now()}` };
+  await useSessionStore.getState().signInSocial({
+    provider: 'google',
+    id: `google:${profile.sub}`,
+    email: profile.email,
+    displayName: profile.name,
+    accessToken,
+    refreshToken,
+    clientId,
+    expiresIn,
+  });
+}
+
 export function isGoogleConfigured(): boolean {
   const ids = readClientIds();
   if (ids.inExpoGo) {
@@ -94,7 +119,7 @@ export function useGoogleSignIn() {
         path: 'oauth',
       });
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
+  const [request, , promptAsync] = Google.useAuthRequest({
     iosClientId: ids.iosClientId,
     webClientId: ids.webClientId,
     clientId: clientId ?? ids.webClientId,
@@ -107,31 +132,14 @@ export function useGoogleSignIn() {
     },
   });
 
-  useEffect(() => {
-    if (response?.type !== 'success' || !clientId) {
-      return;
-    }
-    const idToken = response.params.id_token ?? response.authentication?.idToken;
-    const accessToken = response.authentication?.accessToken ?? response.params.access_token;
-    const refreshToken = response.authentication?.refreshToken ?? response.params.refresh_token;
-    const expiresIn = response.authentication?.expiresIn;
-    const profile = idToken
-      ? decodeJwtEmail(idToken)
-      : { email: '', name: 'Google', sub: `google-${Date.now()}` };
-    void useSessionStore.getState().signInSocial({
-      provider: 'google',
-      id: `google:${profile.sub}`,
-      email: profile.email,
-      displayName: profile.name,
-      accessToken,
-      refreshToken,
-      clientId,
-      expiresIn,
-    });
-  }, [clientId, response]);
-
   return {
     ready: Boolean(clientId && request),
+    completeGoogleSignIn: async (result: AuthSession.AuthSessionResult) => {
+      if (!clientId) {
+        throw new Error('Google non è ancora pronto. Entra con Apple o crea un account email.');
+      }
+      await completeGoogleSignIn(result, clientId);
+    },
     prompt: async () => {
       if (!clientId) {
         throw new Error('Google non è ancora pronto. Entra con Apple o crea un account email.');

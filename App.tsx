@@ -7,7 +7,11 @@ import * as SplashScreen from 'expo-splash-screen';
 import { WaveformDecoderHost } from './src/audio/WaveformDecoderHost';
 import { runCloudSync } from './src/cloud/syncEngine';
 import { RootNavigator } from './src/navigation/RootNavigator';
-import { useLibraryStore } from './src/store/libraryStore';
+import {
+  flushLibraryPersist,
+  useLibraryStore,
+  waitForLibraryHydrated,
+} from './src/store/libraryStore';
 import { useSessionStore } from './src/store/sessionStore';
 import { colors } from './src/theme/colors';
 
@@ -40,13 +44,29 @@ export default function App() {
     if (!ready) {
       return;
     }
-    void runCloudSync();
+    let cancelled = false;
+    void (async () => {
+      await waitForLibraryHydrated();
+      if (cancelled) {
+        return;
+      }
+      void runCloudSync();
+    })();
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        void runCloudSync();
+        void (async () => {
+          await waitForLibraryHydrated();
+          void runCloudSync();
+        })();
+      }
+      if (state === 'background' || state === 'inactive') {
+        void flushLibraryPersist().catch(() => undefined);
       }
     });
-    return () => sub.remove();
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
   }, [ready]);
 
   return (
