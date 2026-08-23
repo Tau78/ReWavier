@@ -24,7 +24,9 @@ TestFlight (VAI / `scripts/xcode-testflight.sh`) ≠ App Store review. Before Su
 
 # Mac mini + iPhone
 
-Agents launched from the phone can run on the local Mac mini private worker. After checkout:
+Agents launched from the phone run on the local Mac mini **My Machines** worker for that repo (`~/<path> @ Mac mini`). One-time Mac setup: `agent login`, LaunchAgent `com.cursor.agent.worker.mac-mini-all`, optional `com.cursor.remote-control.keep-awake`. Per-repo: `bash scripts/cursor-worker-setup.sh` creates `.cursor/environment.json`.
+
+After checkout:
 
 ```bash
 npm ci
@@ -32,3 +34,5 @@ npx tsc --noEmit
 ```
 
 To preview on a physical iPhone on the same Wi-Fi, start Metro on the Mac mini (`npx expo start --lan --go`) and open the printed `exp://` address in Expo Go for SDK 54. Do not restyle the player.
+
+**VAI from iPhone:** new agent → ReWavier → runtime **My Machines** → worker `~/ReWavier @ Mac mini` → write **VAI** (runs `scripts/vai.sh` on the Mac: commit, push, FTP, Xcode build, TestFlight).

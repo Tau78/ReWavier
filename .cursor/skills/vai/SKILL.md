@@ -28,6 +28,10 @@ Dalla root del repo, con rete. Lo script fa, in ordine:
 
 Prerequisito Mac: Xcode installato + Apple ID in Xcode → Settings → Accounts. Non usa la quota EAS cloud.
 
+## Da iPhone (My Machines)
+
+Su Mac mini con worker `~/ReWavier @ Mac mini`, **VAI** da Cursor iOS esegue lo stesso script sul Mac (commit, push, FTP, build Xcode, TestFlight). Scegli runtime **My Machines**, non cloud. Serve `.cursor/environment.json` nel repo.
+
 ## Messaggio di commit
 
 Dal `git diff`, 1–2 frasi sul **perché**. Esporta `VAI_MESSAGE`. Se VAI arriva con altro lavoro, **fallo prima**, poi rilascia così entra nel commit.

@@ -110,12 +110,16 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   reservedColors: [],
 
   async hydrate() {
-    const snapshot = await loadSessionSnapshot();
-    set({
-      hydrated: true,
-      user: snapshot.user ? normalizeSessionUser(snapshot.user) : null,
-      reservedColors: snapshot.reservedColors,
-    });
+    try {
+      const snapshot = await loadSessionSnapshot();
+      set({
+        hydrated: true,
+        user: snapshot.user ? normalizeSessionUser(snapshot.user) : null,
+        reservedColors: snapshot.reservedColors,
+      });
+    } catch {
+      set({ hydrated: true, user: null, reservedColors: [] });
+    }
   },
 
   async signInEmail(email, password) {

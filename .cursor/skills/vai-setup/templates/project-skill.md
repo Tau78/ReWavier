@@ -25,3 +25,7 @@ Flag: `--skip-build`, `--skip-ftp`, `--skip-deploy`. Se una build dello stesso p
 Mai `--force`, `--no-verify`, amend. Mai `.env`, `.env.ftp`, password.
 
 Alla fine riporta: commit, push, e per FTP/deploy/build se è partito o perché è stato saltato.
+
+## Da iPhone (My Machines)
+
+Su Mac mini con worker attivo, **VAI** da Cursor iOS usa lo stesso `scripts/vai.sh` sul Mac. Scegli runtime **My Machines** e il worker `~/<percorso-repo> @ Mac mini`. Richiede `.cursor/environment.json` (creato da `scripts/cursor-worker-setup.sh`).

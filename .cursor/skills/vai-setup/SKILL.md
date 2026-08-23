@@ -25,15 +25,62 @@ Non chiedere conferma per creare VAI. Non copiare alla cieca lo script di un alt
 ## Cosa creare (nel repo nuovo)
 
 ```
-scripts/vai.sh                 # obbligatorio, eseguibile
-.cursor/skills/vai/SKILL.md    # trigger: utente dice VAI
-.cursor/rules/vai.mdc          # alwaysApply: true
-.env.example                   # solo se c’è FTP o deploy con segreti
+scripts/vai.sh                      # obbligatorio, eseguibile
+scripts/cursor-worker-setup.sh      # My Machines → iPhone (copia da scripts/cursor-worker-setup.sh)
+.cursor/environment.json            # creato dallo script sopra
+.cursor/skills/vai/SKILL.md         # trigger: utente dice VAI
+.cursor/rules/vai.mdc               # alwaysApply: true
+.env.example                        # solo se c’è FTP o deploy con segreti
 ```
 
 Copia il corpo di [scripts/vai.template.sh](scripts/vai.template.sh) in `scripts/vai.sh`. Sostituisci `{{PROJECT_NAME}}`. Non togliere `detect_stack` né il filtro sui file toccati. Per skill e regola del repo: [templates/project-skill.md](templates/project-skill.md) e [templates/project-rule.mdc](templates/project-rule.mdc) — adatta lo stack rilevato, non lasciare passi inesistenti.
 
-Poi: `chmod +x scripts/vai.sh`. Una riga in `AGENTS.md` / `CLAUDE.md`: la parola **VAI** lancia `scripts/vai.sh`.
+Poi: `chmod +x scripts/vai.sh scripts/cursor-worker-setup.sh`. Una riga in `AGENTS.md` / `CLAUDE.md`: la parola **VAI** lancia `scripts/vai.sh`.
+
+## My Machines — iPhone (Mac mini)
+
+Per lanciare **VAI da iPhone** (Cursor iOS → My Machines), l’agente deve girare sul Mac del repo, non in cloud.
+
+### Sul Mac (una volta per macchina)
+
+1. `curl https://cursor.com/install -fsS | bash` e `agent login` (se manca).
+2. Script globali in `~/.local/bin/` (creati da questa skill o da `cursor-sync-all-repo-workers.sh` sul Mac mini).
+3. LaunchAgent `~/Library/LaunchAgents/com.cursor.agent.worker.mac-mini-all.plist` → avvia un worker per ogni repo git locale, sempre acceso.
+4. Opzionale ma consigliato: `com.cursor.remote-control.keep-awake.plist` con `caffeinate -s` così iPhone trova il Mac anche lontano dalla scrivania.
+
+Verifica: `agent worker debug` deve mostrare il worker `~/<percorso-repo> @ Mac mini`.
+
+### Per ogni repo nuovo (setup VAI)
+
+1. Copia [scripts/cursor-worker-setup.sh](scripts/cursor-worker-setup.sh) in `scripts/cursor-worker-setup.sh` ed eseguilo:
+
+```bash
+bash scripts/cursor-worker-setup.sh
+```
+
+Crea `.cursor/environment.json` (`name`, `install` se c’è `package.json`, `agentCanUpdateSnapshot: true`).
+
+2. Registra il worker sul Mac:
+
+```bash
+~/.local/bin/cursor-setup-repo-worker.sh "$(pwd)"
+```
+
+Il supervisore `cursor-mac-mini-all-workers.sh` lo rileva entro ~60 s, oppure riavvia subito:
+
+```bash
+launchctl kickstart -k "gui/$(id -u)/com.cursor.agent.worker.mac-mini-all"
+```
+
+3. In `AGENTS.md` / `CLAUDE.md`, sezione **Mac mini + iPhone**: agenti da telefono usano My Machines; **VAI** = `bash scripts/vai.sh` sul Mac (Xcode locale se iOS).
+
+### Da iPhone
+
+1. Cursor iOS → stesso account del Mac.
+2. Nuovo agente → repo → runtime **My Machines** → worker `~/<percorso> @ Mac mini`.
+3. Scrivi **VAI** (o il messaggio con lavoro + VAI): l’agente esegue `scripts/vai.sh` sul Mac (commit, push, build TestFlight, ecc.).
+
+Non committare segreti in `environment.json`. Per aggiornare tutti i repo già presenti sul Mac: `cursor-sync-all-repo-workers.sh`.
 
 ## Fase 1 — scansione stack (ora, non ieri)
 
@@ -111,4 +158,4 @@ Se è una lista fissa di passi, aggiornalo: aggiungi il rilevamento e i skip. Se
 
 ## Alla fine del setup
 
-Riporta: path dei file creati, stack rilevato, passi che partiranno al primo VAI, cosa è stato completato perché era a metà.
+Riporta: path dei file creati, stack rilevato, passi che partiranno al primo VAI, worker My Machines (`~/<repo> @ Mac mini`), cosa è stato completato perché era a metà.

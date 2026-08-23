@@ -1,4 +1,5 @@
 {
   "name": "ReWavier",
-  "install": "npm ci"
+  "install": "npm ci",
+  "agentCanUpdateSnapshot": true
 }
