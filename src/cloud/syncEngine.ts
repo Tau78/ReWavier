@@ -229,10 +229,44 @@ export async function runCloudSync(): Promise<void> {
         const before = store.markersByTrackId[track.id] ?? [];
         const merged = mergeMarkers(before, parsed.markers);
         const added = merged.filter((marker) => !before.some((item) => item.id === marker.id)).length;
-        if (added > 0 || merged.some((marker, i) => marker.updatedAt !== before[i]?.updatedAt)) {
+        const markersChanged =
+          added > 0 || merged.some((marker, i) => marker.updatedAt !== before[i]?.updatedAt);
+        const boundsChanged =
+          (parsed.startMs !== undefined && parsed.startMs !== track.startMs) ||
+          (parsed.endMs !== undefined && parsed.endMs !== track.endMs);
+        const practiceChanged =
+          parsed.exerciseOpenId !== track.exerciseOpenId ||
+          parsed.exerciseCloseId !== track.exerciseCloseId ||
+          parsed.practiceHoleId !== track.practiceHoleId;
+
+        if (!markersChanged && !boundsChanged && !practiceChanged) {
+          continue;
+        }
+
+        if (markersChanged) {
           notesPulled += added;
           store.setTrackMarkers(track.id, merged);
-          reloadIfPlaying(track.id);
+          refreshMarkersIfPlaying(track.id, merged);
+        }
+
+        if (boundsChanged) {
+          store.setTrackBounds(
+            track.id,
+            parsed.startMs ?? track.startMs ?? 0,
+            parsed.endMs ?? track.endMs ?? track.durationMs,
+          );
+        }
+
+        if (practiceChanged) {
+          store.setTrackPractice(track.id, {
+            exerciseOpenId: parsed.exerciseOpenId,
+            exerciseCloseId: parsed.exerciseCloseId,
+            practiceHoleId: parsed.practiceHoleId,
+          });
+        }
+
+        if (boundsChanged || practiceChanged) {
+          refreshTrackFieldsIfPlaying(track.id);
         }
       }
 
@@ -283,6 +317,35 @@ export async function runCloudSync(): Promise<void> {
   } catch (error) {
     sync.fail(error instanceof Error ? error.message : 'Sync Drive non riuscita');
   }
+}
+
+function refreshMarkersIfPlaying(trackId: string, markers: Marker[]) {
+  const player = usePlayerStore.getState();
+  if (player.track.id !== trackId) {
+    return;
+  }
+  usePlayerStore.setState({ markers });
+}
+
+function refreshTrackFieldsIfPlaying(trackId: string) {
+  const player = usePlayerStore.getState();
+  if (player.track.id !== trackId) {
+    return;
+  }
+  const next = useLibraryStore.getState().getTrack(trackId);
+  if (!next) {
+    return;
+  }
+  usePlayerStore.setState({
+    track: {
+      ...player.track,
+      startMs: next.startMs,
+      endMs: next.endMs,
+      exerciseOpenId: next.exerciseOpenId,
+      exerciseCloseId: next.exerciseCloseId,
+      practiceHoleId: next.practiceHoleId,
+    },
+  });
 }
 
 function reloadIfPlaying(trackId: string) {

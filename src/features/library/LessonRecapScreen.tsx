@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -16,7 +16,16 @@ type Route = RouteProp<RootStackParamList, 'LessonRecap'>;
 
 export function LessonRecapScreen() {
   const navigation = useNavigation<Nav>();
-  const { kind, id } = useRoute<Route>().params;
+  const params = useRoute<Route>().params;
+  const kind = params?.kind;
+  const id = params?.id;
+
+  useEffect(() => {
+    if (!kind || !id) {
+      navigation.goBack();
+    }
+  }, [kind, id, navigation]);
+
   const folders = useLibraryStore((s) => s.folders);
   const albums = useLibraryStore((s) => s.albums);
   const markersByTrackId = useLibraryStore((s) => s.markersByTrackId);
@@ -35,6 +44,10 @@ export function LessonRecapScreen() {
     [tracks, markersByTrackId],
   );
   const shareText = useMemo(() => buildLessonRecapText(name, rows), [name, rows]);
+
+  if (!kind || !id) {
+    return null;
+  }
 
   const share = () => {
     void Share.share({ message: shareText, title: name });

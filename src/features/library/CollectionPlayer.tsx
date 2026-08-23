@@ -1,6 +1,5 @@
-import { useCallback } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -11,7 +10,6 @@ import { colors, layout } from '../../theme/colors';
 import { NoteBubble } from '../notes/NoteBubble';
 import { AddNoteButton } from '../player/AddNoteButton';
 import { PlaybackControls } from '../player/PlaybackControls';
-import { ensureCollectionTrack } from './openTrack';
 import { TrackOverviewWaveform } from './TrackOverviewWaveform';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -22,12 +20,6 @@ export function CollectionPlayer({ trackIds }: { trackIds: string[] }) {
   const track = usePlayerStore((s) => s.track);
   const positionMs = usePlayerStore((s) => s.positionMs);
   const inCollection = Boolean(track.id) && trackIds.includes(track.id);
-
-  useFocusEffect(
-    useCallback(() => {
-      ensureCollectionTrack(trackIds);
-    }, [trackIds]),
-  );
 
   if (trackIds.length === 0 || !inCollection) {
     return null;

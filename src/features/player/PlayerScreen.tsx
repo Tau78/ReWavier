@@ -19,10 +19,15 @@ function usePauseNotePrompt() {
   const loadState = usePlayerStore((s) => s.loadState);
   const focused = useIsFocused();
   const askedThisPause = useRef(false);
+  const heardPlay = useRef(false);
 
   useEffect(() => {
     if (isPlaying) {
+      heardPlay.current = true;
       askedThisPause.current = false;
+      return;
+    }
+    if (!heardPlay.current) {
       return;
     }
     if (!focused || bubbleVisible || !trackId || loadState === 'loading' || loadState === 'error') {
@@ -58,6 +63,7 @@ function usePauseNotePrompt() {
 
 export function PlayerScreen() {
   const navigation = useNavigation();
+  const focused = useIsFocused();
   const track = usePlayerStore((s) => s.track);
   const positionMs = usePlayerStore((s) => s.positionMs);
   const canGoBack = navigation.canGoBack();
@@ -100,7 +106,7 @@ export function PlayerScreen() {
 
       <PlaybackControls />
       <AddNoteButton />
-      <NoteBubble />
+      {focused ? <NoteBubble /> : null}
     </SafeAreaView>
   );
 }

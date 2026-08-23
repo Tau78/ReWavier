@@ -83,7 +83,7 @@ export type LibraryActions = {
   setTrackArtwork: (id: string, artworkUri?: string) => void;
   setTrackBounds: (id: string, startMs: number, endMs: number) => void;
   setTrackPractice: (id: string, practice: PracticeIds) => void;
-  deleteTrack: (id: string) => void;
+  deleteTrack: (id: string) => Promise<void>;
   moveTrack: (trackId: string, folderId: string | null) => void;
   addTrackToFolder: (trackId: string, folderId: string) => 'added' | 'exists';
   importBundles: (
@@ -125,12 +125,7 @@ function persistSidecar(track: Track | undefined, markers: Marker[]) {
     return;
   }
   void writeSidecarToLibrary(track, markers, sidecarSlug())
-    .then(() => {
-      if (markers.length === 0) {
-        return;
-      }
-      return import('../cloud/syncEngine').then((mod) => mod.pushSidecarIfShared(track.id));
-    })
+    .then(() => import('../cloud/syncEngine').then((mod) => mod.pushSidecarIfShared(track.id)))
     .catch(() => undefined);
 }
 
@@ -513,11 +508,14 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     persistSidecar(track, get().markersByTrackId[id] ?? []);
   },
 
-  deleteTrack(id) {
+  async deleteTrack(id) {
     const track = get().getTrack(id);
-    void removeUri(track?.fileUri);
-    void removeUri(track?.inboxUri);
-    void removeUri(track?.artworkUri);
+    if (track) {
+      removeSidecarFromLibrary(track.sourceFileName ?? track.title, sidecarSlug());
+    }
+    await removeUri(track?.fileUri);
+    await removeUri(track?.inboxUri);
+    await removeUri(track?.artworkUri);
     set((state) => ({
       tracks: state.tracks.filter((track) => track.id !== id),
       folders: state.folders.map((folder) => ({
@@ -807,10 +805,10 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           markersByTrackId: snapshot?.markersByTrackId ?? {},
         });
         persistReady = true;
+        await finishLibraryHydrate(hadSnapshot);
       } finally {
         set({ libraryHydrated: true });
       }
-      void finishLibraryHydrate(hadSnapshot);
     };
     libraryHydratePromise = run();
     return libraryHydratePromise;

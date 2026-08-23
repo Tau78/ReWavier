@@ -7,7 +7,12 @@ function trackKey(track: Track): string {
   return (track.sourceFileName || track.title).trim().toLowerCase();
 }
 
-function mergeTracks(local: Track[], remote: Track[]): Track[] {
+function remapTrackId(id: string, idRemap: Map<string, string>): string {
+  return idRemap.get(id) ?? id;
+}
+
+function mergeTracks(local: Track[], remote: Track[]): { tracks: Track[]; idRemap: Map<string, string> } {
+  const idRemap = new Map<string, string>();
   const byId = new Map(local.map((track) => [track.id, track]));
   const byKey = new Map(local.map((track) => [trackKey(track), track]));
   for (const incoming of remote) {
@@ -21,6 +26,9 @@ function mergeTracks(local: Track[], remote: Track[]): Track[] {
         downloadedAt: undefined,
       });
       continue;
+    }
+    if (incoming.id !== existing.id) {
+      idRemap.set(incoming.id, existing.id);
     }
     byId.set(existing.id, {
       ...existing,
@@ -37,21 +45,25 @@ function mergeTracks(local: Track[], remote: Track[]): Track[] {
       artworkUri: existing.artworkUri || incoming.artworkUri,
     });
   }
-  return [...byId.values()];
+  return { tracks: [...byId.values()], idRemap };
 }
 
-function mergeFolders(local: Folder[], remote: Folder[]): Folder[] {
+function mergeFolders(local: Folder[], remote: Folder[], idRemap: Map<string, string>): Folder[] {
   const byId = new Map(local.map((folder) => [folder.id, folder]));
   for (const incoming of remote) {
     const existing = byId.get(incoming.id);
     if (!existing) {
-      byId.set(incoming.id, incoming);
+      byId.set(incoming.id, {
+        ...incoming,
+        trackIds: incoming.trackIds.map((id) => remapTrackId(id, idRemap)),
+      });
       continue;
     }
     const trackIds = [...existing.trackIds];
     for (const id of incoming.trackIds) {
-      if (!trackIds.includes(id)) {
-        trackIds.push(id);
+      const remapped = remapTrackId(id, idRemap);
+      if (!trackIds.includes(remapped)) {
+        trackIds.push(remapped);
       }
     }
     byId.set(existing.id, { ...existing, name: existing.name || incoming.name, trackIds });
@@ -59,18 +71,22 @@ function mergeFolders(local: Folder[], remote: Folder[]): Folder[] {
   return [...byId.values()];
 }
 
-function mergeAlbums(local: Album[], remote: Album[]): Album[] {
+function mergeAlbums(local: Album[], remote: Album[], idRemap: Map<string, string>): Album[] {
   const byId = new Map(local.map((album) => [album.id, album]));
   for (const incoming of remote) {
     const existing = byId.get(incoming.id);
     if (!existing) {
-      byId.set(incoming.id, incoming);
+      byId.set(incoming.id, {
+        ...incoming,
+        trackIds: incoming.trackIds.map((id) => remapTrackId(id, idRemap)),
+      });
       continue;
     }
     const trackIds = [...existing.trackIds];
     for (const id of incoming.trackIds) {
-      if (!trackIds.includes(id)) {
-        trackIds.push(id);
+      const remapped = remapTrackId(id, idRemap);
+      if (!trackIds.includes(remapped)) {
+        trackIds.push(remapped);
       }
     }
     byId.set(existing.id, {
@@ -85,18 +101,22 @@ function mergeAlbums(local: Album[], remote: Album[]): Album[] {
   return [...byId.values()];
 }
 
-function mergePlaylists(local: Playlist[], remote: Playlist[]): Playlist[] {
+function mergePlaylists(local: Playlist[], remote: Playlist[], idRemap: Map<string, string>): Playlist[] {
   const byId = new Map(local.map((playlist) => [playlist.id, playlist]));
   for (const incoming of remote) {
     const existing = byId.get(incoming.id);
     if (!existing) {
-      byId.set(incoming.id, incoming);
+      byId.set(incoming.id, {
+        ...incoming,
+        trackIds: incoming.trackIds.map((id) => remapTrackId(id, idRemap)),
+      });
       continue;
     }
     const trackIds = [...existing.trackIds];
     for (const id of incoming.trackIds) {
-      if (!trackIds.includes(id)) {
-        trackIds.push(id);
+      const remapped = remapTrackId(id, idRemap);
+      if (!trackIds.includes(remapped)) {
+        trackIds.push(remapped);
       }
     }
     byId.set(existing.id, { ...existing, name: existing.name || incoming.name, trackIds });
@@ -117,23 +137,30 @@ function mergeSmart(local: SmartPlaylist[], remote: SmartPlaylist[]): SmartPlayl
 function mergeAllMarkers(
   local: Record<string, Marker[]>,
   remote: Record<string, Marker[]>,
+  idRemap: Map<string, string>,
 ): Record<string, Marker[]> {
-  const ids = new Set([...Object.keys(local), ...Object.keys(remote)]);
+  const remappedRemote: Record<string, Marker[]> = {};
+  for (const [id, markers] of Object.entries(remote)) {
+    const localId = remapTrackId(id, idRemap);
+    remappedRemote[localId] = [...(remappedRemote[localId] ?? []), ...markers];
+  }
+  const ids = new Set([...Object.keys(local), ...Object.keys(remappedRemote)]);
   const out: Record<string, Marker[]> = {};
   for (const id of ids) {
-    out[id] = mergeMarkers(local[id] ?? [], remote[id] ?? []);
+    out[id] = mergeMarkers(local[id] ?? [], remappedRemote[id] ?? []);
   }
   return out;
 }
 
 export function mergeLibrarySnapshots(local: LibrarySnapshot, remote: LibrarySnapshot): LibrarySnapshot {
+  const { tracks, idRemap } = mergeTracks(local.tracks, remote.tracks);
   return {
     version: Math.max(local.version, remote.version),
-    tracks: mergeTracks(local.tracks, remote.tracks),
-    folders: mergeFolders(local.folders, remote.folders),
-    albums: mergeAlbums(local.albums, remote.albums),
-    playlists: mergePlaylists(local.playlists, remote.playlists),
+    tracks,
+    folders: mergeFolders(local.folders, remote.folders, idRemap),
+    albums: mergeAlbums(local.albums, remote.albums, idRemap),
+    playlists: mergePlaylists(local.playlists, remote.playlists, idRemap),
     smartPlaylists: mergeSmart(local.smartPlaylists, remote.smartPlaylists),
-    markersByTrackId: mergeAllMarkers(local.markersByTrackId, remote.markersByTrackId),
+    markersByTrackId: mergeAllMarkers(local.markersByTrackId, remote.markersByTrackId, idRemap),
   };
 }

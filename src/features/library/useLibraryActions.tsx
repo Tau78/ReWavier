@@ -457,7 +457,10 @@ export function useLibraryActions(
           {
             text: 'Elimina',
             style: 'destructive',
-            onPress: () => useLibraryStore.getState().deleteFolder(folder.id),
+            onPress: () => {
+              leaveIfViewing('folder', folder.id);
+              useLibraryStore.getState().deleteFolder(folder.id);
+            },
           },
         ]);
       },
@@ -659,7 +662,10 @@ export function useLibraryActions(
         {
           text: 'Elimina',
           style: 'destructive',
-          onPress: () => useLibraryStore.getState().deleteFolder(folder.id),
+          onPress: () => {
+            leaveIfViewing('folder', folder.id);
+            useLibraryStore.getState().deleteFolder(folder.id);
+          },
         },
       ]);
     },

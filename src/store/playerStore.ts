@@ -789,8 +789,19 @@ function onEngineFrame(positionMs: number, playing: boolean) {
         if (current.track.id !== trackId) {
           return;
         }
-        engine().seekTo(hole.endMs);
-        engine().play();
+        if (current.loadState === 'ready' && usingFile) {
+          fileEngine.seekTo(hole.endMs);
+          fileEngine.play();
+        } else if (playableUri(current.track) && current.loadState !== 'error') {
+          pendingSeekMs = hole.endMs;
+          pendingPlay = true;
+          usePlayerStore.setState({ positionMs: hole.endMs, isPlaying: true });
+        } else if (!playableUri(current.track)) {
+          mockEngine.seekTo(hole.endMs);
+          mockEngine.play();
+        } else {
+          usePlayerStore.setState({ positionMs: hole.endMs });
+        }
       }, wait);
       usePlayerStore.setState({ positionMs, isPlaying: false });
       return;
