@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import { File } from 'expo-file-system';
+import * as LegacyFS from 'expo-file-system/legacy';
 
 import { inboxDirectory } from '../../files/downloads';
 import { loadDeviceSyncPrefs, saveDeviceSyncPrefs } from '../../files/deviceSyncPersist';
@@ -9,6 +10,7 @@ import {
   importLooseAudioFiles,
   listLocalBagFiles,
   writeSnapshotCopy,
+  type LocalBagFile,
 } from './localSuitcase';
 import { parseLibrarySnapshot } from './parseSnapshot';
 import type { SuitcaseResult } from './driveSuitcase';
@@ -97,29 +99,20 @@ export async function syncICloudSuitcase(): Promise<SuitcaseResult> {
     }
   }
 
-  const remoteNames = (await api.readDirAsync(AUDIO_DIR, { isFullPath: false })).map(fileName);
+  const remotePaths = await api.readDirAsync(AUDIO_DIR, { isFullPath: true });
   const localFiles = listLocalBagFiles();
   const localByName = new Map(localFiles.map((file) => [file.name.toLowerCase(), file]));
-  const remoteByName = new Map(
-    remoteNames
-      .filter((name) => name && !name.startsWith('.'))
-      .map((name) => [name.toLowerCase(), name]),
-  );
+  const remoteByName = new Map<string, string>();
 
-  for (const name of remoteNames) {
+  for (const remotePath of remotePaths) {
+    const name = fileName(remotePath);
     if (!name || name.startsWith('.')) {
       continue;
     }
+    remoteByName.set(name.toLowerCase(), remotePath);
     const local = localByName.get(name.toLowerCase());
-    const remotePath = `${root}/${AUDIO_DIR}/${name}`;
-    if (!local) {
-      await api.downloadFileAsync(remotePath, audioDirectory().uri);
-      pulled += 1;
-      continue;
-    }
-    const remoteSize = icloudFileSize(remotePath);
-    if (remoteSize !== undefined && local.size !== undefined && remoteSize !== local.size) {
-      await api.downloadFileAsync(remotePath, audioDirectory().uri);
+    const pulledFile = await pullRemoteIfChanged(api, remotePath, local, audioDirectory().uri);
+    if (pulledFile) {
       pulled += 1;
     }
   }
@@ -127,14 +120,14 @@ export async function syncICloudSuitcase(): Promise<SuitcaseResult> {
   await importLooseAudioFiles();
 
   for (const local of listLocalBagFiles()) {
-    const dest = `${AUDIO_DIR}/${local.name}`;
-    const remoteName = remoteByName.get(local.name.toLowerCase());
-    if (remoteName) {
-      const remoteSize = icloudFileSize(`${root}/${AUDIO_DIR}/${remoteName}`);
+    const remotePath = remoteByName.get(local.name.toLowerCase());
+    if (remotePath) {
+      const remoteSize = icloudFileSize(remotePath);
       if (remoteSize !== undefined && local.size !== undefined && remoteSize === local.size) {
         continue;
       }
     }
+    const dest = `${AUDIO_DIR}/${local.name}`;
     await api.uploadFileAsync({ destinationPath: dest, filePath: local.uri });
     pushed += 1;
   }
@@ -160,18 +153,60 @@ export async function syncICloudSuitcase(): Promise<SuitcaseResult> {
   };
 }
 
+async function pullRemoteIfChanged(
+  api: ICloudApi,
+  remotePath: string,
+  local: LocalBagFile | undefined,
+  destDirUri: string,
+): Promise<boolean> {
+  if (!local) {
+    await api.downloadFileAsync(remotePath, destDirUri);
+    return true;
+  }
+
+  const remoteSize = icloudFileSize(remotePath);
+  if (remoteSize !== undefined && local.size !== undefined && remoteSize === local.size) {
+    return false;
+  }
+
+  const tempUri = await api.downloadFileAsync(remotePath, inboxDirectory().uri);
+  const tempPath = asFileUri(tempUri);
+  const tempFile = new File(tempPath);
+  try {
+    const tempSize = typeof tempFile.size === 'number' ? tempFile.size : undefined;
+    if (tempSize !== undefined && local.size !== undefined && tempSize === local.size) {
+      return false;
+    }
+    await LegacyFS.copyAsync({ from: tempPath, to: local.uri });
+    return true;
+  } finally {
+    if (tempFile.exists) {
+      try {
+        tempFile.delete();
+      } catch {
+        // ignore
+      }
+    }
+  }
+}
+
 function asFileUri(path: string): string {
   return path.startsWith('file:') ? path : `file://${path}`;
 }
 
 function icloudFileSize(fullPath: string): number | undefined {
-  try {
-    const file = new File(asFileUri(fullPath));
-    if (!file.exists) {
-      return undefined;
+  for (const uri of [fullPath, asFileUri(fullPath)]) {
+    try {
+      const file = new File(uri);
+      if (!file.exists) {
+        continue;
+      }
+      if (typeof file.size === 'number') {
+        return file.size;
+      }
+    } catch {
+      // try next form
     }
-    return typeof file.size === 'number' ? file.size : undefined;
-  } catch {
-    return undefined;
   }
+  return undefined;
 }

@@ -1,3 +1,4 @@
+import { Alert } from 'react-native';
 import { create } from 'zustand';
 
 import { ensurePeaks } from '../audio/extractPeaks';
@@ -95,6 +96,7 @@ let pendingPlay = false;
 let pendingSeekMs: number | null = null;
 let resumeAfterBubble = false;
 let lastAdvanceKey = '';
+let lastLoadErrorTrackId = '';
 
 function engine() {
   return usingFile ? fileEngine : mockEngine;
@@ -531,6 +533,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
             return;
           }
           usingFile = true;
+          lastLoadErrorTrackId = '';
           set({ loadState: 'ready' });
 
           const nextRange = resolveTrackRange(get().track);
@@ -563,6 +566,13 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
           pendingPlay = false;
           pendingSeekMs = null;
           set({ loadState: 'error', isPlaying: false });
+          if (lastLoadErrorTrackId !== track.id) {
+            lastLoadErrorTrackId = track.id;
+            Alert.alert(
+              'Audio',
+              'Questo brano non si apre. Controlla che il file sia sul telefono e riprova.',
+            );
+          }
         }
       });
       return;
