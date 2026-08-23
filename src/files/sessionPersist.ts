@@ -2,7 +2,7 @@ import * as LegacyFS from 'expo-file-system/legacy';
 import * as SecureStore from 'expo-secure-store';
 
 import type { SessionUser } from '../domain/session';
-import { ensureDirAsync, pathExistsAsync } from './fsSafe';
+import { ensureDirAsync, pathExistsAsync, withTimeout } from './fsSafe';
 import { libraryDirectory } from './libraryPaths';
 
 const SESSION_NAME = 'session.json';
@@ -31,11 +31,16 @@ function accountsFileUri(): string {
 
 export async function loadSessionSnapshot(): Promise<SessionSnapshot> {
   const uri = sessionFileUri();
-  if (!(await pathExistsAsync(uri))) {
+  const exists = await withTimeout(pathExistsAsync(uri), 2000, false);
+  if (!exists) {
     return { user: null, reservedColors: [] };
   }
   try {
-    const parsed = JSON.parse(await LegacyFS.readAsStringAsync(uri)) as SessionSnapshot;
+    const raw = await withTimeout(LegacyFS.readAsStringAsync(uri), 3000, '');
+    if (!raw) {
+      return { user: null, reservedColors: [] };
+    }
+    const parsed = JSON.parse(raw) as SessionSnapshot;
     return {
       user: parsed.user ?? null,
       reservedColors: Array.isArray(parsed.reservedColors) ? parsed.reservedColors : [],

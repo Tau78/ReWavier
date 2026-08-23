@@ -206,6 +206,7 @@ const styles = StyleSheet.create({
   },
   flex: {
     flex: 1,
+    zIndex: 1,
   },
   scroll: {
     flexGrow: 1,

@@ -29,6 +29,22 @@ export function visibleMarkers(markers: Marker[]): Marker[] {
   return markers.filter((marker) => !isMarkerHidden(marker));
 }
 
+export function markerAuthorLabel(marker: Marker): string {
+  const name = marker.authorName?.trim();
+  return name || 'Tu';
+}
+
+export function markerPreviewText(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  if (!flat) {
+    return '';
+  }
+  if (flat.length <= 56) {
+    return flat;
+  }
+  return `${flat.slice(0, 55).trim()}…`;
+}
+
 export function canEditMarker(marker: Marker, user: SessionUser | null): boolean {
   if (!user) {
     return false;

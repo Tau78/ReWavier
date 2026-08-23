@@ -200,6 +200,7 @@ const styles = StyleSheet.create({
     opacity: 0,
     left: 0,
     top: 0,
+    zIndex: -1,
   },
   hidden: {
     width: 1,

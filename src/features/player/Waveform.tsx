@@ -5,10 +5,10 @@ import {
   PanResponder,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
-  type GestureResponderEvent,
   type LayoutChangeEvent,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -64,33 +64,84 @@ function formatWindowSeconds(ms: number): string {
   return `${seconds.toFixed(seconds >= 2 ? 0 : 1)}s`;
 }
 
-function usePinchSpan(
-  spanMs: number,
+function markerAuthorName(marker: Marker): string {
+  const name = marker.authorName?.trim();
+  return name || 'Tu';
+}
+
+function markerPreview(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  if (!flat) {
+    return '';
+  }
+  if (flat.length <= 56) {
+    return flat;
+  }
+  return `${flat.slice(0, 55).trim()}…`;
+}
+
+function useWaveformGestures(
+  width: number,
+  viewStartMs: number,
+  viewSpanMs: number,
   setSpanMs: (ms: number) => void,
   minMs: number,
   maxMs: number,
 ) {
-  const startSpan = useRef(spanMs);
-  const spanRef = useRef(spanMs);
+  const startSpan = useRef(viewSpanMs);
+  const spanRef = useRef(viewSpanMs);
   const minRef = useRef(minMs);
   const maxRef = useRef(maxMs);
-  spanRef.current = spanMs;
+  const widthRef = useRef(width);
+  const viewStartRef = useRef(viewStartMs);
+  const scrubOrigin = useRef(0);
+  spanRef.current = viewSpanMs;
   minRef.current = minMs;
   maxRef.current = maxMs;
+  widthRef.current = width;
+  viewStartRef.current = viewStartMs;
 
-  return useMemo(
-    () =>
-      Gesture.Pinch()
-        .runOnJS(true)
-        .onStart(() => {
-          startSpan.current = spanRef.current;
-        })
-        .onUpdate((event) => {
-          const scale = event.scale > 0 ? event.scale : 1;
-          setSpanMs(Math.min(maxRef.current, Math.max(minRef.current, startSpan.current / scale)));
-        }),
-    [setSpanMs],
-  );
+  return useMemo(() => {
+    const pinch = Gesture.Pinch()
+      .runOnJS(true)
+      .onStart(() => {
+        startSpan.current = spanRef.current;
+      })
+      .onUpdate((event) => {
+        const scale = event.scale > 0 ? event.scale : 1;
+        setSpanMs(Math.min(maxRef.current, Math.max(minRef.current, startSpan.current / scale)));
+      });
+
+    const pan = Gesture.Pan()
+      .runOnJS(true)
+      .activeOffsetX([-10, 10])
+      .failOffsetY([-24, 24])
+      .onStart(() => {
+        scrubOrigin.current = usePlayerStore.getState().positionMs;
+      })
+      .onUpdate((event) => {
+        const w = widthRef.current;
+        const span = spanRef.current;
+        if (w <= 0 || span <= 0) {
+          return;
+        }
+        usePlayerStore.getState().seekTo(scrubOrigin.current - (event.translationX / w) * span);
+      });
+
+    const tap = Gesture.Tap()
+      .runOnJS(true)
+      .onEnd((event) => {
+        const w = widthRef.current;
+        const span = spanRef.current;
+        if (w <= 0 || span <= 0) {
+          return;
+        }
+        const ratio = Math.max(0, Math.min(1, event.x / w));
+        usePlayerStore.getState().seekTo(viewStartRef.current + ratio * span);
+      });
+
+    return Gesture.Simultaneous(pinch, Gesture.Exclusive(pan, tap));
+  }, [setSpanMs]);
 }
 
 function samplePeaks(
@@ -237,12 +288,14 @@ function ZoomMarkerPin({
   marker,
   tapeStartMs,
   tapeSpanMs,
+  tapeWidth,
   px,
   durationMs,
 }: {
   marker: Marker;
   tapeStartMs: number;
   tapeSpanMs: number;
+  tapeWidth: number;
   px: number;
   durationMs: number;
 }) {
@@ -304,16 +357,40 @@ function ZoomMarkerPin({
 
   const left = (displayMs - tapeStartMs) * px;
   const dragging = dragMs != null && didDrag.current;
+  const author = markerAuthorName(marker);
+  const preview = markerPreview(marker.text);
+  const says = author === 'Tu' ? 'Tu dici:' : `${author} dice:`;
+  const flipLeft = tapeWidth > 0 && left > tapeWidth * 0.58;
 
   return (
     <View
       style={[styles.zoomPinWrap, { left }, dragging && styles.zoomPinDragging]}
       {...pan.panHandlers}
       accessibilityRole="adjustable"
-      accessibilityLabel={`Appunto a ${formatTimecode(displayMs)}`}
+      accessibilityLabel={`${says} ${preview || formatTimecode(displayMs)}`}
       accessibilityHint="Tocca per aprire, trascina per spostare"
     >
       {dragging ? <Text style={styles.dragTime}>{formatTimecode(displayMs)}</Text> : null}
+      {!dragging ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.pinBubble,
+            { borderColor: pinColor },
+            flipLeft ? styles.pinBubbleLeft : styles.pinBubbleRight,
+            marker.hidden && styles.pinHidden,
+          ]}
+        >
+          <Text style={[styles.pinBubbleWho, { color: pinColor }]} numberOfLines={1}>
+            {says}
+          </Text>
+          {preview ? (
+            <Text style={styles.pinBubbleText} numberOfLines={2}>
+              {preview}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
       <View
         style={[
           styles.pinHead,
@@ -453,8 +530,12 @@ export function Waveform() {
   );
   const positionMs = usePlayerStore((s) => s.positionMs);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
-  const seekTo = usePlayerStore((s) => s.seekTo);
   const openMarker = usePlayerStore((s) => s.openMarker);
+  const playFrom = usePlayerStore((s) => s.playFrom);
+  const cuePoints = useMemo(
+    () => [...visiblePins].sort((a, b) => a.timestampMs - b.timestampMs),
+    [visiblePins],
+  );
 
   const [overviewWidth, setOverviewWidth] = useState(0);
   const [zoomWidth, setZoomWidth] = useState(0);
@@ -492,13 +573,22 @@ export function Waveform() {
   const scale = zoomWidth > 0 ? pxPerMs(zoomWidth, durationMs, detailSpan) : 0;
   const tapeWidth = tapeSpanMs * scale;
 
-  const overviewPinch = usePinchSpan(
-    overviewSpan,
+  const overviewGestures = useWaveformGestures(
+    overviewWidth,
+    overviewView.startMs,
+    overviewView.spanMs,
     setOverviewWindowMs,
     MIN_WINDOW_MS,
     durationMs,
   );
-  const detailPinch = usePinchSpan(detailSpan, setDetailWindowMs, MIN_WINDOW_MS, durationMs);
+  const detailGestures = useWaveformGestures(
+    zoomWidth,
+    window.startMs,
+    window.spanMs,
+    setDetailWindowMs,
+    MIN_WINDOW_MS,
+    durationMs,
+  );
 
   useEffect(() => {
     const nextTape = tapeStartFor(positionMs, durationMs, tapeStartRef.current, detailSpan);
@@ -569,19 +659,6 @@ export function Waveform() {
       ? ((range.endMs - range.startMs) / overviewView.spanMs) * 100
       : 100;
 
-  const seekFromEvent = (
-    event: GestureResponderEvent,
-    width: number,
-    startMs: number,
-    spanMs: number,
-  ) => {
-    if (width <= 0 || spanMs <= 0) {
-      return;
-    }
-    const ratio = Math.max(0, Math.min(1, event.nativeEvent.locationX / width));
-    seekTo(clampTime(startMs + ratio * spanMs, durationMs));
-  };
-
   const onOverviewLayout = (event: LayoutChangeEvent) => {
     const w = Math.round(event.nativeEvent.layout.width);
     if (w > 0 && w !== overviewWidth) {
@@ -616,17 +693,14 @@ export function Waveform() {
             </Text>
           </View>
         </View>
-        <GestureDetector gesture={overviewPinch}>
+        <GestureDetector gesture={overviewGestures}>
         <View style={styles.overviewWrap}>
-          <Pressable
+          <View
             onLayout={onOverviewLayout}
-            onPress={(e) =>
-              seekFromEvent(e, overviewWidth, overviewView.startMs, overviewView.spanMs)
-            }
             style={styles.overviewTrack}
             accessibilityRole="adjustable"
             accessibilityLabel="Forma d'onda panoramica"
-            accessibilityHint="Tocca per andare a quel punto. Pizzica per ingrandire. Trascina le parentesi per inizio e fine."
+            accessibilityHint="Trascina per scorrere. Tocca per andare a quel punto. Pizzica per ingrandire."
           >
             <View
               pointerEvents="none"
@@ -683,7 +757,7 @@ export function Waveform() {
               );
             })}
             <Playhead percent={playheadOverviewPct} tall={false} />
-          </Pressable>
+          </View>
           <RangeHandle
             side="start"
             timeMs={range.startMs}
@@ -704,6 +778,45 @@ export function Waveform() {
           />
         </View>
         </GestureDetector>
+        {cuePoints.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.cueRow}
+            accessibilityLabel="Punti del brano"
+          >
+            {cuePoints.map((marker) => {
+              const preview = markerPreview(marker.text);
+              const active = Math.abs(positionMs - marker.timestampMs) < 280;
+              const pinColor = markerColor(marker);
+              return (
+                <Pressable
+                  key={marker.id}
+                  onPress={() => playFrom(marker.timestampMs)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Parti da ${formatTimecode(marker.timestampMs)}${preview ? `. ${preview}` : ''}`}
+                  accessibilityHint="Parte da questo punto"
+                  style={({ pressed }) => [
+                    styles.cueChip,
+                    { borderColor: pinColor },
+                    active && styles.cueChipActive,
+                    pressed && styles.cueChipPressed,
+                  ]}
+                >
+                  <View style={[styles.cueDot, { backgroundColor: pinColor }]} />
+                  <View style={styles.cueCopy}>
+                    <Text style={styles.cueTime}>{formatTimecode(marker.timestampMs)}</Text>
+                    {preview ? (
+                      <Text style={styles.cuePreview} numberOfLines={1}>
+                        {preview}
+                      </Text>
+                    ) : null}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        ) : null}
       </View>
 
       <View style={[styles.card, styles.zoomCard]}>
@@ -713,15 +826,14 @@ export function Waveform() {
             {formatTimecode(window.startMs)} – {formatTimecode(window.endMs)}
           </Text>
         </View>
-        <GestureDetector gesture={detailPinch}>
+        <GestureDetector gesture={detailGestures}>
         <View style={styles.zoomBody}>
           <View onLayout={onZoomLayout} style={styles.zoomTrack}>
-            <Pressable
-              onPress={(e) => seekFromEvent(e, zoomWidth, window.startMs, window.spanMs)}
+            <View
               style={StyleSheet.absoluteFill}
               accessibilityRole="adjustable"
               accessibilityLabel="Forma d'onda ingrandita"
-              accessibilityHint="Tocca per andare a quel punto. Pizzica per ingrandire."
+              accessibilityHint="Trascina per scorrere. Tocca per andare a quel punto. Pizzica per ingrandire."
             >
               <Animated.View
                 pointerEvents="box-none"
@@ -746,6 +858,7 @@ export function Waveform() {
                     marker={marker}
                     tapeStartMs={tapeStartMs}
                     tapeSpanMs={tapeSpanMs}
+                    tapeWidth={Math.max(tapeWidth, zoomWidth)}
                     px={scale}
                     durationMs={durationMs}
                   />
@@ -771,7 +884,7 @@ export function Waveform() {
                   leftPx={(range.endMs - tapeStartMs) * scale}
                 />
               </Animated.View>
-            </Pressable>
+            </View>
             <Animated.View
               pointerEvents="none"
               style={[styles.playhead, styles.playheadTall, { transform: [{ translateX: playheadX }] }]}
@@ -841,6 +954,52 @@ const styles = StyleSheet.create({
   overviewWrap: {
     height: OVERVIEW_HEIGHT + 8,
     justifyContent: 'center',
+  },
+  cueRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingTop: 10,
+    paddingHorizontal: 2,
+  },
+  cueChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    maxWidth: 168,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cueChipActive: {
+    backgroundColor: colors.surface,
+  },
+  cueChipPressed: {
+    opacity: 0.75,
+  },
+  cueDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  cueCopy: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  cueTime: {
+    color: colors.text,
+    fontSize: 11,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums'],
+    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
+  },
+  cuePreview: {
+    marginTop: 1,
+    color: colors.textMuted,
+    fontSize: 11,
   },
   overviewTrack: {
     height: OVERVIEW_HEIGHT,
@@ -989,6 +1148,34 @@ const styles = StyleSheet.create({
     marginLeft: -(PIN_HIT / 2),
     alignItems: 'center',
     zIndex: 6,
+    overflow: 'visible',
+  },
+  pinBubble: {
+    position: 'absolute',
+    top: 0,
+    width: 132,
+    backgroundColor: colors.surface,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    zIndex: 7,
+  },
+  pinBubbleRight: {
+    left: PIN_HIT / 2 + 6,
+  },
+  pinBubbleLeft: {
+    right: PIN_HIT / 2 + 6,
+  },
+  pinBubbleWho: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  pinBubbleText: {
+    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 14,
+    color: colors.text,
   },
   zoomPinDragging: {
     zIndex: 8,

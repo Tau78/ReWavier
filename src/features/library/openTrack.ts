@@ -5,7 +5,7 @@ import { usePlayerStore } from '../../store/playerStore';
 export function openTrack(
   trackId: string,
   queueIds?: string[],
-  options?: { autoPlay?: boolean },
+  options?: { autoPlay?: boolean; startAtMs?: number },
 ): boolean {
   const track = useLibraryStore.getState().getTrack(trackId);
   if (!track || !playableUri(track)) {

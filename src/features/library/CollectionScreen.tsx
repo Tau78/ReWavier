@@ -12,6 +12,7 @@ import { useLibraryStore } from '../../store/libraryStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { colors, layout } from '../../theme/colors';
 import { EmptyGraphic, KindRow } from '../../theme/graphics';
+import { CollectionMarkers } from './CollectionMarkers';
 import { AlbumHero } from './AlbumHero';
 import { AlbumNotes } from './AlbumNotes';
 import { AlbumSeparatorRow, SEPARATOR_ROW_HEIGHT } from './AlbumSeparatorRow';
@@ -236,6 +237,9 @@ export function CollectionScreen() {
             />
             <AlbumNotes albumId={album.id} notes={album.notes} />
           </>
+        ) : null}
+        {kind === 'album' || kind === 'folder' ? (
+          <CollectionMarkers tracks={tracks} markersByTrackId={markersByTrackId} />
         ) : null}
         {album ? <Text style={styles.sectionLabel}>Tracce</Text> : null}
         {canReorder && listItems.length > 1 ? (

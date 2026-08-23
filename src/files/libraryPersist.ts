@@ -12,7 +12,7 @@ import type { Marker, Track } from '../domain/models';
 import { fileExists, reconcileTrack } from './downloads';
 import { persistLibraryUri } from './libraryUris';
 import { libraryDirectory } from './libraryPaths';
-import { ensureDirAsync, pathExistsAsync } from './fsSafe';
+import { ensureDirAsync, pathExistsAsync, withTimeout } from './fsSafe';
 
 function persistAndKeep(uri?: string): string | undefined {
   const stored = persistLibraryUri(uri);
@@ -73,20 +73,48 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
   };
 }
 
-export async function loadLibrarySnapshot(): Promise<LibrarySnapshot | null> {
+function parseLibrarySnapshot(parsed: LibrarySnapshot): LibrarySnapshot | null {
+  if (!Array.isArray(parsed.tracks)) {
+    return null;
+  }
+  if (parsed.version !== 1 && parsed.version !== LIBRARY_SNAPSHOT_VERSION) {
+    return null;
+  }
+  return {
+    version: LIBRARY_SNAPSHOT_VERSION,
+    tracks: parsed.tracks,
+    folders: Array.isArray(parsed.folders) ? parsed.folders : [],
+    albums: Array.isArray(parsed.albums) ? parsed.albums : [],
+    playlists: Array.isArray(parsed.playlists) ? parsed.playlists : [],
+    smartPlaylists: Array.isArray(parsed.smartPlaylists) ? parsed.smartPlaylists : [],
+    markersByTrackId:
+      parsed.markersByTrackId && typeof parsed.markersByTrackId === 'object'
+        ? parsed.markersByTrackId
+        : {},
+  };
+}
+
+export async function loadLibrarySnapshot(options?: { quick?: boolean }): Promise<LibrarySnapshot | null> {
   const uri = snapshotFileUri();
-  if (!(await pathExistsAsync(uri))) {
+  const exists = await withTimeout(pathExistsAsync(uri), 2000, false);
+  if (!exists) {
     return null;
   }
   try {
-    const parsed = JSON.parse(await LegacyFS.readAsStringAsync(uri)) as LibrarySnapshot;
-    if (!Array.isArray(parsed.tracks)) {
+    const raw = await withTimeout(
+      LegacyFS.readAsStringAsync(uri),
+      3000,
+      '',
+    );
+    if (!raw) {
       return null;
     }
-    if (parsed.version !== 1 && parsed.version !== LIBRARY_SNAPSHOT_VERSION) {
+    const parsed = JSON.parse(raw) as LibrarySnapshot;
+    const snapshot = parseLibrarySnapshot(parsed);
+    if (!snapshot) {
       return null;
     }
-    return sanitizeSnapshot(parsed);
+    return options?.quick ? snapshot : sanitizeSnapshot(snapshot);
   } catch {
     return null;
   }

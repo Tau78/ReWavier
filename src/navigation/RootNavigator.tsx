@@ -16,6 +16,7 @@ import { DiscoveryScreen } from '../features/discovery/DiscoveryScreen';
 import { PrivacyScreen } from '../features/settings/PrivacyScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { useSessionStore } from '../store/sessionStore';
+import { StartupScreen } from '../features/splash/StartupScreen';
 import { colors } from '../theme/colors';
 import type { RootStackParamList } from './types';
 
@@ -37,7 +38,7 @@ export function RootNavigator() {
   const hydrated = useSessionStore((s) => s.hydrated);
   const user = useSessionStore((s) => s.user);
   if (!hydrated) {
-    return <View style={{ flex: 1, backgroundColor: colors.background }} />;
+    return <StartupScreen />;
   }
   if (!user) {
     return (

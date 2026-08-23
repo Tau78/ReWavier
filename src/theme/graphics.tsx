@@ -93,6 +93,7 @@ const styles = StyleSheet.create({
   aura: {
     ...StyleSheet.absoluteFillObject,
     overflow: 'hidden',
+    zIndex: 0,
   },
   auraMark: {
     position: 'absolute',

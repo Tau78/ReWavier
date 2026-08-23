@@ -20,6 +20,7 @@ import { type Marker, type Track } from '../domain/models';
 import {
   loadLibrarySnapshot,
   saveLibrarySnapshot,
+  sanitizeSnapshot,
   type LibrarySnapshot,
 } from '../files/libraryPersist';
 import { playableUri } from '../domain/audioFormats';
@@ -777,9 +778,14 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   async hydrate() {
+    if (libraryHydratePromise) {
+      return libraryHydratePromise;
+    }
     const run = async () => {
+      let hadSnapshot = false;
       try {
-        const snapshot = await loadLibrarySnapshot();
+        const snapshot = await loadLibrarySnapshot({ quick: true });
+        hadSnapshot = snapshot != null;
         set({
           tracks: snapshot?.tracks ?? [],
           folders: snapshot?.folders ?? [],
@@ -789,13 +795,13 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           markersByTrackId: snapshot?.markersByTrackId ?? {},
         });
         persistReady = true;
-        await finishLibraryHydrate(snapshot != null);
       } finally {
         set({ libraryHydrated: true });
       }
+      void finishLibraryHydrate(hadSnapshot);
     };
     libraryHydratePromise = run();
-    await libraryHydratePromise;
+    return libraryHydratePromise;
   },
 
   getTrack(id) {
@@ -851,6 +857,15 @@ useLibraryStore.subscribe(schedulePersist);
 
 async function finishLibraryHydrate(hadSnapshot: boolean) {
   try {
+    const cleaned = sanitizeSnapshot(snapshotFrom(useLibraryStore.getState()));
+    useLibraryStore.setState({
+      tracks: cleaned.tracks,
+      folders: cleaned.folders,
+      albums: cleaned.albums,
+      playlists: cleaned.playlists,
+      smartPlaylists: cleaned.smartPlaylists,
+      markersByTrackId: cleaned.markersByTrackId,
+    });
     const { tracks, markersByTrackId: currentMarkers } = useLibraryStore.getState();
     const migrated = await migrateTracksToAudioFolder(tracks);
     const extras = await scanAudioFolder(migrated);
