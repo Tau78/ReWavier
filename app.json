@@ -16,7 +16,7 @@
     ],
     "ios": {
       "bundleIdentifier": "app.rewavier",
-      "buildNumber": "7",
+      "buildNumber": "8",
       "usesIcloudStorage": true,
       "usesAppleSignIn": true,
       "supportsTablet": true,
