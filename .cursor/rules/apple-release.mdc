@@ -1,0 +1,14 @@
+---
+description: Prima submission App Store e risposte Guideline 2.1 — VAI non è la recensione
+alwaysApply: true
+---
+
+# Apple release (recensione Store)
+
+**VAI** manda la build su TestFlight. Non è Submit for Review.
+
+Prima di “è pronta per lo Store”, o se Apple chiede Information Needed (Guideline 2.1): leggi `.cursor/skills/apple-release/SKILL.md`. Compila `review-notes.template.txt` dall’app vera.
+
+Non inviare la scheda se manca il pacchetto: Notes (7 punti, inglese, < 4000), Sign-In Required + demo nei campi dedicati, video su iPhone fisico dall’icona, privacy URL https, screenshot dell’app in uso. Se c’è registrazione account, serve Elimina account nella stessa build.
+
+Il video non si gira da una VM cloud. Chiedi all’utente. Non inventare modelli di iPhone.

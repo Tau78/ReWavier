@@ -46,6 +46,7 @@ npm run submit:ios
 - [ ] Screenshot iPhone 6.7" e iPad 13" (libreria con un brano importato, player con un marker)
 - [ ] Privacy Policy URL
 - [ ] Note per il reviewer (incolla il blocco in `docs/prodotto.md`, sezione App Review)
+- [ ] Video su iPhone fisico: login email demo → registra bozza o importa audio → nota → elimina account
 - [ ] Demo senza audio rimosse: la libreria parte vuota
 - [ ] Account placeholder nascosto
 

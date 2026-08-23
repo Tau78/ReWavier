@@ -34,7 +34,11 @@ const theme = {
 };
 
 export function RootNavigator() {
+  const hydrated = useSessionStore((s) => s.hydrated);
   const user = useSessionStore((s) => s.user);
+  if (!hydrated) {
+    return <View style={{ flex: 1, backgroundColor: colors.background }} />;
+  }
   if (!user) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.background }}>

@@ -9,6 +9,8 @@ Quando l’utente scrive **VAI** (o `vai`, o il messaggio inizia con VAI), lanci
 
 VAI è permesso esplicito di commit, merge su main, push, FTP, build e invio a TestFlight.
 
+VAI **non** è Submit for Review. La prima recensione Store (e ogni Guideline 2.1) usa `.cursor/skills/apple-release/SKILL.md`. Senza Notes, demo login e video su iPhone fisico, Apple boccia Information Needed anche se TestFlight è ok.
+
 ## Prima lo script, non i passi a mano
 
 ```bash

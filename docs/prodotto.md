@@ -18,16 +18,18 @@ A chi serve oggi:
 
 Cosa fa oggi (versione 1):
 
-- importi i tuoi file audio dal telefono (app File, Drive, Mail, ecc.)
+- entri con Apple, Google o email (l’account resta su quel telefono)
+- importi i tuoi file audio dal telefono (app File, Drive, Mail, ecc.) o registri una bozza
 - organizzi i brani in cartelle, album e playlist
 - crei elenchi automatici con regole semplici (es. “brani con almeno un appunto”)
-- tutto resta **su quel dispositivo**: niente account, niente cloud ReWavier, niente pubblicità
+- i brani restano **su quel dispositivo**; se vuoi la copia sull’altro telefono usi iCloud (due iPhone) o Drive (anche Android)
+- niente pubblicità, niente negozio in-app
 
-Cosa non fa ancora (e non va promesso a un cliente o a un negozio):
+Cosa non fa (e non va promesso a un cliente o a un negozio):
 
-- non ha login né un account sincronizzato tra iPhone e iPad
-- non scrive da solo su Google Drive: puoi solo **esportare** i marker e scegliere tu dove salvarli
-- non registra la voce, non fa foto, non sincronizza l’ascolto tra più persone
+- non ha un sito ReWavier in cui teniamo le tue canzoni
+- non sincronizza l’ascolto in tempo reale tra più persone
+- non è un social: gli appunti sono tuoi, non una bacheca pubblica
 
 Il nome: **ReWavier**. L’idea è “rivedere l’onda” — riascoltare e annotare la waveform. Il player (titolo, tempo, onda, controlli, pulsante + arancione) è già deciso: non si cambia l’aspetto.
 
@@ -98,12 +100,13 @@ ReWavier **non** carica da solo su Drive.
 
 Dalla libreria, ingranaggio in alto a destra:
 
-- dove stanno i dati (solo su questo telefono/tablet)
-- come funziona l’export
+- il tuo account (Apple, Google o email)
+- come usi l’app (Band, Creator, Teacher)
+- telefoni collegati
 - informativa privacy
+- **Esci** (torni al login; i brani restano)
+- **Elimina account** (si cancella l’accesso da questo telefono)
 - numero di versione
-
-Non c’è un account da creare.
 
 ### Se qualcosa non va
 
@@ -118,27 +121,65 @@ Non c’è un account da creare.
 
 ### App Review notes (App Store Connect)
 
-Incolla questo testo nel campo Note per la recensione:
+Come si manda una recensione Store (vale per ogni app): `.cursor/skills/apple-release/SKILL.md`. Questo blocco è solo ReWavier, già compilato.
+
+Incolla il testo nel campo **Notes** (App Review Information) e nella risposta in Resolution Center. Allega anche il video registrato su iPhone fisico (ultimo iOS), partendo dall’icona dell’app. Username e password vanno anche nei **campi dedicati** (Sign-In Required), non solo qui.
 
 ```
-SIGN IN (required)
-Use Email and Password on the first screen. Do not use Sign in with Apple or Google.
+GUIDELINE 2.1 — APP REVIEW INFORMATION
 
+1) SCREEN RECORDING
+A screen recording on a physical iPhone (latest iOS) is attached to this reply. It starts at app launch and shows the typical flow:
+- Email/password sign-in with the demo account below
+- First-run library is empty (expected)
+- Record a short sketch (tap + → “Registra bozza”) and allow the microphone, OR import any audio from Files (“Carica audio”)
+- Open the track, play, tap the large orange + (“Aggiungi nota”), save a timestamped note, tap and drag the marker
+- Settings (gear on Library) → “Elimina account” → confirm → back to login
+No in-app purchases or subscriptions. Notes are private (not a public social feed), so there is no report/block flow. No App Tracking Transparency, location, contacts, or camera prompts. The only permission prompt is the microphone, and only if you record a sketch.
+
+2) DEVICES AND OS TESTED BEFORE SUBMISSION
+- Physical iPhone via TestFlight production builds and Expo Go (SDK 54), latest iOS available to the developer
+- iPad supported (this is an iPhone + iPad app)
+
+3) WHAT THE APP DOES / WHO IT IS FOR
+ReWavier is a music practice notebook for musicians, bands, and teachers. You listen to a track and pin a note on the exact timestamp (minutes, seconds, milliseconds) on the waveform. It solves “I heard something at 1:23 and I cannot find it again.” Audio and notes stay on the device. Optional iCloud (iPhone to iPhone, same Apple ID) or Google Drive (also toward Android) only copies the user’s own folder. There is no ReWavier cloud catalog and no ads.
+
+4) HOW TO SET UP AND USE THE MAIN FEATURES
+SIGN IN — use Email and Password on the first screen. Do not use Sign in with Apple or Google.
 Email: review@rewavier.app
 Password: Review2026!
+This demo account is hardcoded and always accepted. It skips first-run setup and opens the library. The library is empty on a fresh install — that is expected. No sample music is bundled (users import or record their own audio).
+Then:
+1. Tap + (top right) → “Registra bozza” (Record a sketch). Allow the microphone, record a few seconds, save. Or tap “Carica audio” and pick any wav / aiff / mp3 / m4a / aac from the Files app.
+2. Tap the track to open the player.
+3. Tap the large orange + (“Aggiungi nota”). Playback pauses. Write a note and tap Salva.
+4. Tap the marker on the waveform to reopen it; press and drag to move it.
+5. Account deletion: Library → gear → “Elimina account” → Elimina. You return to login. The same demo credentials still work if you sign in again.
 
-This demo account is hardcoded and always accepted. After sign-in you land in the library. The library is empty on a fresh install — that is expected.
+5) EXTERNAL SERVICES USED FOR CORE FEATURES
+- Sign in with Apple (optional; not needed for review)
+- Google Sign-In and Google Drive (optional; not needed for review)
+- iCloud Drive (optional; iPhone-to-iPhone copy of the user’s own folder)
+- No payment processor, no ads, no analytics SDK, no AI service, no ReWavier backend
 
-HOW TO REVIEW
-1. On the library screen, tap “Carica audio” (Load audio) or the orange + button. Pick any audio file from the Files app (wav, aiff, mp4, mp3, aac, or m4a).
-2. Tap the imported track to open the player.
-3. Tap the large orange + button (“Aggiungi nota”) to add a note at the current time. Playback pauses and a note bubble appears with the timestamp.
-4. Save the note. You can tap the marker on the waveform and drag it.
+6) REGIONAL DIFFERENCES
+The app is in Italian. Features and content are the same in every region. There is no geo-restricted catalog.
 
-Google Drive is optional and not needed for review.
+7) REGULATED INDUSTRY / PROTECTED MATERIAL
+Not a regulated industry. We do not ship licensed third-party music or protected catalogs. Users import or record their own audio. No extra credentials apply.
 
 Privacy policy: https://eventi.musicproeventi.it/ReWavier/Privacy.html
 ```
+
+#### Come girare il video (iPhone fisico, ultimo iOS)
+
+1. Impostazioni iPhone → Controllo → Registrazione schermo (o Centro di Controllo).
+2. Chiudi ReWavier. Avvia la registrazione. Tocca l’icona ReWavier.
+3. Accedi con `review@rewavier.app` / `Review2026!` (email e password, non Apple/Google).
+4. Libreria vuota: tocca **＋** → **Registra bozza**. Accetta il microfono. Registra pochi secondi, salva.
+5. Tocca il brano. Play. Tocca il **＋ arancione**, scrivi una nota, **Salva**. Tocca il segnalino e spostalo.
+6. **‹** per tornare. Ingranaggio → scorri → **Elimina account** → **Elimina**. Si torna al login.
+7. Ferma la registrazione. In App Store Connect, Rispondi alla recensione: incolla il testo e allega il video.
 
 ---
 

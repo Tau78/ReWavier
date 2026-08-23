@@ -25,6 +25,7 @@ export function SettingsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList, 'Settings'>>();
   const user = useSessionStore((s) => s.user);
   const logout = useSessionStore((s) => s.logout);
+  const deleteAccount = useSessionStore((s) => s.deleteAccount);
   const setUsageTypes = useSessionStore((s) => s.setUsageTypes);
   const upsertBand = useSessionStore((s) => s.upsertBand);
   const removeBand = useSessionStore((s) => s.removeBand);
@@ -203,7 +204,36 @@ export function SettingsScreen() {
         ) : null}
         <Pressable onPress={() => void logout()} style={styles.card}>
           <Text style={styles.rowLabel}>Esci</Text>
-          <Text style={styles.rowValue}>Torna al login</Text>
+          <Text style={styles.rowValue}>Torna al login. I brani restano qui.</Text>
+        </Pressable>
+        <Pressable
+          onPress={() =>
+            Alert.alert(
+              'Eliminare l’account?',
+              'Si cancella l’accesso da questo telefono. I brani restano nella cartella ReWavier in File.',
+              [
+                { text: 'Annulla', style: 'cancel' },
+                {
+                  text: 'Elimina',
+                  style: 'destructive',
+                  onPress: () => {
+                    void deleteAccount().catch((error) => {
+                      Alert.alert(
+                        'Account',
+                        error instanceof Error ? error.message : 'Riprova',
+                      );
+                    });
+                  },
+                },
+              ],
+            )
+          }
+          style={styles.card}
+        >
+          <Text style={styles.rowLabel}>Elimina account</Text>
+          <Text style={[styles.rowValue, styles.danger]}>
+            Si cancella l’accesso da questo telefono
+          </Text>
         </Pressable>
         <View style={styles.card}>
           <Text style={styles.rowLabel}>Versione</Text>
@@ -330,5 +360,8 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 15,
     fontWeight: '700',
+  },
+  danger: {
+    color: colors.danger,
   },
 });
