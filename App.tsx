@@ -17,8 +17,10 @@ export default function App() {
   const ready = useSessionStore((s) => s.hydrated);
 
   useEffect(() => {
-    void useSessionStore.getState().hydrate();
-    void useLibraryStore.getState().hydrate();
+    void (async () => {
+      await useSessionStore.getState().hydrate();
+      await useLibraryStore.getState().hydrate();
+    })();
   }, []);
 
   useEffect(() => {

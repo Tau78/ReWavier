@@ -11,3 +11,13 @@ export function isDemoAccount(email: string, password: string): boolean {
     password === DEMO_ACCOUNT.password
   );
 }
+
+export function isDemoUser(user: { id?: string; email?: string } | null | undefined): boolean {
+  if (!user) {
+    return false;
+  }
+  return (
+    user.id === 'user-app-review' ||
+    user.email?.trim().toLowerCase() === DEMO_ACCOUNT.email
+  );
+}

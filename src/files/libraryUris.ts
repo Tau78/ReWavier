@@ -1,5 +1,6 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
+import { audioRelativePrefix } from './libraryOwner';
 import { audioDirectory, downloadsDirectory, inboxDirectory, libraryDirectory } from './libraryPaths';
 
 const LEGACY_MARKER = '/rewavier/';
@@ -133,7 +134,7 @@ export function recoverAudioRelative(track: {
     names.find((name) => name.startsWith(prefix) || (wanted ? name === wanted || name.endsWith(wanted) : false));
   const audioHit = match(audio);
   if (audioHit) {
-    return { fileUri: `Audio/${audioHit}` };
+    return { fileUri: `${audioRelativePrefix()}/${audioHit}` };
   }
   const downloadHit = match(downloads);
   if (downloadHit) {

@@ -71,6 +71,11 @@ function persist(state: SessionState) {
   }).catch(() => undefined);
 }
 
+async function reloadLibrary() {
+  const { useLibraryStore } = await import('./libraryStore');
+  await useLibraryStore.getState().hydrate();
+}
+
 function makeUser(input: {
   id: string;
   email: string;
@@ -137,6 +142,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           };
       set({ user });
       persist(get());
+      await reloadLibrary();
       return;
     }
     const accounts = await loadLocalAccounts();
@@ -159,6 +165,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       });
     set({ user });
     persist(get());
+    await reloadLibrary();
   },
 
   async registerEmail(email, password, displayName) {
@@ -189,6 +196,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     });
     set({ user });
     persist(get());
+    await reloadLibrary();
   },
 
   async signInSocial(input) {
@@ -226,6 +234,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         });
     set({ user: normalizeSessionUser(user) });
     persist(get());
+    await reloadLibrary();
   },
 
   completeOnboarding(input) {
@@ -354,6 +363,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     await clearGoogleToken().catch(() => undefined);
     set({ user: null });
     persist(get());
+    await reloadLibrary();
   },
 
   async deleteAccount() {
@@ -366,6 +376,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     await clearGoogleToken().catch(() => undefined);
     set({ user: null });
     persist(get());
+    await reloadLibrary();
   },
 }));
 

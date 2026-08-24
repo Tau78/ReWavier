@@ -3,7 +3,8 @@ import * as LegacyFS from 'expo-file-system/legacy';
 
 import { isDownloaded } from '../domain/audioFormats';
 import type { Track } from '../domain/models';
-import { audioDirectory, downloadsDirectory, inboxDirectory } from './libraryPaths';
+import { audioRelativePrefix } from './libraryOwner';
+import { audioDirectory, downloadsDirectory, ensureAudioDirectory, inboxDirectory } from './libraryPaths';
 import {
   libraryFileExists,
   persistLibraryUri,
@@ -49,14 +50,15 @@ export async function copyToDownloads(
   _trackId: string,
   fileName: string,
 ): Promise<string> {
+  await ensureAudioDirectory();
   const name = uniqueAudioFileName(fileName);
   const dest = new File(audioDirectory(), name);
   const from = resolveLibraryUri(sourceUri) ?? sourceUri;
   if (from === dest.uri) {
-    return `Audio/${name}`;
+    return persistLibraryUri(dest.uri) ?? `${audioRelativePrefix()}/${name}`;
   }
   await LegacyFS.copyAsync({ from, to: dest.uri });
-  return `Audio/${name}`;
+  return persistLibraryUri(dest.uri) ?? `${audioRelativePrefix()}/${name}`;
 }
 
 export async function removeUri(uri?: string): Promise<void> {

@@ -11,7 +11,8 @@ import {
 import type { Marker, Track } from '../domain/models';
 import { fileExists, reconcileTrack } from './downloads';
 import { persistLibraryUri } from './libraryUris';
-import { libraryDirectory } from './libraryPaths';
+import { getActiveLibraryOwner } from './libraryOwner';
+import { libraryDirectory, userLibraryDirectory } from './libraryPaths';
 import { ensureDirAsync, pathExistsAsync } from './fsSafe';
 
 function persistAndKeep(uri?: string): string | undefined {
@@ -33,7 +34,38 @@ export type LibrarySnapshot = {
 };
 
 function snapshotFileUri(): string {
+  return `${userLibraryDirectory().uri}/${SNAPSHOT_NAME}`;
+}
+
+function legacySnapshotFileUri(): string {
   return `${libraryDirectory().uri}/${SNAPSHOT_NAME}`;
+}
+
+const LEGACY_OWNER_NAME = 'legacy-library-owner.json';
+
+export async function adoptLegacyLibraryIfNeeded(userId: string): Promise<void> {
+  const destUri = snapshotFileUri();
+  if (await pathExistsAsync(destUri)) {
+    return;
+  }
+  const legacyUri = legacySnapshotFileUri();
+  if (!(await pathExistsAsync(legacyUri))) {
+    return;
+  }
+  const markerUri = `${libraryDirectory().uri}/${LEGACY_OWNER_NAME}`;
+  if (await pathExistsAsync(markerUri)) {
+    return;
+  }
+  await ensureDirAsync(userLibraryDirectory().uri);
+  try {
+    await LegacyFS.copyAsync({ from: legacyUri, to: destUri });
+    await LegacyFS.writeAsStringAsync(
+      markerUri,
+      JSON.stringify({ owner: getActiveLibraryOwner() ?? userId, at: Date.now() }),
+    );
+  } catch {
+    // leave legacy in place; next launch can retry
+  }
 }
 
 export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
@@ -93,7 +125,7 @@ export async function loadLibrarySnapshot(): Promise<LibrarySnapshot | null> {
 }
 
 export async function saveLibrarySnapshot(snapshot: LibrarySnapshot): Promise<void> {
-  await ensureDirAsync(libraryDirectory().uri);
+  await ensureDirAsync(userLibraryDirectory().uri);
   await LegacyFS.writeAsStringAsync(
     snapshotFileUri(),
     JSON.stringify({ ...snapshot, version: LIBRARY_SNAPSHOT_VERSION }),

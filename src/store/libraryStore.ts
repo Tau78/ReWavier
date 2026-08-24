@@ -17,11 +17,14 @@ import {
   type SmartPlaylist,
 } from '../domain/library';
 import { type Marker, type Track } from '../domain/models';
+import { isDemoUser } from '../auth/demoAccount';
 import {
+  adoptLegacyLibraryIfNeeded,
   loadLibrarySnapshot,
   saveLibrarySnapshot,
   type LibrarySnapshot,
 } from '../files/libraryPersist';
+import { setActiveLibraryOwner } from '../files/libraryOwner';
 import { playableUri } from '../domain/audioFormats';
 import { migrateTracksToAudioFolder, scanAudioFolder } from '../files/audioFolder';
 import {
@@ -102,6 +105,7 @@ export type LibraryActions = {
     extras?: { updatedAt?: number; fromCloud?: boolean },
   ) => void;
   hydrate: () => Promise<void>;
+  unload: () => void;
   getTrack: (id: string) => Track | undefined;
   tracksIn: (kind: CollectionKind, id: string) => Track[];
   foldersIn: (parentId: string | null) => Folder[];
@@ -726,7 +730,40 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     }));
   },
 
+  unload() {
+    persistReady = false;
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+      persistTimer = undefined;
+    }
+    setActiveLibraryOwner(null);
+    set({
+      tracks: [],
+      folders: [],
+      albums: [],
+      playlists: [],
+      smartPlaylists: [],
+      markersByTrackId: {},
+      peaksByTrackId: {},
+      downloadingIds: {},
+    });
+  },
+
   async hydrate() {
+    persistReady = false;
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+      persistTimer = undefined;
+    }
+    const user = useSessionStore.getState().user;
+    if (!user) {
+      get().unload();
+      return;
+    }
+    setActiveLibraryOwner(user.id);
+    if (!isDemoUser(user)) {
+      await adoptLegacyLibraryIfNeeded(user.id);
+    }
     const snapshot = await loadLibrarySnapshot();
     set({
       tracks: snapshot?.tracks ?? [],
@@ -735,6 +772,8 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       playlists: snapshot?.playlists ?? [],
       smartPlaylists: snapshot?.smartPlaylists ?? [],
       markersByTrackId: snapshot?.markersByTrackId ?? {},
+      peaksByTrackId: {},
+      downloadingIds: {},
     });
     persistReady = true;
     void finishLibraryHydrate(snapshot != null);
