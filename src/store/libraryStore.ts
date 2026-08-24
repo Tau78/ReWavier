@@ -25,7 +25,7 @@ import {
   type LibrarySnapshot,
 } from '../files/libraryPersist';
 import { playableUri } from '../domain/audioFormats';
-import { migrateTracksToAudioFolder, scanAudioFolder } from '../files/audioFolder';
+import { audioFileNamesForTrack, migrateTracksToAudioFolder, scanAudioFolder } from '../files/audioFolder';
 import {
   copyToDownloads,
   removeUri,
@@ -45,6 +45,7 @@ export type LibraryState = {
   peaksByTrackId: Record<string, number[]>;
   downloadingIds: Record<string, number>;
   libraryHydrated: boolean;
+  keptAudioNames: string[];
 };
 
 export type LibraryActions = {
@@ -83,7 +84,7 @@ export type LibraryActions = {
   setTrackArtwork: (id: string, artworkUri?: string) => void;
   setTrackBounds: (id: string, startMs: number, endMs: number) => void;
   setTrackPractice: (id: string, practice: PracticeIds) => void;
-  deleteTrack: (id: string) => Promise<void>;
+  deleteTrack: (id: string, options?: { deleteFromDevice?: boolean }) => Promise<void>;
   moveTrack: (trackId: string, folderId: string | null) => void;
   addTrackToFolder: (trackId: string, folderId: string) => 'added' | 'exists';
   importBundles: (
@@ -138,6 +139,7 @@ function snapshotFrom(state: LibraryState): LibrarySnapshot {
     playlists: state.playlists,
     smartPlaylists: state.smartPlaylists,
     markersByTrackId: state.markersByTrackId,
+    keptAudioNames: state.keptAudioNames,
   };
 }
 
@@ -195,6 +197,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   peaksByTrackId: {},
   downloadingIds: {},
   libraryHydrated: false,
+  keptAudioNames: [],
 
   setTrackMarkers(trackId, markers) {
     set((state) => ({
@@ -508,35 +511,50 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     persistSidecar(track, get().markersByTrackId[id] ?? []);
   },
 
-  async deleteTrack(id) {
+  async deleteTrack(id, options) {
+    const deleteFromDevice = options?.deleteFromDevice === true;
     const track = get().getTrack(id);
-    if (track) {
+    const fileNames = track ? audioFileNamesForTrack(track) : [];
+    if (deleteFromDevice && track) {
       removeSidecarFromLibrary(track.sourceFileName ?? track.title, sidecarSlug());
+      await removeUri(track.fileUri);
+      await removeUri(track.inboxUri);
+      await removeUri(track.artworkUri);
     }
-    await removeUri(track?.fileUri);
-    await removeUri(track?.inboxUri);
-    await removeUri(track?.artworkUri);
-    set((state) => ({
-      tracks: state.tracks.filter((track) => track.id !== id),
-      folders: state.folders.map((folder) => ({
-        ...folder,
-        trackIds: folder.trackIds.filter((trackId) => trackId !== id),
-      })),
-      albums: state.albums.map((album) => ({
-        ...album,
-        trackIds: album.trackIds.filter((trackId) => trackId !== id),
-      })),
-      playlists: state.playlists.map((playlist) => ({
-        ...playlist,
-        trackIds: playlist.trackIds.filter((trackId) => trackId !== id),
-      })),
-      markersByTrackId: Object.fromEntries(
-        Object.entries(state.markersByTrackId).filter(([key]) => key !== id),
-      ),
-      peaksByTrackId: Object.fromEntries(
-        Object.entries(state.peaksByTrackId).filter(([key]) => key !== id),
-      ),
-    }));
+    set((state) => {
+      const kept = new Set(state.keptAudioNames);
+      if (deleteFromDevice) {
+        for (const name of fileNames) {
+          kept.delete(name);
+        }
+      } else {
+        for (const name of fileNames) {
+          kept.add(name);
+        }
+      }
+      return {
+        tracks: state.tracks.filter((item) => item.id !== id),
+        folders: state.folders.map((folder) => ({
+          ...folder,
+          trackIds: folder.trackIds.filter((trackId) => trackId !== id),
+        })),
+        albums: state.albums.map((album) => ({
+          ...album,
+          trackIds: album.trackIds.filter((trackId) => trackId !== id),
+        })),
+        playlists: state.playlists.map((playlist) => ({
+          ...playlist,
+          trackIds: playlist.trackIds.filter((trackId) => trackId !== id),
+        })),
+        markersByTrackId: Object.fromEntries(
+          Object.entries(state.markersByTrackId).filter(([key]) => key !== id),
+        ),
+        peaksByTrackId: Object.fromEntries(
+          Object.entries(state.peaksByTrackId).filter(([key]) => key !== id),
+        ),
+        keptAudioNames: [...kept],
+      };
+    });
     const { clearPlayerIfTrackDeleted } = require('./playerStore') as typeof import('./playerStore');
     clearPlayerIfTrackDeleted(id);
   },
@@ -803,6 +821,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           playlists: snapshot?.playlists ?? [],
           smartPlaylists: snapshot?.smartPlaylists ?? [],
           markersByTrackId: snapshot?.markersByTrackId ?? {},
+          keptAudioNames: snapshot?.keptAudioNames ?? [],
         });
         persistReady = true;
         await finishLibraryHydrate(hadSnapshot);
@@ -875,10 +894,11 @@ async function finishLibraryHydrate(hadSnapshot: boolean) {
       playlists: cleaned.playlists,
       smartPlaylists: cleaned.smartPlaylists,
       markersByTrackId: cleaned.markersByTrackId,
+      keptAudioNames: cleaned.keptAudioNames ?? [],
     });
     const { tracks, markersByTrackId: currentMarkers } = useLibraryStore.getState();
     const migrated = await migrateTracksToAudioFolder(tracks);
-    const extras = await scanAudioFolder(migrated);
+    const extras = await scanAudioFolder(migrated, useLibraryStore.getState().keptAudioNames);
     const markersByTrackId = { ...currentMarkers };
     for (const bundle of extras) {
       markersByTrackId[bundle.track.id] = bundle.markers;

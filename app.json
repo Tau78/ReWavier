@@ -19,7 +19,7 @@
     ],
     "ios": {
       "bundleIdentifier": "app.rewavier",
-      "buildNumber": "33",
+      "buildNumber": "34",
       "usesIcloudStorage": true,
       "entitlements": {
         "com.apple.developer.icloud-container-identifiers": [

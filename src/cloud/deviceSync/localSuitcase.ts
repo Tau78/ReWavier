@@ -58,11 +58,15 @@ export function snapshotFromStore(): LibrarySnapshot {
     playlists: state.playlists,
     smartPlaylists: state.smartPlaylists,
     markersByTrackId: state.markersByTrackId,
+    keptAudioNames: state.keptAudioNames,
   };
 }
 
 export async function importLooseAudioFiles(): Promise<number> {
-  const extras = await scanAudioFolder(useLibraryStore.getState().tracks);
+  const extras = await scanAudioFolder(
+    useLibraryStore.getState().tracks,
+    useLibraryStore.getState().keptAudioNames,
+  );
   if (extras.length === 0) {
     return 0;
   }
@@ -82,6 +86,7 @@ export async function applyRemoteSnapshot(remote: LibrarySnapshot): Promise<void
     playlists: merged.playlists,
     smartPlaylists: merged.smartPlaylists,
     markersByTrackId: merged.markersByTrackId,
+    keptAudioNames: merged.keptAudioNames ?? [],
   });
   await saveLibrarySnapshot(merged);
   await importLooseAudioFiles();

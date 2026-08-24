@@ -115,24 +115,43 @@ else
   log "Commit: working tree pulito."
 fi
 
-# --- 2. merge su main ---
-branch="$(git rev-parse --abbrev-ref HEAD)"
-if [[ "$branch" != "main" ]]; then
-  log "Merge: $branch → main"
-  git fetch origin
-  git checkout main
-  git pull --ff-only origin main
-  git merge "$branch" --no-edit
-else
-  log "Merge: già su main."
-  git fetch origin
-  if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
-    behind="$(git rev-list --count HEAD..@{u} 2>/dev/null || echo 0)"
-    if [[ "${behind:-0}" != "0" ]]; then
-      git pull --ff-only origin main
-    fi
+# --- 2. merge su main (porta TUTTO ciò che non è su main) ---
+start_branch="$(git rev-parse --abbrev-ref HEAD)"
+git fetch origin
+
+git checkout main
+if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+  behind="$(git rev-list --count HEAD..@{u} 2>/dev/null || echo 0)"
+  if [[ "${behind:-0}" != "0" ]]; then
+    git pull --ff-only origin main
   fi
+else
+  git pull --ff-only origin main 2>/dev/null || true
 fi
+
+merge_ref_if_ahead() {
+  local ref="$1"
+  [[ -z "$ref" || "$ref" == "main" || "$ref" == "origin/main" || "$ref" == "origin/HEAD" ]] && return 0
+  local ahead
+  ahead="$(git rev-list --count main.."$ref" 2>/dev/null || echo 0)"
+  [[ "${ahead:-0}" == "0" ]] && return 0
+  log "Merge: $ref → main (+$ahead)"
+  git merge "$ref" --no-edit
+}
+
+if [[ "$start_branch" != "main" ]]; then
+  merge_ref_if_ahead "$start_branch"
+fi
+
+while IFS= read -r rb; do
+  merge_ref_if_ahead "$rb"
+done < <(git branch -r --format='%(refname:short)' | sort -u)
+
+while IFS= read -r lb; do
+  merge_ref_if_ahead "$lb"
+done < <(git branch --format='%(refname:short)' | sort -u)
+
+log "Merge: main aggiornato."
 
 # --- 3. push ---
 if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then

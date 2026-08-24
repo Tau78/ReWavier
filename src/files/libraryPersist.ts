@@ -30,6 +30,7 @@ export type LibrarySnapshot = {
   playlists: Playlist[];
   smartPlaylists: SmartPlaylist[];
   markersByTrackId: Record<string, Marker[]>;
+  keptAudioNames?: string[];
 };
 
 function snapshotFileUri(): string {
@@ -70,6 +71,7 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
     markersByTrackId: Object.fromEntries(
       Object.entries(snapshot.markersByTrackId).filter(([id]) => keep.has(id)),
     ),
+    keptAudioNames: (snapshot.keptAudioNames ?? []).filter((name) => name.trim().length > 0),
   };
 }
 
@@ -91,6 +93,9 @@ function parseLibrarySnapshot(parsed: LibrarySnapshot): LibrarySnapshot | null {
       parsed.markersByTrackId && typeof parsed.markersByTrackId === 'object'
         ? parsed.markersByTrackId
         : {},
+    keptAudioNames: Array.isArray(parsed.keptAudioNames)
+      ? parsed.keptAudioNames.filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+      : [],
   };
 }
 

@@ -17,7 +17,7 @@ Se il messaggio dell’utente è **VAI** (anche `vai`, o inizia con VAI), è un 
 
 ## Permessi
 
-VAI = permesso esplicito di **commit**, **merge su main**, **push**, **FTP**, **build iOS** e **invio a TestFlight**. Non è un force-push. Non committare `.env`, `.env.ftp`, password, `firebase-debug.log`.
+VAI = permesso esplicito di **commit**, **merge su main** (tutto il lavoro fuori da main → main), **push**, **FTP**, **build iOS** e **invio a TestFlight**. Non è un force-push. Non committare `.env`, `.env.ftp`, password, `firebase-debug.log`.
 
 VAI non compila App Review Information e non gira il video. Prima submission Store: `.cursor/skills/apple-release/SKILL.md`.
 

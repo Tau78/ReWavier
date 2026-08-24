@@ -20,7 +20,7 @@ VAI_MESSAGE='…' bash scripts/vai.sh
 Dalla root del repo, con rete. Lo script fa, in ordine:
 
 1. Commit (esclude segreti)
-2. Merge su `main` se sei su un altro branch
+2. Merge su `main`: porta su main **tutto** ciò che ha commit fuori da main (branch locale, remote `origin/*`, branch corrente). «Merge su main» = destinazione main, non «merge del main altrove».
 3. Push su `origin`
 4. FTP di `docs/` solo se il contenuto è cambiato rispetto all’ultimo upload
 5. Build iOS con **Xcode sul Mac** (`scripts/xcode-testflight.sh`: prebuild, archive, upload)

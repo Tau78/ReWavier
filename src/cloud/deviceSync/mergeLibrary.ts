@@ -162,5 +162,6 @@ export function mergeLibrarySnapshots(local: LibrarySnapshot, remote: LibrarySna
     playlists: mergePlaylists(local.playlists, remote.playlists, idRemap),
     smartPlaylists: mergeSmart(local.smartPlaylists, remote.smartPlaylists),
     markersByTrackId: mergeAllMarkers(local.markersByTrackId, remote.markersByTrackId, idRemap),
+    keptAudioNames: [...new Set([...(local.keptAudioNames ?? []), ...(remote.keptAudioNames ?? [])])],
   };
 }

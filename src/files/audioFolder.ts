@@ -151,22 +151,33 @@ async function migrateSidecars() {
   }
 }
 
-function claimedNames(tracks: Track[]): Set<string> {
+export function audioFileNamesForTrack(track: Pick<Track, 'fileUri' | 'inboxUri' | 'sourceFileName'>): string[] {
   const names = new Set<string>();
+  for (const stored of [track.fileUri, track.inboxUri, track.sourceFileName]) {
+    if (stored) {
+      names.add(basename(stored));
+    }
+  }
+  return [...names];
+}
+
+function claimedNames(tracks: Track[], extra: string[] = []): Set<string> {
+  const names = new Set<string>(extra.filter(Boolean));
   for (const track of tracks) {
-    for (const stored of [track.fileUri, track.inboxUri, track.sourceFileName]) {
-      if (stored) {
-        names.add(basename(stored));
-      }
+    for (const name of audioFileNamesForTrack(track)) {
+      names.add(name);
     }
   }
   return names;
 }
 
-export async function scanAudioFolder(tracks: Track[]): Promise<ImportedBundle[]> {
+export async function scanAudioFolder(
+  tracks: Track[],
+  extraClaimed: string[] = [],
+): Promise<ImportedBundle[]> {
   await writeReadme();
   const dir = audioDirectory();
-  const claimed = claimedNames(tracks);
+  const claimed = claimedNames(tracks, extraClaimed);
   const bundles: ImportedBundle[] = [];
   let names: string[] = [];
   try {

@@ -14,6 +14,7 @@ import type { RootStackParamList } from '../../navigation/types';
 import { useLibraryStore } from '../../store/libraryStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { ActionMenu, type ActionItem } from './ActionMenu';
+import { DeleteTrackModal } from './DeleteTrackModal';
 import { MovePicker } from './MovePicker';
 import { PromptModal } from './PromptModal';
 
@@ -61,6 +62,7 @@ export function useLibraryActions(
   const [prompt, setPrompt] = useState<Prompt>(null);
   const [mover, setMover] = useState<Mover>(null);
   const [busy, setBusy] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Track | null>(null);
   const [pendingBundles, setPendingBundles] = useState<
     Awaited<ReturnType<typeof pickAndImportAudio>>
   >([]);
@@ -218,16 +220,7 @@ export function useLibraryActions(
     {
       label: 'Elimina',
       danger: true,
-      onPress: () => {
-        Alert.alert('Eliminare la traccia?', track.title, [
-          { text: 'Annulla', style: 'cancel' },
-          {
-            text: 'Elimina',
-            style: 'destructive',
-            onPress: () => useLibraryStore.getState().deleteTrack(track.id),
-          },
-        ]);
-      },
+      onPress: () => setPendingDelete(track),
     },
   ];
 
@@ -629,6 +622,18 @@ export function useLibraryActions(
           setMover(null);
         }}
       />
+      <DeleteTrackModal
+        visible={pendingDelete != null}
+        title={pendingDelete?.title ?? ''}
+        onCancel={() => setPendingDelete(null)}
+        onConfirm={(deleteFromDevice) => {
+          const track = pendingDelete;
+          setPendingDelete(null);
+          if (track) {
+            void useLibraryStore.getState().deleteTrack(track.id, { deleteFromDevice });
+          }
+        }}
+      />
     </>
   );
 
@@ -650,16 +655,7 @@ export function useLibraryActions(
     newFolder: (parentId: string | null = currentFolderId) =>
       setPrompt({ type: 'new-folder', parentId }),
     newPlaylist: () => setPrompt({ type: 'new-playlist' }),
-    confirmDeleteTrack: (track: Track) => {
-      Alert.alert('Eliminare la traccia?', track.title, [
-        { text: 'Annulla', style: 'cancel' },
-        {
-          text: 'Elimina',
-          style: 'destructive',
-          onPress: () => useLibraryStore.getState().deleteTrack(track.id),
-        },
-      ]);
-    },
+    confirmDeleteTrack: (track: Track) => setPendingDelete(track),
     confirmDeleteFolder: (folder: Folder) => {
       Alert.alert('Eliminare la cartella?', 'Le tracce restano in libreria.', [
         { text: 'Annulla', style: 'cancel' },
