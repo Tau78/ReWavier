@@ -1,5 +1,6 @@
 import { File } from 'expo-file-system';
 
+import { shouldSkipCloudSync } from '../auth/demoAccount';
 import {
   ORDER_FILE_NAME,
   buildAlbumOrder,
@@ -24,7 +25,7 @@ import { writeSidecarToLibrary } from '../files/libraryFiles';
 import { useLibraryStore } from '../store/libraryStore';
 import { usePlayerStore } from '../store/playerStore';
 import { useSessionStore } from '../store/sessionStore';
-import { useSyncStore, type AudioUpdate } from '../store/syncStore';
+import { isSyncInFlight, SYNC_STALE_MS, useSyncStore, type AudioUpdate } from '../store/syncStore';
 import { runDeviceSync } from './deviceSync/runDeviceSync';
 import {
   downloadDriveFile,
@@ -76,44 +77,61 @@ async function saveAudio(remote: DriveFile, trackId: string, _downloaded: boolea
 
 export async function runCloudSync(): Promise<void> {
   const sync = useSyncStore.getState();
-  if (sync.status === 'syncing') {
+  if (isSyncInFlight(sync)) {
     return;
   }
   const user = useSessionStore.getState().user;
-  if (!user?.onboarded) {
+  if (!user?.onboarded || shouldSkipCloudSync(user)) {
+    if (sync.status === 'syncing') {
+      sync.finish({ lastSyncedAt: Date.now(), message: null });
+    }
     return;
   }
   const albums = useLibraryStore.getState().albums.filter((album) => album.origin === 'drive');
 
   sync.start();
-  let deviceMessage = '';
+  const startedAt = useSyncStore.getState().startedAt;
+  const watchdog = setTimeout(() => {
+    const current = useSyncStore.getState();
+    if (current.status === 'syncing' && current.startedAt === startedAt) {
+      current.finish({ lastSyncedAt: Date.now(), message: null });
+    }
+  }, SYNC_STALE_MS);
+
   try {
-    deviceMessage = (await runDeviceSync()).message;
-  } catch {
-    deviceMessage = '';
-  }
+    let deviceMessage = '';
+    try {
+      deviceMessage = (await runDeviceSync()).message;
+    } catch {
+      deviceMessage = '';
+    }
 
-  if (albums.length === 0) {
-    sync.finish({
-      lastSyncedAt: Date.now(),
-      message: deviceMessage || null,
-    });
-    return;
-  }
+    if (shouldSkipCloudSync(useSessionStore.getState().user)) {
+      sync.finish({ lastSyncedAt: Date.now(), message: null });
+      return;
+    }
 
-  const google = await hasDriveToken();
-  if (!google) {
-    sync.finish({
-      lastSyncedAt: Date.now(),
-      needsFileRefresh: albums.length > 0,
-      message:
-        deviceMessage ||
-        (albums.length > 0
-          ? 'Collega Google oppure aggiorna i file da Drive (File).'
-          : null),
-    });
-    return;
-  }
+    if (albums.length === 0) {
+      sync.finish({
+        lastSyncedAt: Date.now(),
+        message: deviceMessage || null,
+      });
+      return;
+    }
+
+    const google = await hasDriveToken();
+    if (!google) {
+      sync.finish({
+        lastSyncedAt: Date.now(),
+        needsFileRefresh: albums.length > 0,
+        message:
+          deviceMessage ||
+          (albums.length > 0
+            ? 'Collega Google per aggiornare gli album da Drive.'
+            : null),
+      });
+      return;
+    }
 
   const selfSlug = user.authorSlug;
   const reviews: AudioUpdate[] = [];
@@ -301,21 +319,24 @@ export async function runCloudSync(): Promise<void> {
       store.touchAlbumSync(album.id);
     }
 
-    sync.finish({
-      lastSyncedAt: Date.now(),
-      pendingReviews: reviews,
-      notesPulled,
-      needsFolderLink,
-      needsFileRefresh: false,
-      message:
-        reviews.length > 0
-          ? `${reviews.length} file audio aggiornati sulla cartella Drive.`
-          : notesPulled > 0
-            ? `${notesPulled} note nuove dai compagni.`
-            : deviceMessage || 'Album Drive allineati.',
-    });
-  } catch (error) {
-    sync.fail(error instanceof Error ? error.message : 'Sync Drive non riuscita');
+      sync.finish({
+        lastSyncedAt: Date.now(),
+        pendingReviews: reviews,
+        notesPulled,
+        needsFolderLink,
+        needsFileRefresh: false,
+        message:
+          reviews.length > 0
+            ? `${reviews.length} brani aggiornati da Drive. Tocca per rivedere gli appunti.`
+            : notesPulled > 0
+              ? `${notesPulled} appunti nuovi dai compagni.`
+              : deviceMessage || null,
+      });
+    } catch {
+      sync.fail('Allineamento non riuscito. Riprova tra un attimo.');
+    }
+  } finally {
+    clearTimeout(watchdog);
   }
 }
 

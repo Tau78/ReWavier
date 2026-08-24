@@ -156,10 +156,11 @@ export function mergeLibrarySnapshots(local: LibrarySnapshot, remote: LibrarySna
   const { tracks, idRemap } = mergeTracks(local.tracks, remote.tracks);
   return {
     version: Math.max(local.version, remote.version),
-    tracks,
-    folders: mergeFolders(local.folders, remote.folders, idRemap),
-    albums: mergeAlbums(local.albums, remote.albums, idRemap),
-    playlists: mergePlaylists(local.playlists, remote.playlists, idRemap),
+    ownerKey: local.ownerKey,
+    tracks: mergeTracks(local.tracks, remote.tracks),
+    folders: mergeFolders(local.folders, remote.folders),
+    albums: mergeAlbums(local.albums, remote.albums),
+    playlists: mergePlaylists(local.playlists, remote.playlists),
     smartPlaylists: mergeSmart(local.smartPlaylists, remote.smartPlaylists),
     markersByTrackId: mergeAllMarkers(local.markersByTrackId, remote.markersByTrackId, idRemap),
     keptAudioNames: [...new Set([...(local.keptAudioNames ?? []), ...(remote.keptAudioNames ?? [])])],

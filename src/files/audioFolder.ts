@@ -6,7 +6,7 @@ import { isAudioName } from '../domain/audioFormats';
 import { parseSidecar, sidecarNameForAudio, titleFromFileName } from '../domain/sidecar';
 import type { Marker, Track } from '../domain/models';
 import { uniqueAudioFileName } from './downloads';
-import { ensureDirAsync, pathExistsAsync } from './fsSafe';
+import { audioRelativePrefix } from './libraryOwner';
 import { audioDirectory, downloadsDirectory, inboxDirectory, libraryDirectory } from './libraryPaths';
 import { persistLibraryUri, resolveLibraryUri } from './libraryUris';
 
@@ -76,7 +76,7 @@ async function moveIntoAudio(fromStored: string, preferredName: string): Promise
       return already;
     }
   }
-  return `Audio/${name}`;
+  return persistLibraryUri(dest.uri) ?? `${audioRelativePrefix()}/${name}`;
 }
 
 async function migrateLooseFiles(dir: ReturnType<typeof downloadsDirectory>, prefix: 'downloads' | 'inbox') {
@@ -224,7 +224,7 @@ export async function scanAudioFolder(
         title,
         artist,
         durationMs,
-        fileUri: `Audio/${name}`,
+        fileUri: `${audioRelativePrefix()}/${name}`,
         sourceFileName: name,
         startMs,
         endMs,

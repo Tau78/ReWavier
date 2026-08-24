@@ -1,6 +1,9 @@
 import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
+import { shouldSkipCloudSync } from '../../auth/demoAccount';
+import { getActiveLibraryOwner } from '../../files/libraryOwner';
+import { useSessionStore } from '../../store/sessionStore';
 import { inboxDirectory } from '../../files/downloads';
 import { loadDeviceSyncPrefs, saveDeviceSyncPrefs } from '../../files/deviceSyncPersist';
 import { audioDirectory } from '../../files/libraryPaths';
@@ -91,7 +94,18 @@ async function pullFile(remote: DriveFile): Promise<void> {
   }
 }
 
+function syncStillForOwner(owner: string | null): boolean {
+  return (
+    getActiveLibraryOwner() === owner &&
+    !shouldSkipCloudSync(useSessionStore.getState().user)
+  );
+}
+
 export async function syncDriveSuitcase(): Promise<SuitcaseResult> {
+  if (shouldSkipCloudSync(useSessionStore.getState().user)) {
+    return { pushed: 0, pulled: 0, message: '' };
+  }
+  const owner = getActiveLibraryOwner();
   if (!(await hasDriveToken())) {
     return {
       pushed: 0,
@@ -103,6 +117,10 @@ export async function syncDriveSuitcase(): Promise<SuitcaseResult> {
   const { rootId, audioId } = await ensureDriveLibraryFolders();
   let pushed = 0;
   let pulled = 0;
+
+  if (!syncStillForOwner(owner)) {
+    return { pushed: 0, pulled: 0, message: '' };
+  }
 
   const remoteLibrary = await findChildByName(rootId, LIBRARY_NAME);
   if (remoteLibrary) {
@@ -124,6 +142,9 @@ export async function syncDriveSuitcase(): Promise<SuitcaseResult> {
   const localByName = new Map(localFiles.map((file) => [file.name.toLowerCase(), file]));
 
   for (const remote of remoteFiles) {
+    if (!syncStillForOwner(owner)) {
+      return { pushed: 0, pulled, message: '' };
+    }
     const local = localByName.get(remote.name.toLowerCase());
     if (!local) {
       await pullFile(remote);
@@ -137,6 +158,10 @@ export async function syncDriveSuitcase(): Promise<SuitcaseResult> {
         pulled += 1;
       }
     }
+  }
+
+  if (!syncStillForOwner(owner)) {
+    return { pushed: 0, pulled, message: '' };
   }
 
   await importLooseAudioFiles();

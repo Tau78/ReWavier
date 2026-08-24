@@ -15,6 +15,7 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { isScreenCaptured, shouldExplainScreenMicConflict } from '../../../modules/screen-captured';
 import { ensurePeaks } from '../../audio/extractPeaks';
 import { pushTrackToSharedAlbum } from '../../cloud/syncEngine';
 import { createId } from '../../domain/library';
@@ -138,12 +139,12 @@ export function RecordSketchScreen() {
   };
 
   const start = async () => {
-    const permission = await Audio.requestPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Microfono', 'Per registrare una bozza serve il permesso microfono.');
-      return;
-    }
     try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('Microfono', 'Per registrare una bozza serve il permesso microfono.');
+        return;
+      }
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
@@ -162,15 +163,15 @@ export function RecordSketchScreen() {
       setRecording(true);
       setUri(null);
       setElapsedMs(0);
-      setLiveNotes([]);
-      setDraft(null);
-    } catch {
-      recordingRef.current = null;
-      setRecording(false);
-      Alert.alert(
-        'Registrazione',
-        'Registrazione non avviata. Chiudi altre app che usano il microfono e riprova.',
-      );
+    } catch (error) {
+      if (shouldExplainScreenMicConflict(isScreenCaptured(), true)) {
+        Alert.alert(
+          'Microfono occupato',
+          'Stai registrando lo schermo con l’audio. iPhone tiene il microfono, quindi la bozza in app non parte. Spegni il microfono della registrazione schermo, poi riprova.',
+        );
+        return;
+      }
+      Alert.alert('Registrazione', error instanceof Error ? error.message : 'Riprova');
     }
   };
 

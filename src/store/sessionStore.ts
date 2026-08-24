@@ -71,6 +71,11 @@ function persist(state: SessionState) {
   }).catch(() => undefined);
 }
 
+async function reloadLibrary() {
+  const { useLibraryStore } = await import('./libraryStore');
+  await useLibraryStore.getState().hydrate();
+}
+
 function makeUser(input: {
   id: string;
   email: string;
@@ -124,9 +129,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   async signInEmail(email, password) {
     const normalized = email.trim().toLowerCase();
     if (isDemoAccount(normalized, password)) {
+      await clearGoogleToken().catch(() => undefined);
       const existing = get().user?.email === DEMO_ACCOUNT.email ? get().user : null;
       const user = existing
-        ? { ...existing, onboarded: true }
+        ? { ...existing, onboarded: true, driveConnected: false, driveLink: null }
         : {
             ...makeUser({
               id: 'user-app-review',
@@ -137,9 +143,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             onboarded: true,
             usageType: 'creator' as const,
             usageTypes: ['creator' as const],
+            driveConnected: false,
+            driveLink: null,
           };
       set({ user });
       persist(get());
+      await reloadLibrary();
       return;
     }
     const accounts = await loadLocalAccounts();
@@ -160,8 +169,12 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         displayName: account.displayName,
         provider: 'email',
       });
+    if (!existing) {
+      await clearGoogleToken().catch(() => undefined);
+    }
     set({ user });
     persist(get());
+    await reloadLibrary();
   },
 
   async registerEmail(email, password, displayName) {
@@ -192,6 +205,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     });
     set({ user });
     persist(get());
+    await reloadLibrary();
   },
 
   async signInSocial(input) {
@@ -229,6 +243,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         });
     set({ user: normalizeSessionUser(user) });
     persist(get());
+    await reloadLibrary();
   },
 
   completeOnboarding(input) {
@@ -357,6 +372,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     await clearGoogleToken().catch(() => undefined);
     set({ user: null });
     persist(get());
+    await reloadLibrary();
   },
 
   async deleteAccount() {
@@ -369,6 +385,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     await clearGoogleToken().catch(() => undefined);
     set({ user: null });
     persist(get());
+    await reloadLibrary();
   },
 }));
 

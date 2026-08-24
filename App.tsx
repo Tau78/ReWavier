@@ -21,12 +21,14 @@ const AuthenticatedApp = lazy(() =>
 );
 
 export default function App() {
-  const user = useSessionStore((s) => s.user);
+  const ready = useSessionStore((s) => s.hydrated);
+  const userId = useSessionStore((s) => s.user?.id);
 
   useEffect(() => {
-    hideNativeSplash();
-    void useSessionStore.getState().hydrate().catch(() => undefined);
-    void useLibraryStore.getState().hydrate().catch(() => undefined);
+    void (async () => {
+      await useSessionStore.getState().hydrate();
+      await useLibraryStore.getState().hydrate();
+    })();
   }, []);
 
   useEffect(() => {
@@ -36,11 +38,7 @@ export default function App() {
       }
     });
     return () => sub.remove();
-  }, []);
-
-  const onRootLayout = useCallback(() => {
-    hideNativeSplash();
-  }, []);
+  }, [ready, userId]);
 
   return (
     <GestureHandlerRootView style={styles.root} onLayout={onRootLayout}>

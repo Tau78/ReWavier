@@ -11,3 +11,20 @@ export function isDemoAccount(email: string, password: string): boolean {
     password === DEMO_ACCOUNT.password
   );
 }
+
+export function isDemoUser(user: { id?: string; email?: string } | null | undefined): boolean {
+  if (!user) {
+    return false;
+  }
+  return (
+    user.id === 'user-app-review' ||
+    user.email?.trim().toLowerCase() === DEMO_ACCOUNT.email
+  );
+}
+
+/** Review account stays on this phone only. Never mix iCloud or Drive. */
+export function shouldSkipCloudSync(
+  user: { id?: string; email?: string } | null | undefined,
+): boolean {
+  return !user || isDemoUser(user);
+}

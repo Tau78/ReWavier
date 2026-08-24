@@ -2,6 +2,9 @@ import { Platform } from 'react-native';
 import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
+import { shouldSkipCloudSync } from '../../auth/demoAccount';
+import { getActiveLibraryOwner } from '../../files/libraryOwner';
+import { useSessionStore } from '../../store/sessionStore';
 import { inboxDirectory } from '../../files/downloads';
 import { loadDeviceSyncPrefs, saveDeviceSyncPrefs } from '../../files/deviceSyncPersist';
 import { audioDirectory } from '../../files/libraryPaths';
@@ -61,7 +64,18 @@ export async function icloudStatus(): Promise<'ready' | 'need-build' | 'off' | '
   }
 }
 
+function syncStillForOwner(owner: string | null): boolean {
+  return (
+    getActiveLibraryOwner() === owner &&
+    !shouldSkipCloudSync(useSessionStore.getState().user)
+  );
+}
+
 export async function syncICloudSuitcase(): Promise<SuitcaseResult> {
+  if (shouldSkipCloudSync(useSessionStore.getState().user)) {
+    return { pushed: 0, pulled: 0, message: '' };
+  }
+  const owner = getActiveLibraryOwner();
   const status = await icloudStatus();
   if (status === 'android') {
     return { pushed: 0, pulled: 0, message: '' };
@@ -92,15 +106,14 @@ export async function syncICloudSuitcase(): Promise<SuitcaseResult> {
   let pulled = 0;
 
   if (await api.isExistAsync(LIBRARY_NAME, false)) {
-    try {
-      const downloaded = await api.downloadFileAsync(`${root}/${LIBRARY_NAME}`, inboxDirectory().uri);
-      const parsed = await parseLibrarySnapshot(asFileUri(downloaded));
-      if (parsed) {
-        await applyRemoteSnapshot(parsed);
-        pulled += 1;
-      }
-    } catch {
-      // snapshot remoto non scaricabile
+    if (!syncStillForOwner(owner)) {
+      return { pushed: 0, pulled: 0, message: '' };
+    }
+    const downloaded = await api.downloadFileAsync(`${root}/${LIBRARY_NAME}`, inboxDirectory().uri);
+    const parsed = await parseLibrarySnapshot(asFileUri(downloaded));
+    if (parsed) {
+      await applyRemoteSnapshot(parsed);
+      pulled += 1;
     }
   }
 
@@ -124,6 +137,15 @@ export async function syncICloudSuitcase(): Promise<SuitcaseResult> {
     } catch {
       // file iCloud non scaricabile (evicted, readme, ecc.)
     }
+    if (!syncStillForOwner(owner)) {
+      return { pushed: 0, pulled, message: '' };
+    }
+    await api.downloadFileAsync(`${root}/${AUDIO_DIR}/${name}`, audioDirectory().uri);
+    pulled += 1;
+  }
+
+  if (!syncStillForOwner(owner)) {
+    return { pushed: 0, pulled, message: '' };
   }
 
   await importLooseAudioFiles();
@@ -143,6 +165,10 @@ export async function syncICloudSuitcase(): Promise<SuitcaseResult> {
     } catch {
       // singolo file non caricato
     }
+  }
+
+  if (!syncStillForOwner(owner)) {
+    return { pushed: 0, pulled, message: '' };
   }
 
   const snapshotUri = new File(inboxDirectory(), 'icloud-library.json').uri;

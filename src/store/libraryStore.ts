@@ -17,13 +17,15 @@ import {
   type SmartPlaylist,
 } from '../domain/library';
 import { type Marker, type Track } from '../domain/models';
-import { withPractice, type PracticeIds } from '../domain/practice';
+import { isDemoUser } from '../auth/demoAccount';
 import {
+  adoptLegacyLibraryIfNeeded,
   loadLibrarySnapshot,
   saveLibrarySnapshot,
   sanitizeSnapshot,
   type LibrarySnapshot,
 } from '../files/libraryPersist';
+import { setActiveLibraryOwner } from '../files/libraryOwner';
 import { playableUri } from '../domain/audioFormats';
 import { audioFileNamesForTrack, migrateTracksToAudioFolder, scanAudioFolder } from '../files/audioFolder';
 import {
@@ -34,6 +36,7 @@ import { sourceFileNameFromTitle } from '../domain/sidecar';
 import { writeSidecarToLibrary, removeSidecarFromLibrary, type ImportedBundle } from '../files/libraryFiles';
 import { userHasUsage } from '../domain/session';
 import { useSessionStore } from './sessionStore';
+import { useSyncStore } from './syncStore';
 
 export type LibraryState = {
   tracks: Track[];
@@ -108,6 +111,7 @@ export type LibraryActions = {
     extras?: { updatedAt?: number; fromCloud?: boolean },
   ) => void;
   hydrate: () => Promise<void>;
+  unload: () => void;
   getTrack: (id: string) => Track | undefined;
   tracksIn: (kind: CollectionKind, id: string) => Track[];
   foldersIn: (parentId: string | null) => Folder[];
@@ -805,32 +809,58 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     }));
   },
 
-  async hydrate() {
-    if (libraryHydratePromise) {
-      return libraryHydratePromise;
+  unload() {
+    persistReady = false;
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+      persistTimer = undefined;
     }
-    const run = async () => {
-      let hadSnapshot = false;
-      try {
-        const snapshot = await loadLibrarySnapshot({ quick: true });
-        hadSnapshot = snapshot != null;
-        set({
-          tracks: snapshot?.tracks ?? [],
-          folders: snapshot?.folders ?? [],
-          albums: snapshot?.albums ?? [],
-          playlists: snapshot?.playlists ?? [],
-          smartPlaylists: snapshot?.smartPlaylists ?? [],
-          markersByTrackId: snapshot?.markersByTrackId ?? {},
-          keptAudioNames: snapshot?.keptAudioNames ?? [],
-        });
-        persistReady = true;
-        await finishLibraryHydrate(hadSnapshot);
-      } finally {
-        set({ libraryHydrated: true });
-      }
-    };
-    libraryHydratePromise = run();
-    return libraryHydratePromise;
+    setActiveLibraryOwner(null);
+    useSyncStore.getState().reset();
+    set({
+      tracks: [],
+      folders: [],
+      albums: [],
+      playlists: [],
+      smartPlaylists: [],
+      markersByTrackId: {},
+      peaksByTrackId: {},
+      downloadingIds: {},
+    });
+  },
+
+  async hydrate() {
+    persistReady = false;
+    if (persistTimer) {
+      clearTimeout(persistTimer);
+      persistTimer = undefined;
+    }
+    const user = useSessionStore.getState().user;
+    if (!user) {
+      get().unload();
+      return;
+    }
+    setActiveLibraryOwner(user.id);
+    if (!isDemoUser(user)) {
+      await adoptLegacyLibraryIfNeeded(user.id);
+    }
+    const snapshot = await loadLibrarySnapshot({ requireOwnerKey: isDemoUser(user) });
+    set({
+      tracks: snapshot?.tracks ?? [],
+      folders: snapshot?.folders ?? [],
+      albums: snapshot?.albums ?? [],
+      playlists: snapshot?.playlists ?? [],
+      smartPlaylists: snapshot?.smartPlaylists ?? [],
+      markersByTrackId: snapshot?.markersByTrackId ?? {},
+      peaksByTrackId: {},
+      downloadingIds: {},
+    });
+    persistReady = true;
+    if (isDemoUser(user)) {
+      useSyncStore.getState().reset();
+      return;
+    }
+    void finishLibraryHydrate(snapshot != null);
   },
 
   getTrack(id) {
