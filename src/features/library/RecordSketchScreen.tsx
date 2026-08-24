@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Audio } from 'expo-av';
+import { Audio, InterruptionModeIOS } from 'expo-av';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,6 +18,7 @@ import { pushTrackToSharedAlbum } from '../../cloud/syncEngine';
 import { createId } from '../../domain/library';
 import { formatTimecode } from '../../domain/models';
 import { copyToDownloads } from '../../files/downloads';
+import { pickAndImportAudio } from '../../files/libraryFiles';
 import type { RootStackParamList } from '../../navigation/types';
 import { useLibraryStore } from '../../store/libraryStore';
 import { useSessionStore } from '../../store/sessionStore';
@@ -106,30 +107,72 @@ export function RecordSketchScreen() {
     });
   }, [navigation, uri, recording, saving]);
 
-  const start = async () => {
-    const permission = await Audio.requestPermissionsAsync();
-    if (!permission.granted) {
-      Alert.alert('Microfono', 'Per registrare una bozza serve il permesso microfono.');
-      return;
-    }
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-    });
-    const created = await Audio.Recording.createAsync(
-      Audio.RecordingOptionsPresets.HIGH_QUALITY,
-      (status) => {
-        if (status.isRecording) {
-          setElapsedMs(status.durationMillis ?? 0);
+  const importInstead = () => {
+    void (async () => {
+      try {
+        const bundles = await pickAndImportAudio();
+        if (bundles.length === 0) {
+          return;
         }
-      },
-      200,
+        useLibraryStore.getState().importBundles(bundles, {
+          folderId: destFolderId,
+          albumId: destAlbumId,
+        });
+        discardOk.current = true;
+        navigation.goBack();
+      } catch (error) {
+        Alert.alert('Import', error instanceof Error ? error.message : 'Riprova');
+      }
+    })();
+  };
+
+  const micBusyAlert = () => {
+    Alert.alert(
+      'Microfono occupato',
+      'Mentre registri lo schermo, iPhone tiene il microfono. Nella registrazione schermo spegni il microfono (icona in alto), oppure carica un audio da File.',
+      [
+        { text: 'Ok', style: 'cancel' },
+        { text: 'Carica audio', onPress: importInstead },
+      ],
     );
-    recordingRef.current = created.recording;
-    setRecording(true);
-    setUri(null);
-    setElapsedMs(0);
+  };
+
+  const start = async () => {
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(
+          'Microfono',
+          'Per registrare una bozza serve il microfono. Se stai registrando lo schermo, spegnilo nella registrazione, oppure carica un audio da File.',
+          [
+            { text: 'Ok', style: 'cancel' },
+            { text: 'Carica audio', onPress: importInstead },
+          ],
+        );
+        return;
+      }
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+      });
+      const created = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        (status) => {
+          if (status.isRecording) {
+            setElapsedMs(status.durationMillis ?? 0);
+          }
+        },
+        200,
+      );
+      recordingRef.current = created.recording;
+      setRecording(true);
+      setUri(null);
+      setElapsedMs(0);
+    } catch {
+      micBusyAlert();
+    }
   };
 
   const stop = async () => {

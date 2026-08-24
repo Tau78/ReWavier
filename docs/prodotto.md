@@ -130,9 +130,9 @@ GUIDELINE 2.1 — APP REVIEW INFORMATION
 
 1) SCREEN RECORDING
 A screen recording on a physical iPhone (latest iOS) is attached to this reply. It starts at app launch and shows the typical flow:
-- Email/password sign-in with the demo account below
-- First-run library is empty (expected)
-- Record a short sketch (tap + → “Registra bozza”) and allow the microphone, OR import any audio from Files (“Carica audio”)
+- Email/password sign-in with the demo account below (do not use Google/Apple for review)
+- First-run library for this demo account is empty (expected). Another login on the same phone does not share its library.
+- Record a short sketch (tap + → “Registra bozza”). If you are screen-recording, turn the microphone OFF on the iOS screen recording control first — iPhone will not share the mic. Or tap “Carica audio” and pick any file from Files.
 - Open the track, play, tap the large orange + (“Aggiungi nota”), save a timestamped note, tap and drag the marker
 - Settings (gear on Library) → “Elimina account” → confirm → back to login
 No in-app purchases or subscriptions. Notes are private (not a public social feed), so there is no report/block flow. No App Tracking Transparency, location, contacts, or camera prompts. The only permission prompt is the microphone, and only if you record a sketch.
@@ -176,7 +176,7 @@ Privacy policy: https://eventi.musicproeventi.it/ReWavier/Privacy.html
 1. Impostazioni iPhone → Controllo → Registrazione schermo (o Centro di Controllo).
 2. Chiudi ReWavier. Avvia la registrazione. Tocca l’icona ReWavier.
 3. Accedi con `review@rewavier.app` / `Review2026!` (email e password, non Apple/Google).
-4. Libreria vuota: tocca **＋** → **Registra bozza**. Accetta il microfono. Registra pochi secondi, salva.
+4. Libreria vuota (normale: questo accesso non vede i brani di Google). Nella registrazione schermo **spegni il microfono** (altrimenti iPhone lo tiene e la bozza non parte). Tocca **＋** → **Registra bozza**. Oppure **Carica audio**.
 5. Tocca il brano. Play. Tocca il **＋ arancione**, scrivi una nota, **Salva**. Tocca il segnalino e spostalo.
 6. **‹** per tornare. Ingranaggio → scorri → **Elimina account** → **Elimina**. Si torna al login.
 7. Ferma la registrazione. In App Store Connect, Rispondi alla recensione: incolla il testo e allega il video.
