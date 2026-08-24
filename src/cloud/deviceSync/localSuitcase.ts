@@ -1,6 +1,7 @@
 import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
+import { shouldSkipCloudSync } from '../../auth/demoAccount';
 import { scanAudioFolder } from '../../files/audioFolder';
 import {
   loadLibrarySnapshot,
@@ -10,6 +11,7 @@ import {
 } from '../../files/libraryPersist';
 import { audioDirectory } from '../../files/libraryPaths';
 import { useLibraryStore } from '../../store/libraryStore';
+import { useSessionStore } from '../../store/sessionStore';
 import { mergeLibrarySnapshots } from './mergeLibrary';
 import { shouldSyncBagFile } from './syncSkip';
 
@@ -62,6 +64,9 @@ export function snapshotFromStore(): LibrarySnapshot {
 }
 
 export async function importLooseAudioFiles(): Promise<number> {
+  if (shouldSkipCloudSync(useSessionStore.getState().user)) {
+    return 0;
+  }
   const extras = await scanAudioFolder(useLibraryStore.getState().tracks);
   if (extras.length === 0) {
     return 0;
@@ -71,6 +76,9 @@ export async function importLooseAudioFiles(): Promise<number> {
 }
 
 export async function applyRemoteSnapshot(remote: LibrarySnapshot): Promise<void> {
+  if (shouldSkipCloudSync(useSessionStore.getState().user)) {
+    return;
+  }
   const disk = await loadLibrarySnapshot();
   const live = snapshotFromStore();
   const local = disk ? mergeLibrarySnapshots(disk, live) : live;

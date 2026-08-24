@@ -1,6 +1,8 @@
 import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
+import { shouldSkipCloudSync } from '../../auth/demoAccount';
+import { useSessionStore } from '../../store/sessionStore';
 import { inboxDirectory } from '../../files/downloads';
 import { loadDeviceSyncPrefs, saveDeviceSyncPrefs } from '../../files/deviceSyncPersist';
 import { audioDirectory } from '../../files/libraryPaths';
@@ -92,6 +94,9 @@ async function pullFile(remote: DriveFile): Promise<void> {
 }
 
 export async function syncDriveSuitcase(): Promise<SuitcaseResult> {
+  if (shouldSkipCloudSync(useSessionStore.getState().user)) {
+    return { pushed: 0, pulled: 0, message: '' };
+  }
   if (!(await hasDriveToken())) {
     return {
       pushed: 0,

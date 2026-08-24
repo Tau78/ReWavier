@@ -1,18 +1,34 @@
 import { Directory, Paths } from 'expo-file-system';
 
 import { ensureDirAsync } from './fsSafe';
+import { getActiveLibraryOwner, usesPrivateLibrary } from './libraryOwner';
 
 export function documentsDirectory(): Directory {
   return Paths.document;
 }
 
-/** User-facing folder: Files → On My iPhone → ReWavier → Audio */
-export function audioDirectory(): Directory {
+export function sharedAudioDirectory(): Directory {
   return new Directory(Paths.document, 'Audio');
+}
+
+/** Review login uses its own Audio folder so it cannot see someone else’s files. */
+export function audioDirectory(): Directory {
+  const owner = getActiveLibraryOwner();
+  if (usesPrivateLibrary(owner) && owner) {
+    return new Directory(Paths.document, 'Audio', owner);
+  }
+  return sharedAudioDirectory();
 }
 
 export function libraryDirectory(): Directory {
   return new Directory(Paths.document, 'rewavier');
+}
+
+export function userLibraryDirectory(owner = getActiveLibraryOwner()): Directory {
+  if (usesPrivateLibrary(owner) && owner) {
+    return new Directory(libraryDirectory(), 'users', owner);
+  }
+  return libraryDirectory();
 }
 
 export async function ensureAudioDirectory(): Promise<Directory> {

@@ -11,7 +11,8 @@ import {
 import type { Marker, Track } from '../domain/models';
 import { fileExists, reconcileTrack } from './downloads';
 import { persistLibraryUri } from './libraryUris';
-import { libraryDirectory } from './libraryPaths';
+import { getActiveLibraryOwner, snapshotBelongsToOwner } from './libraryOwner';
+import { userLibraryDirectory } from './libraryPaths';
 import { ensureDirAsync, pathExistsAsync, withTimeout } from './fsSafe';
 
 function persistAndKeep(uri?: string): string | undefined {
@@ -24,6 +25,7 @@ const SNAPSHOT_NAME = 'library.json';
 
 export type LibrarySnapshot = {
   version: number;
+  ownerKey?: string;
   tracks: Track[];
   folders: Folder[];
   albums: Album[];
@@ -32,8 +34,21 @@ export type LibrarySnapshot = {
   markersByTrackId: Record<string, Marker[]>;
 };
 
+export function emptyLibrarySnapshot(): LibrarySnapshot {
+  return {
+    version: LIBRARY_SNAPSHOT_VERSION,
+    ownerKey: getActiveLibraryOwner() ?? undefined,
+    tracks: [],
+    folders: [],
+    albums: [],
+    playlists: [],
+    smartPlaylists: [],
+    markersByTrackId: {},
+  };
+}
+
 function snapshotFileUri(): string {
-  return `${libraryDirectory().uri}/${SNAPSHOT_NAME}`;
+  return `${userLibraryDirectory().uri}/${SNAPSHOT_NAME}`;
 }
 
 export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
@@ -43,6 +58,7 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
 
   return {
     version: LIBRARY_SNAPSHOT_VERSION,
+    ownerKey: snapshot.ownerKey ?? getActiveLibraryOwner() ?? undefined,
     tracks,
     folders: snapshot.folders.map((folder) => ({
       ...folder,
@@ -82,6 +98,7 @@ function parseLibrarySnapshot(parsed: LibrarySnapshot): LibrarySnapshot | null {
   }
   return {
     version: LIBRARY_SNAPSHOT_VERSION,
+    ownerKey: parsed.ownerKey,
     tracks: parsed.tracks,
     folders: Array.isArray(parsed.folders) ? parsed.folders : [],
     albums: Array.isArray(parsed.albums) ? parsed.albums : [],
@@ -94,7 +111,10 @@ function parseLibrarySnapshot(parsed: LibrarySnapshot): LibrarySnapshot | null {
   };
 }
 
-export async function loadLibrarySnapshot(options?: { quick?: boolean }): Promise<LibrarySnapshot | null> {
+export async function loadLibrarySnapshot(options?: {
+  quick?: boolean;
+  requireOwnerKey?: boolean;
+}): Promise<LibrarySnapshot | null> {
   const uri = snapshotFileUri();
   const exists = await withTimeout(pathExistsAsync(uri), 2000, false);
   if (!exists) {
@@ -114,16 +134,33 @@ export async function loadLibrarySnapshot(options?: { quick?: boolean }): Promis
     if (!snapshot) {
       return null;
     }
-    return options?.quick ? snapshot : sanitizeSnapshot(snapshot);
+    const loaded = options?.quick ? snapshot : sanitizeSnapshot(snapshot);
+    if (
+      !snapshotBelongsToOwner(
+        loaded.ownerKey,
+        getActiveLibraryOwner(),
+        options?.requireOwnerKey === true,
+      )
+    ) {
+      const empty = emptyLibrarySnapshot();
+      await saveLibrarySnapshot(empty);
+      return empty;
+    }
+    return loaded;
   } catch {
     return null;
   }
 }
 
 export async function saveLibrarySnapshot(snapshot: LibrarySnapshot): Promise<void> {
-  await ensureDirAsync(libraryDirectory().uri);
+  const dir = userLibraryDirectory();
+  await ensureDirAsync(dir.uri);
   await LegacyFS.writeAsStringAsync(
     snapshotFileUri(),
-    JSON.stringify({ ...snapshot, version: LIBRARY_SNAPSHOT_VERSION }),
+    JSON.stringify({
+      ...snapshot,
+      version: LIBRARY_SNAPSHOT_VERSION,
+      ownerKey: getActiveLibraryOwner() ?? snapshot.ownerKey,
+    }),
   );
 }

@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 
 import type { Marker } from '../domain/models';
+import { isSyncInFlight, libraryNeedsBanner } from './syncBanner';
+
+export { isSyncInFlight, libraryNeedsBanner, SYNC_STALE_MS } from './syncBanner';
 
 export type AudioUpdate = {
   trackId: string;
@@ -11,6 +14,7 @@ export type AudioUpdate = {
 
 export type SyncState = {
   status: 'idle' | 'syncing' | 'error';
+  startedAt: number | null;
   lastSyncedAt: number | null;
   message: string | null;
   pendingReviews: AudioUpdate[];
@@ -25,12 +29,14 @@ export type SyncActions = {
   fail: (message: string) => void;
   dismissReview: (trackId: string) => void;
   clearBanner: () => void;
+  reset: () => void;
 };
 
 export type SyncStore = SyncState & SyncActions;
 
 export const useSyncStore = create<SyncStore>((set) => ({
   status: 'idle',
+  startedAt: null,
   lastSyncedAt: null,
   message: null,
   pendingReviews: [],
@@ -39,12 +45,13 @@ export const useSyncStore = create<SyncStore>((set) => ({
   needsFileRefresh: false,
 
   start() {
-    set({ status: 'syncing', message: 'Allineo i brani…' });
+    set({ status: 'syncing', startedAt: Date.now(), message: 'Allineo i brani…' });
   },
 
   finish(input) {
     set({
       status: 'idle',
+      startedAt: null,
       lastSyncedAt: input.lastSyncedAt ?? Date.now(),
       message: input.message ?? null,
       pendingReviews: input.pendingReviews ?? [],
@@ -55,7 +62,12 @@ export const useSyncStore = create<SyncStore>((set) => ({
   },
 
   fail(message) {
-    set({ status: 'error', message });
+    set((state) => {
+      if (state.status !== 'syncing') {
+        return state;
+      }
+      return { status: 'error', startedAt: null, message };
+    });
   },
 
   dismissReview(trackId) {
@@ -66,5 +78,18 @@ export const useSyncStore = create<SyncStore>((set) => ({
 
   clearBanner() {
     set({ message: null, needsFileRefresh: false });
+  },
+
+  reset() {
+    set({
+      status: 'idle',
+      startedAt: null,
+      lastSyncedAt: null,
+      message: null,
+      pendingReviews: [],
+      notesPulled: 0,
+      needsFolderLink: false,
+      needsFileRefresh: false,
+    });
   },
 }));

@@ -25,8 +25,10 @@ export default function App() {
 
   useEffect(() => {
     hideNativeSplash();
-    void useSessionStore.getState().hydrate().catch(() => undefined);
-    void useLibraryStore.getState().hydrate().catch(() => undefined);
+    void (async () => {
+      await useSessionStore.getState().hydrate().catch(() => undefined);
+      await useLibraryStore.getState().hydrate().catch(() => undefined);
+    })();
   }, []);
 
   useEffect(() => {

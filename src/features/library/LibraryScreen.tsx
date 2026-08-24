@@ -18,9 +18,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { albumTrackCount, type CollectionKind } from '../../domain/library';
 import { resolveLibraryUri } from '../../files/libraryUris';
 import type { RootStackParamList } from '../../navigation/types';
+import { isDemoUser } from '../../auth/demoAccount';
 import { runCloudSync } from '../../cloud/syncEngine';
 import { useLibraryStore } from '../../store/libraryStore';
-import { useSyncStore } from '../../store/syncStore';
+import { useSessionStore } from '../../store/sessionStore';
+import { libraryNeedsBanner, useSyncStore } from '../../store/syncStore';
 import { colors, layout } from '../../theme/colors';
 import { BrandMark, EmptyGraphic, ScreenAura } from '../../theme/graphics';
 import {
@@ -111,6 +113,8 @@ export function LibraryScreen() {
   });
   const rootFolders = foldersIn(null);
 
+  const user = useSessionStore((s) => s.user);
+  const demoAccount = isDemoUser(user);
   const syncStatus = useSyncStore((s) => s.status);
   const syncMessage = useSyncStore((s) => s.message);
   const pendingReviews = useSyncStore((s) => s.pendingReviews);
@@ -262,7 +266,14 @@ export function LibraryScreen() {
         </View>
       </View>
 
-      {syncMessage || pendingReviews.length > 0 || needsFolderLink || needsFileRefresh ? (
+      {!demoAccount &&
+      libraryNeedsBanner({
+        status: syncStatus,
+        message: syncMessage,
+        pendingReviews,
+        needsFolderLink,
+        needsFileRefresh,
+      }) ? (
         <Pressable
           onPress={() => {
             if (pendingReviews.length > 0) {

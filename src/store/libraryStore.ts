@@ -18,12 +18,14 @@ import {
 } from '../domain/library';
 import { type Marker, type Track } from '../domain/models';
 import { withPractice, type PracticeIds } from '../domain/practice';
+import { isDemoUser } from '../auth/demoAccount';
 import {
   loadLibrarySnapshot,
   saveLibrarySnapshot,
   sanitizeSnapshot,
   type LibrarySnapshot,
 } from '../files/libraryPersist';
+import { setActiveLibraryOwner } from '../files/libraryOwner';
 import { playableUri } from '../domain/audioFormats';
 import { migrateTracksToAudioFolder, scanAudioFolder } from '../files/audioFolder';
 import {
@@ -34,6 +36,7 @@ import { sourceFileNameFromTitle } from '../domain/sidecar';
 import { writeSidecarToLibrary, removeSidecarFromLibrary, type ImportedBundle } from '../files/libraryFiles';
 import { userHasUsage } from '../domain/session';
 import { useSessionStore } from './sessionStore';
+import { useSyncStore } from './syncStore';
 
 export type LibraryState = {
   tracks: Track[];
@@ -160,6 +163,17 @@ export function waitForLibraryHydrated(): Promise<void> {
       }
     });
   });
+}
+
+export async function reloadLibrary(): Promise<void> {
+  persistReady = false;
+  if (persistTimer) {
+    clearTimeout(persistTimer);
+    persistTimer = undefined;
+  }
+  libraryHydratePromise = undefined;
+  useLibraryStore.setState({ libraryHydrated: false });
+  await useLibraryStore.getState().hydrate();
 }
 
 export async function flushLibraryPersist(): Promise<void> {
@@ -794,8 +808,29 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     const run = async () => {
       let hadSnapshot = false;
       try {
-        const snapshot = await loadLibrarySnapshot({ quick: true });
-        hadSnapshot = snapshot != null;
+        const user = useSessionStore.getState().user;
+        setActiveLibraryOwner(user?.id ?? null);
+        if (!user) {
+          persistReady = false;
+          useSyncStore.getState().reset();
+          set({
+            tracks: [],
+            folders: [],
+            albums: [],
+            playlists: [],
+            smartPlaylists: [],
+            markersByTrackId: {},
+            peaksByTrackId: {},
+            downloadingIds: {},
+          });
+          return;
+        }
+        const demo = isDemoUser(user);
+        const snapshot = await loadLibrarySnapshot({
+          quick: true,
+          requireOwnerKey: demo,
+        });
+        hadSnapshot = snapshot != null && (snapshot.tracks.length > 0 || snapshot.folders.length > 0 || snapshot.albums.length > 0);
         set({
           tracks: snapshot?.tracks ?? [],
           folders: snapshot?.folders ?? [],
@@ -805,6 +840,10 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           markersByTrackId: snapshot?.markersByTrackId ?? {},
         });
         persistReady = true;
+        if (demo) {
+          useSyncStore.getState().reset();
+          return;
+        }
         await finishLibraryHydrate(hadSnapshot);
       } finally {
         set({ libraryHydrated: true });
