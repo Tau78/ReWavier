@@ -126,9 +126,10 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   async signInEmail(email, password) {
     const normalized = email.trim().toLowerCase();
     if (isDemoAccount(normalized, password)) {
+      await clearGoogleToken().catch(() => undefined);
       const existing = get().user?.email === DEMO_ACCOUNT.email ? get().user : null;
       const user = existing
-        ? { ...existing, onboarded: true }
+        ? { ...existing, onboarded: true, driveConnected: false, driveLink: null }
         : {
             ...makeUser({
               id: 'user-app-review',
@@ -139,6 +140,8 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             onboarded: true,
             usageType: 'creator' as const,
             usageTypes: ['creator' as const],
+            driveConnected: false,
+            driveLink: null,
           };
       set({ user });
       persist(get());
@@ -163,6 +166,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
         displayName: account.displayName,
         provider: 'email',
       });
+    if (!existing) {
+      await clearGoogleToken().catch(() => undefined);
+    }
     set({ user });
     persist(get());
     await reloadLibrary();

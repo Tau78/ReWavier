@@ -1,5 +1,6 @@
 import { File } from 'expo-file-system';
 
+import { shouldSkipCloudSync } from '../auth/demoAccount';
 import {
   ORDER_FILE_NAME,
   buildAlbumOrder,
@@ -80,7 +81,7 @@ export async function runCloudSync(): Promise<void> {
     return;
   }
   const user = useSessionStore.getState().user;
-  if (!user?.onboarded) {
+  if (!user?.onboarded || shouldSkipCloudSync(user)) {
     return;
   }
   const albums = useLibraryStore.getState().albums.filter((album) => album.origin === 'drive');
@@ -91,6 +92,11 @@ export async function runCloudSync(): Promise<void> {
     deviceMessage = (await runDeviceSync()).message;
   } catch {
     deviceMessage = '';
+  }
+
+  if (shouldSkipCloudSync(useSessionStore.getState().user)) {
+    sync.finish({ lastSyncedAt: Date.now(), message: null });
+    return;
   }
 
   if (albums.length === 0) {

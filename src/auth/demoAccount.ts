@@ -21,3 +21,10 @@ export function isDemoUser(user: { id?: string; email?: string } | null | undefi
     user.email?.trim().toLowerCase() === DEMO_ACCOUNT.email
   );
 }
+
+/** Review account stays on this phone only. Never mix iCloud or Drive. */
+export function shouldSkipCloudSync(
+  user: { id?: string; email?: string } | null | undefined,
+): boolean {
+  return !user || isDemoUser(user);
+}

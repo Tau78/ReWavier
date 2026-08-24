@@ -25,6 +25,7 @@ export type SyncActions = {
   fail: (message: string) => void;
   dismissReview: (trackId: string) => void;
   clearBanner: () => void;
+  reset: () => void;
 };
 
 export type SyncStore = SyncState & SyncActions;
@@ -66,5 +67,17 @@ export const useSyncStore = create<SyncStore>((set) => ({
 
   clearBanner() {
     set({ message: null, needsFileRefresh: false });
+  },
+
+  reset() {
+    set({
+      status: 'idle',
+      lastSyncedAt: null,
+      message: null,
+      pendingReviews: [],
+      notesPulled: 0,
+      needsFolderLink: false,
+      needsFileRefresh: false,
+    });
   },
 }));

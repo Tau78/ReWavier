@@ -1,5 +1,7 @@
 import { Platform } from 'react-native';
 
+import { shouldSkipCloudSync } from '../../auth/demoAccount';
+import { useSessionStore } from '../../store/sessionStore';
 import { loadDeviceSyncPrefs, saveDeviceSyncPrefs } from '../../files/deviceSyncPersist';
 import { useDeviceStore } from '../../store/deviceStore';
 import { ensureLocalDevice } from './deviceIdentity';
@@ -28,7 +30,15 @@ function pickMessage(icloud: SuitcaseResult, drive: SuitcaseResult): string {
   return parts[0] ?? '';
 }
 
+function skippedSummary(message = ''): DeviceSyncSummary {
+  const skipped: SuitcaseResult = { pushed: 0, pulled: 0, message };
+  return { icloud: skipped, drive: skipped, message };
+}
+
 export async function runDeviceSync(): Promise<DeviceSyncSummary> {
+  if (shouldSkipCloudSync(useSessionStore.getState().user)) {
+    return skippedSummary();
+  }
   const prefs = await loadDeviceSyncPrefs();
   const self = await ensureLocalDevice();
   const registry = await loadMergedRegistry().catch(() => null);

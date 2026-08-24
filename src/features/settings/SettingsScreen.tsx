@@ -6,6 +6,7 @@ import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BAND_COLORS } from '../../domain/bandColors';
+import { isDemoUser } from '../../auth/demoAccount';
 import { LinkedDevicesCard } from './LinkedDevicesCard';
 import { createId } from '../../domain/library';
 import { userHasUsage, userUsages, type UsageType } from '../../domain/session';
@@ -169,7 +170,7 @@ export function SettingsScreen() {
           </View>
         ) : null}
 
-        <LinkedDevicesCard />
+        {isDemoUser(user) ? null : <LinkedDevicesCard />}
         <Pressable
           onPress={() =>
             Alert.alert(

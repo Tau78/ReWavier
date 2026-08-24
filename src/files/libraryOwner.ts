@@ -23,3 +23,22 @@ export function setActiveLibraryOwner(userId: string | null): void {
 export function audioRelativePrefix(): string {
   return activeOwner ? `Audio/${activeOwner}` : 'Audio';
 }
+
+/**
+ * Demo snapshots without an owner stamp are treated as leftover from another
+ * login (iCloud merge used to write that person’s tracks into the review file).
+ * Keep `scripts/check-library-owner.mjs` in sync with this check.
+ */
+export function snapshotBelongsToOwner(
+  snapshotOwner: string | undefined,
+  activeOwnerKey: string | null,
+  requireOwnerKey: boolean,
+): boolean {
+  if (activeOwnerKey && snapshotOwner && snapshotOwner !== activeOwnerKey) {
+    return false;
+  }
+  if (requireOwnerKey && snapshotOwner !== activeOwnerKey) {
+    return false;
+  }
+  return true;
+}

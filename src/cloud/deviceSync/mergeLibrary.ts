@@ -126,6 +126,7 @@ function mergeAllMarkers(
 export function mergeLibrarySnapshots(local: LibrarySnapshot, remote: LibrarySnapshot): LibrarySnapshot {
   return {
     version: Math.max(local.version, remote.version),
+    ownerKey: local.ownerKey,
     tracks: mergeTracks(local.tracks, remote.tracks),
     folders: mergeFolders(local.folders, remote.folders),
     albums: mergeAlbums(local.albums, remote.albums),

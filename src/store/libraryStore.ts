@@ -35,6 +35,7 @@ import { sourceFileNameFromTitle } from '../domain/sidecar';
 import { writeSidecarToLibrary, removeSidecarFromLibrary, type ImportedBundle } from '../files/libraryFiles';
 import { userHasUsage } from '../domain/session';
 import { useSessionStore } from './sessionStore';
+import { useSyncStore } from './syncStore';
 
 export type LibraryState = {
   tracks: Track[];
@@ -737,6 +738,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       persistTimer = undefined;
     }
     setActiveLibraryOwner(null);
+    useSyncStore.getState().reset();
     set({
       tracks: [],
       folders: [],
@@ -764,7 +766,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     if (!isDemoUser(user)) {
       await adoptLegacyLibraryIfNeeded(user.id);
     }
-    const snapshot = await loadLibrarySnapshot();
+    const snapshot = await loadLibrarySnapshot({ requireOwnerKey: isDemoUser(user) });
     set({
       tracks: snapshot?.tracks ?? [],
       folders: snapshot?.folders ?? [],
@@ -776,6 +778,10 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       downloadingIds: {},
     });
     persistReady = true;
+    if (isDemoUser(user)) {
+      useSyncStore.getState().reset();
+      return;
+    }
     void finishLibraryHydrate(snapshot != null);
   },
 

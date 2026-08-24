@@ -15,6 +15,7 @@ void SplashScreen.hideAsync().catch(() => undefined);
 
 export default function App() {
   const ready = useSessionStore((s) => s.hydrated);
+  const userId = useSessionStore((s) => s.user?.id);
 
   useEffect(() => {
     void (async () => {
@@ -34,7 +35,7 @@ export default function App() {
       }
     });
     return () => sub.remove();
-  }, [ready]);
+  }, [ready, userId]);
 
   return (
     <GestureHandlerRootView style={styles.root}>
