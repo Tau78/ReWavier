@@ -20,7 +20,7 @@ import { isDemoUser } from '../../auth/demoAccount';
 import { runCloudSync } from '../../cloud/syncEngine';
 import { useLibraryStore } from '../../store/libraryStore';
 import { useSessionStore } from '../../store/sessionStore';
-import { useSyncStore } from '../../store/syncStore';
+import { libraryNeedsBanner, useSyncStore } from '../../store/syncStore';
 import { colors, layout } from '../../theme/colors';
 import { BrandMark, EmptyGraphic, ScreenAura } from '../../theme/graphics';
 import { openTrack } from './openTrack';
@@ -169,7 +169,13 @@ export function LibraryScreen() {
       </View>
 
       {!demoAccount &&
-      (syncMessage || pendingReviews.length > 0 || needsFolderLink || needsFileRefresh) ? (
+      libraryNeedsBanner({
+        status: syncStatus,
+        message: syncMessage,
+        pendingReviews,
+        needsFolderLink,
+        needsFileRefresh,
+      }) ? (
         <Pressable
           onPress={() => {
             if (pendingReviews.length > 0) {
