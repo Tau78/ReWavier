@@ -32,6 +32,17 @@ function pickMessage(icloud: SuitcaseResult, drive: SuitcaseResult): string {
   return parts[0] ?? '';
 }
 
+function friendlySyncError(raw: string): string {
+  if (
+    raw.includes('UnexpectedException') ||
+    raw.includes('ExpoModulesCore') ||
+    raw.includes('non esiste')
+  ) {
+    return 'Copia iCloud non riuscita su un file. Riprova tra poco.';
+  }
+  return raw;
+}
+
 function skippedSummary(message = ''): DeviceSyncSummary {
   const skipped: SuitcaseResult = { pushed: 0, pulled: 0, message };
   return { icloud: skipped, drive: skipped, message };

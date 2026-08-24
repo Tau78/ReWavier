@@ -13,7 +13,7 @@ import { fileExists, reconcileTrack } from './downloads';
 import { persistLibraryUri } from './libraryUris';
 import { getActiveLibraryOwner, snapshotBelongsToOwner } from './libraryOwner';
 import { libraryDirectory, userLibraryDirectory } from './libraryPaths';
-import { ensureDirAsync, pathExistsAsync } from './fsSafe';
+import { ensureDirAsync, pathExistsAsync, withTimeout } from './fsSafe';
 
 function persistAndKeep(uri?: string): string | undefined {
   const stored = persistLibraryUri(uri);
@@ -122,6 +122,31 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
   };
 }
 
+function parseLibrarySnapshot(parsed: LibrarySnapshot): LibrarySnapshot | null {
+  if (!Array.isArray(parsed.tracks)) {
+    return null;
+  }
+  if (parsed.version !== 1 && parsed.version !== LIBRARY_SNAPSHOT_VERSION) {
+    return null;
+  }
+  return {
+    version: LIBRARY_SNAPSHOT_VERSION,
+    ownerKey: parsed.ownerKey,
+    tracks: parsed.tracks,
+    folders: Array.isArray(parsed.folders) ? parsed.folders : [],
+    albums: Array.isArray(parsed.albums) ? parsed.albums : [],
+    playlists: Array.isArray(parsed.playlists) ? parsed.playlists : [],
+    smartPlaylists: Array.isArray(parsed.smartPlaylists) ? parsed.smartPlaylists : [],
+    markersByTrackId:
+      parsed.markersByTrackId && typeof parsed.markersByTrackId === 'object'
+        ? parsed.markersByTrackId
+        : {},
+    keptAudioNames: Array.isArray(parsed.keptAudioNames)
+      ? parsed.keptAudioNames.filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+      : [],
+  };
+}
+
 export async function loadLibrarySnapshot(opts?: {
   requireOwnerKey?: boolean;
 }): Promise<LibrarySnapshot | null> {
@@ -144,7 +169,7 @@ export async function loadLibrarySnapshot(opts?: {
     if (!snapshot) {
       return null;
     }
-    const sanitized = sanitizeSnapshot(parsed);
+    const sanitized = sanitizeSnapshot(snapshot);
     if (
       !snapshotBelongsToOwner(
         sanitized.ownerKey,

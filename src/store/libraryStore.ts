@@ -17,6 +17,7 @@ import {
   type SmartPlaylist,
 } from '../domain/library';
 import { type Marker, type Track } from '../domain/models';
+import { withPractice, type PracticeIds } from '../domain/practice';
 import { isDemoUser } from '../auth/demoAccount';
 import {
   adoptLegacyLibraryIfNeeded,

@@ -21,15 +21,23 @@ const AuthenticatedApp = lazy(() =>
 );
 
 export default function App() {
-  const ready = useSessionStore((s) => s.hydrated);
-  const userId = useSessionStore((s) => s.user?.id);
+  const user = useSessionStore((s) => s.user);
+  const userId = user?.id;
 
   useEffect(() => {
+    hideNativeSplash();
     void (async () => {
       await useSessionStore.getState().hydrate();
       await useLibraryStore.getState().hydrate();
     })();
   }, []);
+
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
+    void useLibraryStore.getState().hydrate();
+  }, [userId]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
@@ -38,7 +46,11 @@ export default function App() {
       }
     });
     return () => sub.remove();
-  }, [ready, userId]);
+  }, []);
+
+  const onRootLayout = useCallback(() => {
+    hideNativeSplash();
+  }, []);
 
   return (
     <GestureHandlerRootView style={styles.root} onLayout={onRootLayout}>

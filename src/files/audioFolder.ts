@@ -7,6 +7,7 @@ import { parseSidecar, sidecarNameForAudio, titleFromFileName } from '../domain/
 import type { Marker, Track } from '../domain/models';
 import { uniqueAudioFileName } from './downloads';
 import { audioRelativePrefix } from './libraryOwner';
+import { ensureDirAsync, pathExistsAsync } from './fsSafe';
 import { audioDirectory, downloadsDirectory, inboxDirectory, libraryDirectory } from './libraryPaths';
 import { persistLibraryUri, resolveLibraryUri } from './libraryUris';
 
