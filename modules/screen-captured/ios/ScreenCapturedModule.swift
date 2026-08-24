@@ -8,6 +8,5 @@ public class ScreenCapturedModule: Module {
     Function("isCaptured") { () -> Bool in
       UIScreen.main.isCaptured
     }
-    .runOnQueue(.main)
   }
 }
