@@ -21,7 +21,7 @@ function isDemoUser(user) {
 }
 
 function shouldSkipCloudSync(user) {
-  return isDemoUser(user);
+  return !user || isDemoUser(user);
 }
 
 function snapshotBelongsToOwner(snapshotOwner, activeOwnerKey, requireOwnerKey) {
