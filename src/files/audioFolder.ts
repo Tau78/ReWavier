@@ -6,6 +6,7 @@ import { isAudioName } from '../domain/audioFormats';
 import { parseSidecar, sidecarNameForAudio, titleFromFileName } from '../domain/sidecar';
 import type { Marker, Track } from '../domain/models';
 import { uniqueAudioFileName } from './downloads';
+import { ensureDirAsync, pathExistsAsync } from './fsSafe';
 import { audioDirectory, downloadsDirectory, inboxDirectory, libraryDirectory } from './libraryPaths';
 import { persistLibraryUri, resolveLibraryUri } from './libraryUris';
 
@@ -40,12 +41,18 @@ function stripLegacyPrefix(name: string, trackId?: string): string {
   return match?.[2] ?? name;
 }
 
-function writeReadme() {
-  const dest = new File(audioDirectory(), README_NAME);
-  if (dest.exists) {
-    return;
+async function writeReadme(): Promise<void> {
+  try {
+    const dir = audioDirectory();
+    await ensureDirAsync(dir.uri);
+    const dest = `${dir.uri}/${README_NAME}`;
+    if (await pathExistsAsync(dest)) {
+      return;
+    }
+    await LegacyFS.writeAsStringAsync(dest, README_TEXT);
+  } catch {
+    // iCloud può non essere pronto: non bloccare libreria o sync
   }
-  dest.write(README_TEXT);
 }
 
 async function moveIntoAudio(fromStored: string, preferredName: string): Promise<string | undefined> {
@@ -90,7 +97,7 @@ async function migrateLooseFiles(dir: ReturnType<typeof downloadsDirectory>, pre
 }
 
 export async function migrateTracksToAudioFolder(tracks: Track[]): Promise<Track[]> {
-  writeReadme();
+  await writeReadme();
   const next: Track[] = [];
   for (const track of tracks) {
     const source = track.fileUri || track.inboxUri;
@@ -157,7 +164,7 @@ function claimedNames(tracks: Track[]): Set<string> {
 }
 
 export async function scanAudioFolder(tracks: Track[]): Promise<ImportedBundle[]> {
-  writeReadme();
+  await writeReadme();
   const dir = audioDirectory();
   const claimed = claimedNames(tracks);
   const bundles: ImportedBundle[] = [];

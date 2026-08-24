@@ -15,7 +15,9 @@ export type DeviceSyncSummary = {
 };
 
 function pickMessage(icloud: SuitcaseResult, drive: SuitcaseResult): string {
-  const parts = [icloud.message, drive.message].filter(Boolean);
+  const parts = [icloud.message, drive.message]
+    .filter(Boolean)
+    .map(friendlySyncError);
   if (parts.length === 0) {
     return 'Niente da allineare sugli altri telefoni.';
   }
@@ -26,6 +28,17 @@ function pickMessage(icloud: SuitcaseResult, drive: SuitcaseResult): string {
     return 'Libreria allineata su iCloud e su Drive.';
   }
   return parts[0] ?? '';
+}
+
+function friendlySyncError(raw: string): string {
+  if (
+    raw.includes('UnexpectedException') ||
+    raw.includes('ExpoModulesCore') ||
+    raw.includes('non esiste')
+  ) {
+    return 'Copia iCloud non riuscita su un file. Riprova tra poco.';
+  }
+  return raw;
 }
 
 export async function runDeviceSync(): Promise<DeviceSyncSummary> {
@@ -49,14 +62,18 @@ export async function runDeviceSync(): Promise<DeviceSyncSummary> {
     (error): SuitcaseResult => ({
       pushed: 0,
       pulled: 0,
-      message: error instanceof Error ? error.message : 'Copia iCloud non riuscita.',
+      message: friendlySyncError(
+        error instanceof Error ? error.message : 'Copia iCloud non riuscita.',
+      ),
     }),
   );
   const drive = await syncDriveSuitcase().catch(
     (error): SuitcaseResult => ({
       pushed: 0,
       pulled: 0,
-      message: error instanceof Error ? error.message : 'Copia Drive non riuscita.',
+      message: friendlySyncError(
+        error instanceof Error ? error.message : 'Copia Drive non riuscita.',
+      ),
     }),
   );
   if ((await icloudStatus()) === 'ready' && !icloud.message.includes('non riuscita')) {

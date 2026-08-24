@@ -80,7 +80,7 @@ launchctl kickstart -k "gui/$(id -u)/com.cursor.agent.worker.mac-mini-all"
 2. Nuovo agente → repo → runtime **My Machines** → worker `~/<percorso> @ Mac mini`.
 3. Scrivi **VAI** (o il messaggio con lavoro + VAI): l’agente esegue `scripts/vai.sh` sul Mac (commit, push, build TestFlight, ecc.).
 
-Non committare segreti in `environment.json`. Per aggiornare tutti i repo già presenti sul Mac: `cursor-sync-all-repo-workers.sh`.
+Non committare segreti in `environment.json`. Per aggiornare tutti i repo già presenti sul Mac: `cursor-sync-all-repo-workers.sh`. Per aggiungere VAI a tutti i repo locali in blocco: `cursor-bootstrap-vai-repos.sh`.
 
 ## Fase 1 — scansione stack (ora, non ieri)
 

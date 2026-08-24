@@ -1,0 +1,29 @@
+# Boot lock (build 30 verificata)
+
+L’avvio su TestFlight è **approvato**. Non modificarlo senza provare una build Release sul simulatore.
+
+## File bloccati
+
+- `App.tsx` — ordine: splash hide → hydrate in background → login subito
+- `src/app/hideSplash.ts`
+- `src/app/StartupErrorBoundary.tsx`
+- `index.ts` — `react-native-gesture-handler` prima di tutto
+
+## Regole
+
+1. **`expo-asset` resta dipendenza diretta** con plugin in `app.json` (crash `ExpoAsset` senza).
+2. **Login prima di tutto** — niente gate `ready`, niente lazy su `App` intero.
+3. **`AuthenticatedApp` lazy** solo dopo login + onboarding.
+4. **Splash:** `preventAutoHideAsync` + `hideNativeSplash` su mount e `onLayout`. Non togliere `expo-splash-screen` senza test Release.
+5. **Hydrate non blocca UI** — `sessionStore` e `libraryStore` in `useEffect`, mai in render sincrono.
+
+## Vietato
+
+- Rimuovere `expo-asset` dal bundle nativo
+- `SplashScreen.hideAsync()` a livello modulo prima del primo paint
+- Lazy-load dell’intero `AppRoot` / navigator prima del login
+- Gate nero `if (!ready) return null`
+
+## Bugfix consentiti
+
+Solo logica interna (hydrate, timeout iCloud) senza cambiare gerarchia o timing dello splash.

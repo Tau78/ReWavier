@@ -13,6 +13,7 @@ import {
   type LocalBagFile,
 } from './localSuitcase';
 import { parseLibrarySnapshot } from './parseSnapshot';
+import { shouldSyncBagFile } from './syncSkip';
 import type { SuitcaseResult } from './driveSuitcase';
 
 const AUDIO_DIR = 'Audio';
@@ -91,11 +92,15 @@ export async function syncICloudSuitcase(): Promise<SuitcaseResult> {
   let pulled = 0;
 
   if (await api.isExistAsync(LIBRARY_NAME, false)) {
-    const downloaded = await api.downloadFileAsync(`${root}/${LIBRARY_NAME}`, inboxDirectory().uri);
-    const parsed = await parseLibrarySnapshot(asFileUri(downloaded));
-    if (parsed) {
-      await applyRemoteSnapshot(parsed);
-      pulled += 1;
+    try {
+      const downloaded = await api.downloadFileAsync(`${root}/${LIBRARY_NAME}`, inboxDirectory().uri);
+      const parsed = await parseLibrarySnapshot(asFileUri(downloaded));
+      if (parsed) {
+        await applyRemoteSnapshot(parsed);
+        pulled += 1;
+      }
+    } catch {
+      // snapshot remoto non scaricabile
     }
   }
 
@@ -106,14 +111,18 @@ export async function syncICloudSuitcase(): Promise<SuitcaseResult> {
 
   for (const remotePath of remotePaths) {
     const name = fileName(remotePath);
-    if (!name || name.startsWith('.')) {
+    if (!shouldSyncBagFile(name)) {
       continue;
     }
     remoteByName.set(name.toLowerCase(), remotePath);
     const local = localByName.get(name.toLowerCase());
-    const pulledFile = await pullRemoteIfChanged(api, remotePath, local, audioDirectory().uri);
-    if (pulledFile) {
-      pulled += 1;
+    try {
+      const pulledFile = await pullRemoteIfChanged(api, remotePath, local, audioDirectory().uri);
+      if (pulledFile) {
+        pulled += 1;
+      }
+    } catch {
+      // file iCloud non scaricabile (evicted, readme, ecc.)
     }
   }
 
@@ -127,18 +136,26 @@ export async function syncICloudSuitcase(): Promise<SuitcaseResult> {
         continue;
       }
     }
-    const dest = `${AUDIO_DIR}/${local.name}`;
-    await api.uploadFileAsync({ destinationPath: dest, filePath: local.uri });
-    pushed += 1;
+    try {
+      const dest = `${AUDIO_DIR}/${local.name}`;
+      await api.uploadFileAsync({ destinationPath: dest, filePath: local.uri });
+      pushed += 1;
+    } catch {
+      // singolo file non caricato
+    }
   }
 
   const snapshotUri = new File(inboxDirectory(), 'icloud-library.json').uri;
-  await writeSnapshotCopy(snapshotUri);
-  await api.uploadFileAsync({
-    destinationPath: LIBRARY_NAME,
-    filePath: snapshotUri,
-  });
-  pushed += 1;
+  try {
+    await writeSnapshotCopy(snapshotUri);
+    await api.uploadFileAsync({
+      destinationPath: LIBRARY_NAME,
+      filePath: snapshotUri,
+    });
+    pushed += 1;
+  } catch {
+    // upload snapshot fallito: brani locali restano ok
+  }
 
   const prefs = await loadDeviceSyncPrefs();
   await saveDeviceSyncPrefs({ ...prefs, lastICloudAt: Date.now() });

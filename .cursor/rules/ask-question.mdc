@@ -1,0 +1,22 @@
+---
+description: Decisioni utente sempre con AskQuestion (form tappable / multitap)
+alwaysApply: true
+---
+
+# AskQuestion — form tappable
+
+Quando serve una decisione dell'utente (prodotto, scope, default, A/B): usa lo strumento **AskQuestion** (form tappable / multitap). Mai elenco 1/2/3 solo in chat.
+
+- Opzioni in **italiano**, **2–4**
+- Una **consigliata** per prima, con `(consigliato)` se c'è
+- Ultima: **Altro (lo scrivo in chat)**
+- **Un form per tornata** (più domande insieme se servono, mai una dopo l'altra in chat)
+
+Conferma sì/no operativa (es. «eseguo VAI?») può restare in chat.
+
+```
+❌ «Preferisci A, B o C? Dimmi tu.»
+✅ AskQuestion con A / B / C / Altro (lo scrivo in chat)
+```
+
+Vale per questo agente e per ogni subagente. Non contraddice `discovery-chat.mdc` (q01–q30 già risposte).

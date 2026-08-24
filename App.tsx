@@ -4,6 +4,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 
+// BOOT LOCK — build 30 TestFlight ok. Vedi .cursor/rules/boot-lock.mdc
 import { hideNativeSplash } from './src/app/hideSplash';
 import { StartupErrorBoundary } from './src/app/StartupErrorBoundary';
 import { LoginScreen } from './src/features/auth/LoginScreen';

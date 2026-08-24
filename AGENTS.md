@@ -14,6 +14,10 @@ The 30 questions are **already answered**. Do not re-ask. Read `.cursor/rules/di
 
 All user-facing text (app, alerts, Store, privacy) is for someone who has never opened the app. Follow `.cursor/rules/copy-semplice.mdc`. Simple, short, clear. No developer jargon.
 
+# Decisioni utente
+
+Product/scope/default/A/B choices: use **AskQuestion** (tappable form), never numbered lists in chat. Follow `.cursor/rules/ask-question.mdc`.
+
 # VAI
 
 The word **VAI** means run `scripts/vai.sh` (commit, merge to main, push, FTP docs if changed, iOS build via **Xcode local**, TestFlight). Follow `.cursor/rules/vai.mdc`. Does not use EAS Build cloud. If this machine has no Xcode, the script uses EAS.

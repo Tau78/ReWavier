@@ -1,8 +1,6 @@
 import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
-import { isAudioName } from '../../domain/audioFormats';
-import { isSidecarName } from '../../domain/sidecar';
 import { scanAudioFolder } from '../../files/audioFolder';
 import {
   loadLibrarySnapshot,
@@ -13,8 +11,7 @@ import {
 import { audioDirectory } from '../../files/libraryPaths';
 import { useLibraryStore } from '../../store/libraryStore';
 import { mergeLibrarySnapshots } from './mergeLibrary';
-
-const SKIP = new Set(['Come usare questa cartella.txt', '.DS_Store']);
+import { shouldSyncBagFile } from './syncSkip';
 
 export type LocalBagFile = {
   name: string;
@@ -45,7 +42,7 @@ export function listLocalBagFiles(): LocalBagFile[] {
           size: typeof file.size === 'number' ? file.size : undefined,
         };
       })
-      .filter((item) => item.name && !SKIP.has(item.name) && (isAudioName(item.name) || isSidecarName(item.name)));
+      .filter((item) => item.name && shouldSyncBagFile(item.name));
   } catch {
     return [];
   }
