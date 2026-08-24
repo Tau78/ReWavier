@@ -136,7 +136,10 @@ merge_ref_if_ahead() {
   ahead="$(git rev-list --count main.."$ref" 2>/dev/null || echo 0)"
   [[ "${ahead:-0}" == "0" ]] && return 0
   log "Merge: $ref → main (+$ahead)"
-  git merge "$ref" --no-edit
+  if ! git merge "$ref" --no-edit; then
+    git merge --abort 2>/dev/null || true
+    log "Merge saltato: conflitto su $ref (probabilmente già integrato)."
+  fi
 }
 
 if [[ "$start_branch" != "main" ]]; then
