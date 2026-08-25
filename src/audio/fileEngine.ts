@@ -8,11 +8,6 @@ import {
 
 import type { PlaybackListener } from './mockEngine';
 
-const LOCK_OPTIONS = {
-  showSeekBackward: true,
-  showSeekForward: true,
-} as const;
-
 export class FileAudioEngine {
   private player: AudioPlayer | null = null;
   private statusSub: { remove: () => void } | null = null;
@@ -42,12 +37,12 @@ export class FileAudioEngine {
     this.metadata = metadata;
     await setAudioModeAsync({
       playsInSilentMode: true,
-      shouldPlayInBackground: true,
+      shouldPlayInBackground: false,
       interruptionMode: 'doNotMix',
     });
     const player = createAudioPlayer(
       { uri },
-      { updateInterval: 50, keepAudioSessionActive: true },
+      { updateInterval: 50, keepAudioSessionActive: false },
     );
     this.player = player;
     this.statusSub = player.addListener('playbackStatusUpdate', (status) => this.onStatus(status));
@@ -133,13 +128,15 @@ export class FileAudioEngine {
   }
 
   private publishLockScreen() {
-    if (!this.player || !this.metadata) {
+    // Lock-screen / background playback removed for App Store 2.5.4:
+    // the app does not keep audible content running on the Home Screen.
+    if (!this.player) {
       return;
     }
     try {
-      this.player.setActiveForLockScreen(true, this.metadata, LOCK_OPTIONS);
+      this.player.clearLockScreenControls();
     } catch {
-      // Expo Go or older native binary without lock-screen controls
+      // Expo Go or binary without lock-screen controls
     }
   }
 

@@ -79,7 +79,7 @@ export function RecordSketchScreen() {
       void Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
         playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
+        staysActiveInBackground: false,
       });
     };
   }, []);
@@ -196,7 +196,7 @@ export function RecordSketchScreen() {
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: false,
       playsInSilentModeIOS: true,
-      staysActiveInBackground: true,
+      staysActiveInBackground: false,
     });
   };
 

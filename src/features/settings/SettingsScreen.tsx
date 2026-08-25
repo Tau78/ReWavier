@@ -98,6 +98,42 @@ export function SettingsScreen() {
           </Text>
         </View>
 
+        <Pressable onPress={() => void logout()} style={styles.card}>
+          <Text style={styles.rowLabel}>Esci</Text>
+          <Text style={styles.rowValue}>Torna al login. I brani restano qui.</Text>
+        </Pressable>
+        <Pressable
+          onPress={() =>
+            Alert.alert(
+              'Eliminare l’account?',
+              'Si cancella l’accesso da questo telefono. I brani restano nella cartella ReWavier in File.',
+              [
+                { text: 'Annulla', style: 'cancel' },
+                {
+                  text: 'Elimina',
+                  style: 'destructive',
+                  onPress: () => {
+                    void deleteAccount().catch((error) => {
+                      Alert.alert(
+                        'Account',
+                        error instanceof Error ? error.message : 'Riprova',
+                      );
+                    });
+                  },
+                },
+              ],
+            )
+          }
+          style={styles.card}
+          accessibilityRole="button"
+          accessibilityLabel="Elimina account"
+        >
+          <Text style={[styles.rowLabel, styles.danger]}>Elimina account</Text>
+          <Text style={[styles.rowValue, styles.danger]}>
+            Cancella l’accesso da questo telefono. Poi torni al login.
+          </Text>
+        </Pressable>
+
         <View style={styles.card}>
           <Text style={styles.rowLabel}>Come usi ReWavier</Text>
           <Text style={styles.rowHint}>Puoi cambiare queste scelte in qualsiasi momento.</Text>
@@ -203,39 +239,6 @@ export function SettingsScreen() {
             <Text style={styles.rowValue}>Solo in sviluppo · 30 domande già salvate</Text>
           </Pressable>
         ) : null}
-        <Pressable onPress={() => void logout()} style={styles.card}>
-          <Text style={styles.rowLabel}>Esci</Text>
-          <Text style={styles.rowValue}>Torna al login. I brani restano qui.</Text>
-        </Pressable>
-        <Pressable
-          onPress={() =>
-            Alert.alert(
-              'Eliminare l’account?',
-              'Si cancella l’accesso da questo telefono. I brani restano nella cartella ReWavier in File.',
-              [
-                { text: 'Annulla', style: 'cancel' },
-                {
-                  text: 'Elimina',
-                  style: 'destructive',
-                  onPress: () => {
-                    void deleteAccount().catch((error) => {
-                      Alert.alert(
-                        'Account',
-                        error instanceof Error ? error.message : 'Riprova',
-                      );
-                    });
-                  },
-                },
-              ],
-            )
-          }
-          style={styles.card}
-        >
-          <Text style={styles.rowLabel}>Elimina account</Text>
-          <Text style={[styles.rowValue, styles.danger]}>
-            Si cancella l’accesso da questo telefono
-          </Text>
-        </Pressable>
         <View style={styles.card}>
           <Text style={styles.rowLabel}>Versione</Text>
           <Text style={styles.rowValue}>

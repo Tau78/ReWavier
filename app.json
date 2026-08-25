@@ -19,7 +19,7 @@
     ],
     "ios": {
       "bundleIdentifier": "app.rewavier",
-      "buildNumber": "37",
+      "buildNumber": "38",
       "usesIcloudStorage": true,
       "entitlements": {
         "com.apple.developer.icloud-container-identifiers": [
@@ -39,9 +39,6 @@
       },
       "infoPlist": {
         "LSApplicationCategoryType": "public.app-category.music",
-        "UIBackgroundModes": [
-          "audio"
-        ],
         "UIFileSharingEnabled": true,
         "LSSupportsOpeningDocumentsInPlace": true,
         "CFBundleAllowMixedLocalizations": true,
