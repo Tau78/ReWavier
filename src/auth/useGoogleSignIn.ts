@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
@@ -5,10 +6,16 @@ import * as WebBrowser from 'expo-web-browser';
 import Constants from 'expo-constants';
 
 import { useSessionStore } from '../store/sessionStore';
+import {
+  googleAccessTokenFromResult,
+  googleAuthNeedsCodeExchange,
+} from './googleAuthResult';
 
 WebBrowser.maybeCompleteAuthSession();
 
 const CLIENT_ID_RE = /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/i;
+const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
+const GOOGLE_USERINFO = 'https://openidconnect.googleapis.com/v1/userinfo';
 
 const DRIVE_SCOPES = [
   'openid',
@@ -72,20 +79,98 @@ function decodeJwtEmail(idToken: string): { email: string; name: string; sub: st
   }
 }
 
+async function profileFromGoogle(
+  idToken?: string,
+  accessToken?: string,
+): Promise<{ email: string; name: string; sub: string }> {
+  if (idToken) {
+    const fromToken = decodeJwtEmail(idToken);
+    if (fromToken.email || fromToken.sub) {
+      return fromToken;
+    }
+  }
+  if (accessToken) {
+    try {
+      const response = await fetch(GOOGLE_USERINFO, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (response.ok) {
+        const json = (await response.json()) as {
+          email?: string;
+          name?: string;
+          sub?: string;
+        };
+        return {
+          email: json.email ?? '',
+          name: json.name ?? json.email ?? 'Google',
+          sub: json.sub ?? `google-${Date.now()}`,
+        };
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return { email: '', name: 'Google', sub: `google-${Date.now()}` };
+}
+
+async function exchangeGoogleCode(
+  code: string,
+  clientId: string,
+  redirectUri: string,
+  codeVerifier?: string,
+): Promise<AuthSession.TokenResponse> {
+  return AuthSession.exchangeCodeAsync(
+    {
+      clientId,
+      code,
+      redirectUri,
+      extraParams: {
+        code_verifier: codeVerifier ?? '',
+      },
+    },
+    { tokenEndpoint: GOOGLE_TOKEN_ENDPOINT },
+  );
+}
+
 export async function completeGoogleSignIn(
   response: AuthSession.AuthSessionResult,
   clientId: string,
+  extras?: { redirectUri: string; codeVerifier?: string },
 ): Promise<void> {
   if (response.type !== 'success') {
     throw new Error('Login Google non riuscito. Riprova con Apple o email.');
   }
-  const idToken = response.params.id_token ?? response.authentication?.idToken;
-  const accessToken = response.authentication?.accessToken ?? response.params.access_token;
-  const refreshToken = response.authentication?.refreshToken ?? response.params.refresh_token;
-  const expiresIn = response.authentication?.expiresIn;
-  const profile = idToken
-    ? decodeJwtEmail(idToken)
-    : { email: '', name: 'Google', sub: `google-${Date.now()}` };
+
+  let idToken = response.params.id_token ?? response.authentication?.idToken ?? undefined;
+  let accessToken = googleAccessTokenFromResult(response);
+  let refreshToken = response.authentication?.refreshToken ?? response.params.refresh_token;
+  let expiresIn = response.authentication?.expiresIn;
+
+  if (googleAuthNeedsCodeExchange(response)) {
+    if (!extras?.redirectUri) {
+      throw new Error('Google ha aperto l’account ma non ha collegato Drive. Tocca di nuovo Continua con Google.');
+    }
+    try {
+      const exchanged = await exchangeGoogleCode(
+        response.params.code,
+        clientId,
+        extras.redirectUri,
+        extras.codeVerifier,
+      );
+      accessToken = exchanged.accessToken || accessToken;
+      idToken = exchanged.idToken ?? idToken;
+      refreshToken = exchanged.refreshToken ?? refreshToken;
+      expiresIn = exchanged.expiresIn ?? expiresIn;
+    } catch {
+      throw new Error('Google ha aperto l’account ma non ha collegato Drive. Tocca di nuovo Continua con Google.');
+    }
+  }
+
+  if (!accessToken) {
+    throw new Error('Google ha aperto l’account ma non ha collegato Drive. Tocca di nuovo Continua con Google.');
+  }
+
+  const profile = await profileFromGoogle(idToken, accessToken);
   await useSessionStore.getState().signInSocial({
     provider: 'google',
     id: `google:${profile.sub}`,
@@ -126,11 +211,14 @@ export function useGoogleSignIn() {
     redirectUri,
     language: 'it',
     selectAccount: true,
+    shouldAutoExchangeCode: false,
     scopes: DRIVE_SCOPES,
     extraParams: {
       access_type: 'offline',
     },
   });
+  const requestRef = useRef(request);
+  requestRef.current = request;
 
   return {
     ready: Boolean(clientId && request),
@@ -138,18 +226,16 @@ export function useGoogleSignIn() {
       if (!clientId) {
         throw new Error('Google non è ancora pronto. Entra con Apple o crea un account email.');
       }
-      await completeGoogleSignIn(result, clientId);
+      await completeGoogleSignIn(result, clientId, {
+        redirectUri,
+        codeVerifier: requestRef.current?.codeVerifier,
+      });
     },
     prompt: async () => {
       if (!clientId) {
         throw new Error('Google non è ancora pronto. Entra con Apple o crea un account email.');
       }
-      try {
-        return await promptAsync();
-      } finally {
-        void WebBrowser.coolDownAsync().catch(() => undefined);
-        WebBrowser.dismissAuthSession();
-      }
+      return promptAsync();
     },
   };
 }
