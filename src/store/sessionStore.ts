@@ -59,7 +59,7 @@ export type SessionActions = {
   setActiveBand: (bandId: string) => void;
   connectDrive: (link: DriveLink) => void;
   logout: () => Promise<void>;
-  deleteAccount: () => Promise<void>;
+  deleteAccount: (opts?: { purgeLibrary?: boolean }) => Promise<void>;
 };
 
 export type SessionStore = SessionState & SessionActions;
@@ -375,10 +375,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     await reloadLibrary();
   },
 
-  async deleteAccount() {
+  async deleteAccount(opts) {
     const { user } = get();
     if (!user) {
       return;
+    }
+    if (opts?.purgeLibrary === true) {
+      const { purgeUserLibraryData } = await import('../files/purgeUserData');
+      await purgeUserLibraryData(user.id);
     }
     const accounts = await loadLocalAccounts();
     await saveLocalAccounts(accountsWithoutUser(accounts, user));

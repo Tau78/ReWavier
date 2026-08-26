@@ -106,19 +106,56 @@ export function SettingsScreen() {
           onPress={() =>
             Alert.alert(
               'Eliminare l’account?',
-              'Si cancella l’accesso da questo telefono. I brani restano nella cartella ReWavier in File.',
+              'Scegli cosa cancellare da questo telefono.',
               [
                 { text: 'Annulla', style: 'cancel' },
                 {
-                  text: 'Elimina',
+                  text: 'Solo accesso',
+                  onPress: () => {
+                    Alert.alert(
+                      'Solo l’accesso',
+                      'Togli l’account da questo telefono. I brani restano nella cartella ReWavier in File.',
+                      [
+                        { text: 'Annulla', style: 'cancel' },
+                        {
+                          text: 'Elimina accesso',
+                          style: 'destructive',
+                          onPress: () => {
+                            void deleteAccount({ purgeLibrary: false }).catch((error) => {
+                              Alert.alert(
+                                'Account',
+                                error instanceof Error ? error.message : 'Riprova',
+                              );
+                            });
+                          },
+                        },
+                      ],
+                    );
+                  },
+                },
+                {
+                  text: 'Accesso e brani',
                   style: 'destructive',
                   onPress: () => {
-                    void deleteAccount().catch((error) => {
-                      Alert.alert(
-                        'Account',
-                        error instanceof Error ? error.message : 'Riprova',
-                      );
-                    });
+                    Alert.alert(
+                      'Cancellare anche i brani?',
+                      'Si tolgono accesso, brani e appunti di questo account su questo telefono. Non si può annullare.',
+                      [
+                        { text: 'Annulla', style: 'cancel' },
+                        {
+                          text: 'Cancella tutto',
+                          style: 'destructive',
+                          onPress: () => {
+                            void deleteAccount({ purgeLibrary: true }).catch((error) => {
+                              Alert.alert(
+                                'Account',
+                                error instanceof Error ? error.message : 'Riprova',
+                              );
+                            });
+                          },
+                        },
+                      ],
+                    );
                   },
                 },
               ],
@@ -130,7 +167,7 @@ export function SettingsScreen() {
         >
           <Text style={[styles.rowLabel, styles.danger]}>Elimina account</Text>
           <Text style={[styles.rowValue, styles.danger]}>
-            Cancella l’accesso da questo telefono. Poi torni al login.
+            Togli l’accesso o cancella anche brani e appunti di questo account.
           </Text>
         </Pressable>
 

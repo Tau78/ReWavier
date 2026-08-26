@@ -11,7 +11,7 @@ I tuoi file e i tuoi appunti restano sul telefono o sul tablet. ReWavier non ha 
 Account
 Puoi entrare con Apple, Google o email. Nome e email restano su quel dispositivo. Con Google colleghi anche Drive. Non abbiamo un elenco di account sul web.
 
-Per togliere l’account: Impostazioni → Elimina account. Si cancella l’accesso da quel telefono. I brani restano nella cartella ReWavier in File, finché non li togli tu.
+Per togliere l’account: Impostazioni → Elimina account. Puoi togliere solo l’accesso (i brani restano in File) oppure cancellare anche brani e appunti di quell’account su quel telefono.
 
 Cosa resta sul dispositivo
 • I brani che scegli di aprire o che registri come bozza
