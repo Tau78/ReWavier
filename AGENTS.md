@@ -20,7 +20,7 @@ Product/scope/default/A/B choices: use **AskQuestion** (tappable form), never nu
 
 # VAI
 
-The word **VAI** means run `scripts/vai.sh` (commit, merge to main, push, FTP docs if changed, iOS build via **Xcode local**, TestFlight). Follow `.cursor/rules/vai.mdc`. Does not use EAS Build cloud. If this machine has no Xcode, the script uses EAS.
+The word **VAI** means run `scripts/vai.sh`. The script re-detects the stack each run (it may have grown) and only runs FTP / deploy / build for files that actually changed; git push always. Follow `.cursor/rules/vai.mdc`. iOS build is **Xcode local** → TestFlight. If this machine has no Xcode, the script uses EAS.
 
 # Apple release
 

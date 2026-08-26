@@ -34,7 +34,7 @@ Più segnali dello stesso pezzo = un passo solo, non due build.
 | --- | --- | --- |
 | FTP | `docs/`, o la radice FTP scelta al setup | `README*`, codice app, test, `.cursor/` |
 | Deploy | sorgenti/config del host (es. `app/`, `src/`, `public/`, `wrangler.toml`, `vercel.json`, `astro.config.*`, `next.config.*`) | `docs/` da FTP, `README*`, skill, note interne |
-| Build nativa | `app.json`, `app.config.*`, `eas.json`, `package.json`, lockfile, `src/`, `app/`, `ios/`, `android/`, native plugins | `docs/`, `README*`, `.cursor/`, testi Store |
+| Build nativa | `app.json`, `app.config.*`, `eas.json`, `package.json`, lockfile, `src/`, `app/`, `ios/`, `android/`, `modules/`, `assets/`, native plugins | `docs/`, `README*`, `.cursor/`, testi Store |
 
 `scripts/vai.sh` e `.cursor/skills/vai/` **non** lanciano da soli FTP/deploy/build.
 
@@ -50,6 +50,19 @@ Più segnali dello stesso pezzo = un passo solo, non due build.
 `VAI_MESSAGE` se c’è (1–2 frasi sul perché). Altrimenti un riassunto dei path di primo livello.
 
 `git add -A` poi togli dall’index i file in `NEVER_COMMIT`.
+
+## TestFlight (già sul Mac)
+
+Vedi [testflight.md](testflight.md). Non chiedere password.
+
+| Cosa | Valore |
+| --- | --- |
+| Apple ID in Xcode | `andreoni.mauro@gmail.com` |
+| Team | `YSU7PL673A` |
+| Script | `scripts/xcode-testflight.sh` dal template di questa skill |
+| Override team | `EXPO_APPLE_TEAM_ID` in `.env.local` (raro, non committare) |
+
+Se lo stack è iOS e manca lo script, copialo al setup. VAI lo chiama quando i file dell’app sono toccati.
 
 ## Credenziali FTP
 

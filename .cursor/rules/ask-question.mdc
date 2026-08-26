@@ -10,7 +10,8 @@ Quando serve una decisione dell'utente (prodotto, scope, default, A/B): usa lo s
 - Opzioni in **italiano**, **2–4**
 - Una **consigliata** per prima, con `(consigliato)` se c'è
 - Ultima: **Altro (lo scrivo in chat)**
-- **Un form per tornata** (più domande insieme se servono, mai una dopo l'altra in chat)
+- **Un form per tornata** (più domande insieme se servono, mai una dopo l’altra in chat)
+- Testo libero su una voce = risposta valida; tap solo sul resto
 
 Conferma sì/no operativa (es. «eseguo VAI?») può restare in chat.
 
