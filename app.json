@@ -3,7 +3,7 @@
     "name": "ReWavier",
     "slug": "rewavier",
     "scheme": "rewavier",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "backgroundColor": "#0D0D0F",
@@ -19,7 +19,7 @@
     ],
     "ios": {
       "bundleIdentifier": "app.rewavier",
-      "buildNumber": "39",
+      "buildNumber": "40",
       "usesIcloudStorage": true,
       "entitlements": {
         "com.apple.developer.icloud-container-identifiers": [
