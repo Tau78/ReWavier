@@ -7,8 +7,13 @@ import Constants from 'expo-constants';
 
 import { useSessionStore } from '../store/sessionStore';
 import {
+  GOOGLE_OAUTH_EXTRA_PARAMS,
   googleAccessTokenFromResult,
   googleAuthNeedsCodeExchange,
+  googleExchangeIsReady,
+  googleTokenHasDriveScope,
+  snapshotGoogleExchange,
+  type GoogleExchangeExtras,
 } from './googleAuthResult';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -24,6 +29,9 @@ const DRIVE_SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/drive.readonly',
 ];
+
+const DRIVE_CONNECT_ERROR =
+  'Google non ha collegato Drive. Tocca di nuovo Continua con Google.';
 
 function validClientId(value?: string): string | undefined {
   const trimmed = value?.trim() ?? '';
@@ -117,15 +125,16 @@ async function exchangeGoogleCode(
   code: string,
   clientId: string,
   redirectUri: string,
-  codeVerifier?: string,
+  codeVerifier: string,
 ): Promise<AuthSession.TokenResponse> {
   return AuthSession.exchangeCodeAsync(
     {
       clientId,
       code,
       redirectUri,
+      scopes: DRIVE_SCOPES,
       extraParams: {
-        code_verifier: codeVerifier ?? '',
+        code_verifier: codeVerifier,
       },
     },
     { tokenEndpoint: GOOGLE_TOKEN_ENDPOINT },
@@ -135,7 +144,7 @@ async function exchangeGoogleCode(
 export async function completeGoogleSignIn(
   response: AuthSession.AuthSessionResult,
   clientId: string,
-  extras?: { redirectUri: string; codeVerifier?: string },
+  extras?: GoogleExchangeExtras,
 ): Promise<void> {
   if (response.type !== 'success') {
     throw new Error('Login Google non riuscito. Riprova con Apple o email.');
@@ -145,10 +154,11 @@ export async function completeGoogleSignIn(
   let accessToken = googleAccessTokenFromResult(response);
   let refreshToken = response.authentication?.refreshToken ?? response.params.refresh_token;
   let expiresIn = response.authentication?.expiresIn;
+  let scope = response.authentication?.scope ?? response.params.scope;
 
   if (googleAuthNeedsCodeExchange(response)) {
-    if (!extras?.redirectUri) {
-      throw new Error('Google ha aperto l’account ma non ha collegato Drive. Tocca di nuovo Continua con Google.');
+    if (!googleExchangeIsReady(extras)) {
+      throw new Error(DRIVE_CONNECT_ERROR);
     }
     try {
       const exchanged = await exchangeGoogleCode(
@@ -161,13 +171,17 @@ export async function completeGoogleSignIn(
       idToken = exchanged.idToken ?? idToken;
       refreshToken = exchanged.refreshToken ?? refreshToken;
       expiresIn = exchanged.expiresIn ?? expiresIn;
+      scope = exchanged.scope ?? scope;
     } catch {
-      throw new Error('Google ha aperto l’account ma non ha collegato Drive. Tocca di nuovo Continua con Google.');
+      throw new Error(DRIVE_CONNECT_ERROR);
     }
   }
 
   if (!accessToken) {
-    throw new Error('Google ha aperto l’account ma non ha collegato Drive. Tocca di nuovo Continua con Google.');
+    throw new Error(DRIVE_CONNECT_ERROR);
+  }
+  if (scope && !googleTokenHasDriveScope(scope)) {
+    throw new Error(DRIVE_CONNECT_ERROR);
   }
 
   const profile = await profileFromGoogle(idToken, accessToken);
@@ -210,15 +224,13 @@ export function useGoogleSignIn() {
     clientId: clientId ?? ids.webClientId,
     redirectUri,
     language: 'it',
-    selectAccount: true,
     shouldAutoExchangeCode: false,
     scopes: DRIVE_SCOPES,
-    extraParams: {
-      access_type: 'offline',
-    },
+    extraParams: GOOGLE_OAUTH_EXTRA_PARAMS,
   });
   const requestRef = useRef(request);
   requestRef.current = request;
+  const exchangeRef = useRef<GoogleExchangeExtras | null>(null);
 
   return {
     ready: Boolean(clientId && request),
@@ -226,15 +238,21 @@ export function useGoogleSignIn() {
       if (!clientId) {
         throw new Error('Google non è ancora pronto. Entra con Apple o crea un account email.');
       }
-      await completeGoogleSignIn(result, clientId, {
-        redirectUri,
-        codeVerifier: requestRef.current?.codeVerifier,
-      });
+      await completeGoogleSignIn(
+        result,
+        clientId,
+        exchangeRef.current ??
+          snapshotGoogleExchange(redirectUri, requestRef.current?.codeVerifier),
+      );
     },
     prompt: async () => {
       if (!clientId) {
         throw new Error('Google non è ancora pronto. Entra con Apple o crea un account email.');
       }
+      exchangeRef.current = snapshotGoogleExchange(
+        redirectUri,
+        requestRef.current?.codeVerifier,
+      );
       return promptAsync();
     },
   };

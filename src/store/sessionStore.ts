@@ -211,7 +211,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   async signInSocial(input) {
     if (input.provider === 'google') {
       if (!input.accessToken) {
-        throw new Error('Google ha aperto l’account ma non ha collegato Drive. Tocca di nuovo Continua con Google.');
+        throw new Error('Google non ha collegato Drive. Tocca di nuovo Continua con Google.');
       }
       await saveGoogleAuth({
         accessToken: input.accessToken,

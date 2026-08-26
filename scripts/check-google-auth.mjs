@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict';
 
+const GOOGLE_OAUTH_EXTRA_PARAMS = {
+  access_type: 'offline',
+  prompt: 'consent select_account',
+  include_granted_scopes: 'true',
+};
+
 function googleAccessTokenFromResult(result) {
   return result.authentication?.accessToken || result.params.access_token || undefined;
 }
@@ -9,6 +15,23 @@ function googleAuthNeedsCodeExchange(result) {
     return false;
   }
   return !googleAccessTokenFromResult(result) && Boolean(result.params.code);
+}
+
+function snapshotGoogleExchange(redirectUri, codeVerifier) {
+  return { redirectUri, codeVerifier };
+}
+
+function googleExchangeIsReady(extras) {
+  return Boolean(extras?.redirectUri && extras.codeVerifier);
+}
+
+function googleTokenHasDriveScope(scope) {
+  if (!scope) {
+    return false;
+  }
+  return /(?:^|\s)(https:\/\/www\.googleapis\.com\/auth\/)?drive(\.file|\.readonly)?(?:\s|$)/.test(
+    scope,
+  );
 }
 
 assert.equal(
@@ -55,4 +78,22 @@ assert.equal(
   undefined,
 );
 
-console.log('ok google auth exchanges the code before Drive login');
+const firstVerifier = 'verifier-from-tap';
+const snapshot = snapshotGoogleExchange(
+  'com.googleusercontent.apps.example:/oauthredirect',
+  firstVerifier,
+);
+const laterRequest = { codeVerifier: 'verifier-after-rerender' };
+assert.equal(snapshot.codeVerifier, firstVerifier);
+assert.notEqual(snapshot.codeVerifier, laterRequest.codeVerifier);
+assert.equal(googleExchangeIsReady(snapshot), true);
+assert.equal(googleExchangeIsReady({ redirectUri: snapshot.redirectUri }), false);
+assert.equal(googleExchangeIsReady(undefined), false);
+
+assert.equal(GOOGLE_OAUTH_EXTRA_PARAMS.access_type, 'offline');
+assert.match(GOOGLE_OAUTH_EXTRA_PARAMS.prompt, /consent/);
+assert.equal(googleTokenHasDriveScope('openid https://www.googleapis.com/auth/drive.file'), true);
+assert.equal(googleTokenHasDriveScope('openid email profile'), false);
+assert.equal(googleTokenHasDriveScope(undefined), false);
+
+console.log('ok google auth snapshots the code before Drive login');
