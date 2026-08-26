@@ -123,6 +123,23 @@ print_stack() {
   log "Stack: ${bits[*]}"
 }
 
+warn_incomplete_stack() {
+  if [[ "$STACK_IOS" == "1" ]]; then
+    if [[ ! -f eas.json && ! -x "$ROOT/scripts/xcode-testflight.sh" && ! -d ios ]]; then
+      log "Stack incompleto: c’è iOS/Expo ma manca eas.json o lo script Xcode."
+    fi
+  fi
+  if [[ "$STACK_ANDROID" == "1" && ! -f eas.json && ! -f android/gradlew ]]; then
+    log "Stack incompleto: c’è android/ ma manca eas.json o gradlew."
+  fi
+  if [[ "$STACK_FTP" == "1" && -z "${FTP_HOST:-}" ]]; then
+    log "Stack incompleto: FTP nello stack ma manca host (copia .env.example → .env.ftp)."
+  fi
+  if ! git remote get-url origin >/dev/null 2>&1; then
+    log "Stack incompleto: manca origin. Il push fallirà."
+  fi
+}
+
 # --- file effettivamente toccati ---
 
 default_base() {
@@ -198,8 +215,9 @@ needs_build() {
     case "$f" in
       docs/*|README*|AGENTS.md|CLAUDE.md|.cursor/*|scripts/vai.sh) continue ;;
       app.json|app.config.js|app.config.ts|eas.json|package.json|package-lock.json|yarn.lock|pnpm-lock.yaml) return 0 ;;
-      src/*|app/*|ios/*|android/*|plugins/*) return 0 ;;
-      *.tsx|*.ts|*.jsx|*.js) return 0 ;;
+      src/*|app/*|ios/*|android/*|plugins/*|modules/*|assets/*) return 0 ;;
+      index.ts|index.js|metro.config.js|babel.config.js) return 0 ;;
+      *.tsx|*.ts|*.jsx) return 0 ;;
     esac
   done <<< "$TOUCHED"
   return 1
@@ -245,10 +263,12 @@ merge_pr() {
     pr_state="$(gh pr view --json state -q .state)"
     if [[ "$pr_state" == "OPEN" ]]; then
       log "Merge: PR aperta → main"
-      gh pr merge --merge
-      git checkout main
-      git pull --ff-only origin main
-      return 0
+      if gh pr merge --merge; then
+        git checkout main
+        git pull --ff-only origin main
+        return 0
+      fi
+      log "Merge: gh non può chiudere la PR, merge locale su main."
     fi
   fi
 
@@ -438,6 +458,7 @@ run_build() {
 
 detect_stack
 print_stack
+warn_incomplete_stack
 TOUCHED="$(collect_touched)"
 if [[ -z "$TOUCHED" ]]; then
   log "Toccati: nessuno (tree pulito e allineato a main)."
@@ -446,7 +467,7 @@ else
 fi
 
 commit_if_needed
-# dopo il commit i path toccati sono quelli del branch rispetto a main
+# dopo il commit, prima del merge: i path restano anche quando main si allinea
 TOUCHED="$(collect_touched)"
 
 merge_pr

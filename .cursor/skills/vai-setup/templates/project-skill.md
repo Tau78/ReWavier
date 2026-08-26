@@ -22,6 +22,14 @@ Ordine: commit → merge della PR → push → FTP se toccato → deploy se tocc
 
 Flag: `--skip-build`, `--skip-ftp`, `--skip-deploy`. Se una build dello stesso progetto è già in corso, `--skip-build`.
 
+## TestFlight (iOS)
+
+I segreti sono sul Mac, non nel repo: Apple ID già in Xcode, team `YSU7PL673A`. Non chiedere password. Comando solo build: `bash scripts/xcode-testflight.sh`. Dettaglio nella skill globale `~/.cursor/skills/vai-setup/testflight.md`. TestFlight ≠ Submit for Review (`.cursor/skills/apple-release/`).
+
 Mai `--force`, `--no-verify`, amend. Mai `.env`, `.env.ftp`, password.
 
 Alla fine riporta: commit, push, e per FTP/deploy/build se è partito o perché è stato saltato.
+
+## Da iPhone (My Machines)
+
+Su Mac mini con worker attivo, **VAI** da Cursor iOS usa lo stesso `scripts/vai.sh` sul Mac. Scegli runtime **My Machines** e il worker `~/<percorso-repo> @ Mac mini`. Richiede `.cursor/environment.json` (creato da `scripts/cursor-worker-setup.sh`).

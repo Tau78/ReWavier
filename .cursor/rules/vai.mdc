@@ -1,5 +1,5 @@
 ---
-description: La parola VAI lancia lo script di rilascio (commit, main, push, FTP, build, TestFlight)
+description: La parola VAI lancia lo script di rilascio (commit, merge PR, push; deploy/FTP/build solo se toccati)
 alwaysApply: true
 ---
 
@@ -17,7 +17,7 @@ Se il messaggio dell’utente è **VAI** (anche `vai`, o inizia con VAI), è un 
 
 ## Permessi
 
-VAI = permesso esplicito di **commit**, **merge su main**, **push**, **FTP**, **build iOS** e **invio a TestFlight**. Non è un force-push. Non committare `.env`, `.env.ftp`, password, `firebase-debug.log`.
+VAI = permesso esplicito di **commit**, **merge su main**, **push**, e poi solo i passi il cui stack c’è **ora** e i cui file sono **toccati**. Il push su git si fa comunque. Non è un force-push. Non committare `.env`, `.env.ftp`, password, `firebase-debug.log`.
 
 VAI non compila App Review Information e non gira il video. Prima submission Store: `.cursor/skills/apple-release/SKILL.md`.
 
@@ -26,3 +26,4 @@ VAI non compila App Review Information e non gira il video. Prima submission Sto
 - Rifare i passi a mano se lo script esiste
 - Chiedere «vuoi che committi?»
 - `--force`, `--no-verify`, amend
+- Incrementare il build number iOS se la build è saltata

@@ -1,0 +1,21 @@
+---
+description: Decisioni all'utente sempre con AskQuestion (form tappable / multitap)
+alwaysApply: true
+---
+
+# AskQuestion — sempre form tappable
+
+Quando serve una decisione dell'utente (prodotto, scope, default, A/B): usa lo strumento **AskQuestion** (form tappable / multitap). Mai elenco 1/2/3 solo in chat.
+
+- Opzioni in italiano, **2–4**.
+- Una consigliata se c'è: prima, con `(consigliato)` nella label.
+- Ultima: `Altro (lo scrivo in chat)`.
+- Un form per tornata. Se le domande sono tante, tutte nello stesso form.
+- Testo libero su una voce = risposta valida; tap solo sul resto.
+
+```
+❌ “Preferisci A o B? Dimmi tu.”
+✅ AskQuestion: A / B / C altro
+```
+
+Conferma sì/no operativa (es. eseguo VAI?) può restare in chat.
