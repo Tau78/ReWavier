@@ -6,7 +6,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
@@ -26,6 +25,7 @@ import { libraryNeedsBanner, useSyncStore } from '../../store/syncStore';
 import { colors, DeepBackdrop, GlassCard, layout } from '../../theme';
 import { AlbumMark, BrandMark, FolderMark } from '../../theme/graphics';
 import { CollectionPlayer } from '../library/CollectionPlayer';
+import { LibrarySearch, matchesLibrarySearch } from '../library/LibrarySearch';
 import {
   HomeDraggableTrack,
   HomeDropTargetBox,
@@ -160,32 +160,25 @@ export function HomeScreen() {
     if (!q) {
       return rootFolders;
     }
-    return rootFolders.filter((folder) => folder.name.toLowerCase().includes(q));
+    return rootFolders.filter((folder) => matchesLibrarySearch(q, folder.name));
   }, [q, rootFolders]);
   const visibleAlbums = useMemo(() => {
     if (!q) {
       return albums;
     }
-    return albums.filter(
-      (album) =>
-        album.name.toLowerCase().includes(q) ||
-        (album.artist ?? '').toLowerCase().includes(q),
-    );
+    return albums.filter((album) => matchesLibrarySearch(q, album.name, album.artist));
   }, [albums, q]);
   const visiblePlaylists = useMemo(() => {
     if (!q) {
       return playlists;
     }
-    return playlists.filter((playlist) => playlist.name.toLowerCase().includes(q));
+    return playlists.filter((playlist) => matchesLibrarySearch(q, playlist.name));
   }, [playlists, q]);
   const matchingTracks = useMemo(() => {
     if (!q) {
       return [];
     }
-    return tracks.filter(
-      (track) =>
-        track.title.toLowerCase().includes(q) || track.artist.toLowerCase().includes(q),
-    );
+    return tracks.filter((track) => matchesLibrarySearch(q, track.title, track.artist));
   }, [q, tracks]);
 
   const searchEmpty =
@@ -334,15 +327,7 @@ export function HomeScreen() {
         </Pressable>
       ) : null}
 
-      <TextInput
-        style={styles.search}
-        value={query}
-        onChangeText={setQuery}
-        placeholder="Cerca cartelle, album o brani…"
-        placeholderTextColor={colors.textMuted}
-        selectionColor={colors.accent}
-        autoCorrect={false}
-      />
+      <LibrarySearch value={query} onChangeText={setQuery} />
 
       <View
         ref={scrollHost}
@@ -595,19 +580,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
     fontWeight: '600',
-  },
-  search: {
-    marginHorizontal: 16,
-    marginTop: 8,
-    marginBottom: 4,
-    borderRadius: 14,
-    backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    color: colors.text,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
   },
   scrollHost: {
     flex: 1,

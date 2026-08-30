@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -8,6 +9,7 @@ import { useLibraryStore } from '../../store/libraryStore';
 import { colors, DeepBackdrop, GlassCard, layout } from '../../theme';
 import { EmptyGraphic } from '../../theme/graphics';
 import { CollectionPlayer } from './CollectionPlayer';
+import { LibrarySearch, matchesLibrarySearch } from './LibrarySearch';
 import { openTrack } from './openTrack';
 import { TrackRow } from './TrackRow';
 import { useLibraryActions } from './useLibraryActions';
@@ -22,9 +24,16 @@ export function LibraryScreen() {
   const actions = useLibraryActions(null, (kind, id) => {
     navigation.navigate('Collection', { kind, id });
   });
+  const [query, setQuery] = useState('');
+
+  const visibleTracks = useMemo(
+    () => tracks.filter((track) => matchesLibrarySearch(query, track.title, track.artist)),
+    [query, tracks],
+  );
+  const searching = query.trim().length > 0;
 
   const play = (trackId: string) => {
-    if (openTrack(trackId, tracks.map((track) => track.id))) {
+    if (openTrack(trackId, visibleTracks.map((track) => track.id))) {
       return;
     }
     Alert.alert('Scarica', 'Questa traccia non è ancora sul telefono. Tocca ↓ per il download offline.');
@@ -48,6 +57,8 @@ export function LibraryScreen() {
         </View>
       </View>
 
+      <LibrarySearch value={query} onChangeText={setQuery} />
+
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <GlassCard style={styles.card}>
           {tracks.length === 0 ? (
@@ -66,8 +77,10 @@ export function LibraryScreen() {
               </Text>
               <Text style={styles.emptyAction}>Carica audio</Text>
             </Pressable>
+          ) : searching && visibleTracks.length === 0 ? (
+            <Text style={styles.emptyHint}>Nessun risultato. Prova un altro nome.</Text>
           ) : (
-            tracks.map((track) => (
+            visibleTracks.map((track) => (
               <TrackRow
                 key={track.id}
                 track={track}
