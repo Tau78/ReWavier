@@ -14,14 +14,16 @@ import { TrackOverviewWaveform } from './TrackOverviewWaveform';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
-export function CollectionPlayer({ trackIds }: { trackIds: string[] }) {
+/** Bottom dock like the album player. Pass `trackIds` to show only those tracks; omit to show any loaded track. */
+export function CollectionPlayer({ trackIds }: { trackIds?: string[] }) {
   const navigation = useNavigation<Nav>();
   const focused = useIsFocused();
   const track = usePlayerStore((s) => s.track);
   const positionMs = usePlayerStore((s) => s.positionMs);
-  const inCollection = Boolean(track.id) && trackIds.includes(track.id);
-
-  if (trackIds.length === 0 || !inCollection) {
+  if (!track.id) {
+    return null;
+  }
+  if (trackIds && (trackIds.length === 0 || !trackIds.includes(track.id))) {
     return null;
   }
 

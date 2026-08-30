@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -63,22 +63,18 @@ export function SettingsScreen() {
     setDraftColor(draftColor);
   };
 
-  const showBack = useRoute().name === 'Settings';
-
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <DeepBackdrop />
       <View style={styles.header}>
-        {showBack ? (
-          <Pressable
-            onPress={() => navigation.goBack()}
-            hitSlop={layout.hitSlop}
-            accessibilityRole="button"
-            accessibilityLabel="Indietro"
-          >
-            <Text style={styles.back}>‹</Text>
-          </Pressable>
-        ) : null}
+        <Pressable
+          onPress={() => navigation.goBack()}
+          hitSlop={layout.hitSlop}
+          accessibilityRole="button"
+          accessibilityLabel="Indietro"
+        >
+          <Text style={styles.back}>‹</Text>
+        </Pressable>
         <View>
           <KindRow label="App" />
           <Text style={styles.title}>Impostazioni</Text>
@@ -321,7 +317,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   scroll: {
-    paddingBottom: 140,
+    paddingBottom: 36,
   },
   card: {
     marginHorizontal: 16,

@@ -3,10 +3,12 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { DriveFolderScreen } from '../features/cloud/DriveFolderScreen';
 import { SyncReviewScreen } from '../features/cloud/SyncReviewScreen';
+import { HomeScreen } from '../features/home/HomeScreen';
 import { CollectionScreen } from '../features/library/CollectionScreen';
 import { LessonRecapScreen } from '../features/library/LessonRecapScreen';
 import { NoteHeatScreen } from '../features/library/NoteHeatScreen';
 import { ConditionsScreen } from '../features/library/ConditionsScreen';
+import { LibraryScreen } from '../features/library/LibraryScreen';
 import { RecordSketchScreen } from '../features/library/RecordSketchScreen';
 import { ReplaceFileScreen } from '../features/library/ReplaceFileScreen';
 import { PlayerScreen } from '../features/player/PlayerScreen';
@@ -14,7 +16,6 @@ import { DiscoveryScreen } from '../features/discovery/DiscoveryScreen';
 import { PrivacyScreen } from '../features/settings/PrivacyScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { colors } from '../theme/colors';
-import { MainTabs } from './MainTabs';
 import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -35,14 +36,15 @@ export function AppStack() {
   return (
     <NavigationContainer theme={theme}>
       <Stack.Navigator
-        initialRouteName="Library"
+        initialRouteName="Home"
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: colors.background },
           animation: 'slide_from_right',
         }}
       >
-        <Stack.Screen name="Library" component={MainTabs} />
+        <Stack.Screen name="Home" component={HomeScreen} />
+        <Stack.Screen name="Library" component={LibraryScreen} />
         <Stack.Screen name="Collection" component={CollectionScreen} />
         <Stack.Screen name="Conditions" component={ConditionsScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />

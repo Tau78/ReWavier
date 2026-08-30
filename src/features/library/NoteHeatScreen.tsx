@@ -49,7 +49,7 @@ export function NoteHeatScreen() {
       navigation.goBack();
       return;
     }
-    navigation.navigate('Library');
+    navigation.navigate('Home');
   };
 
   const playAt = (startAtMs: number) => {
