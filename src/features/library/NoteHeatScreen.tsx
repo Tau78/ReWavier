@@ -39,7 +39,7 @@ export function NoteHeatScreen() {
   const markers = useLibraryStore((s) => (trackId ? s.markersByTrackId[trackId] ?? [] : []));
 
   const heat = useMemo(
-    () => buildNoteHeat(track?.durationMs ?? 0, markers),
+    () => buildNoteHeat(Math.max(0, track?.durationMs ?? 0), markers),
     [track?.durationMs, markers],
   );
   const hotRows = useMemo(() => hottestBins(heat.bins), [heat.bins]);
@@ -65,6 +65,19 @@ export function NoteHeatScreen() {
     }
     navigation.navigate('Player');
   };
+
+  if (!trackId) {
+    return (
+      <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+        <View style={styles.emptyBox}>
+          <Text style={styles.empty}>Non trovo questa bozza.</Text>
+          <Pressable onPress={goLibrary} style={styles.libraryBtn}>
+            <Text style={styles.libraryLabel}>Fatto</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>

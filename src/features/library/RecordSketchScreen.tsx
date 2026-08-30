@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  InputAccessoryView,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,7 +16,6 @@ import {
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
   useAudioRecorder,
-  useAudioRecorderState,
 } from 'expo-audio';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -35,6 +35,8 @@ import { useSessionStore } from '../../store/sessionStore';
 import { colors, layout } from '../../theme/colors';
 import { KindRow } from '../../theme/graphics';
 import { PromptModal } from './PromptModal';
+
+const NOTE_ACCESSORY_ID = 'rewavier-sketch-note-accessory';
 
 function sketchFileName(title: string): { title: string; fileName: string } {
   const trimmed = title.trim() || defaultTitle();
@@ -60,6 +62,25 @@ function friendlyRecordError(error: unknown): string {
   return raw || 'Riprova';
 }
 
+function safeRecorderUri(recorder: {
+  uri: string | null;
+  getStatus: () => { url?: string | null; durationMillis?: number };
+}): { uri: string | null; durationMillis: number } {
+  try {
+    const status = recorder.getStatus();
+    return {
+      uri: recorder.uri ?? status.url ?? null,
+      durationMillis: status.durationMillis ?? 0,
+    };
+  } catch {
+    try {
+      return { uri: recorder.uri ?? null, durationMillis: 0 };
+    } catch {
+      return { uri: null, durationMillis: 0 };
+    }
+  }
+}
+
 export function RecordSketchScreen() {
   const navigation = useNavigation<Nav>();
   const { folderId, albumId } = useRoute<Route>().params ?? {};
@@ -69,7 +90,6 @@ export function RecordSketchScreen() {
   const displayName = user?.displayName ?? 'Bozza';
 
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const recorderState = useAudioRecorderState(recorder, 200);
   const [recording, setRecording] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [uri, setUri] = useState<string | null>(null);
@@ -81,27 +101,50 @@ export function RecordSketchScreen() {
   const [liveNotes, setLiveNotes] = useState<{ id: string; timestampMs: number; text: string }[]>([]);
   const [draft, setDraft] = useState<{ id: string; timestampMs: number; text: string } | null>(null);
   const discardOk = useRef(false);
+  const disposedRef = useRef(false);
   const notesRef = useRef(liveNotes);
   notesRef.current = liveNotes;
   const destAlbum = albums.find((album) => album.id === destAlbumId);
   const sharedDrive = destAlbum?.origin === 'drive' && Boolean(destAlbum.driveFolderId);
 
+  // Poll only while recording; never touch a released SharedObject without try/catch.
   useEffect(() => {
-    if (recorderState.isRecording) {
-      setElapsedMs(recorderState.durationMillis);
+    if (!recording) {
+      return;
     }
-  }, [recorderState.isRecording, recorderState.durationMillis]);
+    const tick = () => {
+      if (disposedRef.current) {
+        return;
+      }
+      try {
+        const status = recorder.getStatus();
+        if (status.isRecording) {
+          setElapsedMs(status.durationMillis);
+        }
+      } catch {
+        // Recorder may already be stopped or released.
+      }
+    };
+    tick();
+    const id = setInterval(tick, 200);
+    return () => clearInterval(id);
+  }, [recording, recorder]);
 
   useEffect(() => {
     return () => {
-      if (recorder.isRecording) {
-        void recorder.stop().catch(() => undefined);
+      disposedRef.current = true;
+      try {
+        if (recorder.isRecording) {
+          void recorder.stop().catch(() => undefined);
+        }
+      } catch {
+        // Already released after navigation — do not throw into the error boundary.
       }
       void setAudioModeAsync({
         allowsRecording: false,
         playsInSilentMode: true,
         shouldPlayInBackground: false,
-      });
+      }).catch(() => undefined);
     };
     // recorder identity is stable for the screen lifetime
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -197,23 +240,27 @@ export function RecordSketchScreen() {
     setRecording(false);
     commitDraft();
     try {
-      await recorder.stop();
-      const status = recorder.getStatus();
-      const nextUri = recorder.uri ?? status.url;
-      if (nextUri) {
-        setUri(nextUri);
+      try {
+        if (recorder.isRecording) {
+          await recorder.stop();
+        }
+      } catch (error) {
+        Alert.alert('Registrazione', friendlyRecordError(error));
       }
-      if (status.durationMillis) {
-        setElapsedMs(status.durationMillis);
+      const next = safeRecorderUri(recorder);
+      if (next.uri) {
+        setUri(next.uri);
       }
-    } catch (error) {
-      Alert.alert('Registrazione', friendlyRecordError(error));
+      if (next.durationMillis > 0) {
+        setElapsedMs(next.durationMillis);
+      }
+    } finally {
+      await setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldPlayInBackground: false,
+      }).catch(() => undefined);
     }
-    await setAudioModeAsync({
-      allowsRecording: false,
-      playsInSilentMode: true,
-      shouldPlayInBackground: false,
-    });
   };
 
   const save = async () => {
@@ -259,10 +306,6 @@ export function RecordSketchScreen() {
         { folderId: destFolderId, albumId: destAlbumId },
       );
       await useLibraryStore.getState().downloadTrack(id).catch(() => undefined);
-      const track = useLibraryStore.getState().getTrack(id);
-      if (track) {
-        await ensurePeaks(track).catch(() => undefined);
-      }
       if (destAlbumId) {
         try {
           await pushTrackToSharedAlbum(id, destAlbumId);
@@ -275,11 +318,18 @@ export function RecordSketchScreen() {
           );
         }
       }
+      const noteCount = notesRef.current.length;
       discardOk.current = true;
-      if (notesRef.current.length > 0) {
+      disposedRef.current = true;
+      // Leave this screen before waveform work / SharedObject teardown races.
+      if (noteCount > 0) {
         navigation.replace('NoteHeat', { trackId: id });
       } else {
         navigation.goBack();
+      }
+      const track = useLibraryStore.getState().getTrack(id);
+      if (track) {
+        void ensurePeaks(track).catch(() => undefined);
       }
     } catch (error) {
       Alert.alert('Salvataggio', error instanceof Error ? error.message : 'Non riesco a salvare la bozza');
@@ -293,6 +343,13 @@ export function RecordSketchScreen() {
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+      >
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
       >
       <View style={styles.header}>
         <Pressable
@@ -350,7 +407,23 @@ export function RecordSketchScreen() {
 
       {draft ? (
         <View style={styles.draftBox}>
-          <Text style={styles.draftTime}>{formatTimecode(draft.timestampMs)}</Text>
+          <View style={styles.draftHeader}>
+            <Text style={styles.draftTime}>{formatTimecode(draft.timestampMs)}</Text>
+            <View style={styles.draftActions}>
+              <Pressable onPress={() => setDraft(null)} hitSlop={layout.hitSlop}>
+                <Text style={styles.draftCancel}>Annulla</Text>
+              </Pressable>
+              <Pressable
+                onPress={commitDraft}
+                disabled={draft.text.trim().length === 0}
+                style={[styles.draftSave, draft.text.trim().length === 0 && styles.saveOff]}
+                accessibilityRole="button"
+                accessibilityLabel="Salva appunto"
+              >
+                <Text style={styles.draftSaveLabel}>Salva</Text>
+              </Pressable>
+            </View>
+          </View>
           <TextInput
             style={styles.draftInput}
             value={draft.text}
@@ -360,42 +433,25 @@ export function RecordSketchScreen() {
             autoFocus
             multiline
             selectionColor={colors.accent}
+            inputAccessoryViewID={Platform.OS === 'ios' ? NOTE_ACCESSORY_ID : undefined}
           />
-          <View style={styles.draftActions}>
-            <Pressable onPress={() => setDraft(null)} hitSlop={layout.hitSlop}>
-              <Text style={styles.draftCancel}>Annulla</Text>
-            </Pressable>
-            <Pressable
-              onPress={commitDraft}
-              disabled={draft.text.trim().length === 0}
-              style={[styles.draftSave, draft.text.trim().length === 0 && styles.saveOff]}
-              accessibilityRole="button"
-              accessibilityLabel="Salva appunto"
-            >
-              <Text style={styles.draftSaveLabel}>Salva</Text>
-            </Pressable>
-          </View>
         </View>
       ) : null}
 
       {liveNotes.length > 0 ? (
-        <ScrollView style={styles.notesScroll} keyboardShouldPersistTaps="handled">
+        <View style={styles.notesList}>
           {liveNotes.map((note) => (
             <View key={note.id} style={styles.noteRow}>
               <Text style={styles.noteTime}>{formatTimecode(note.timestampMs)}</Text>
               <Text style={styles.noteText}>{note.text}</Text>
             </View>
           ))}
-        </ScrollView>
+        </View>
       ) : null}
 
       {uri ? (
         <>
-          <ScrollView
-            style={styles.formScroll}
-            contentContainerStyle={styles.form}
-            keyboardShouldPersistTaps="handled"
-          >
+          <View style={styles.form}>
             <Text style={styles.label}>Dove la salvo</Text>
             <Pressable
               onPress={() => {
@@ -440,7 +496,7 @@ export function RecordSketchScreen() {
             {sharedDrive ? (
               <Text style={styles.locked}>Carico anche sulla cartella Drive di questo album.</Text>
             ) : null}
-          </ScrollView>
+          </View>
           <Pressable
             onPress={() => void save()}
             disabled={saving}
@@ -463,7 +519,34 @@ export function RecordSketchScreen() {
           />
         </>
       ) : null}
+      </ScrollView>
       </KeyboardAvoidingView>
+      {Platform.OS === 'ios' ? (
+        <InputAccessoryView nativeID={NOTE_ACCESSORY_ID}>
+          <View style={styles.accessoryBar}>
+            <Pressable
+              onPress={() => setDraft(null)}
+              hitSlop={layout.hitSlop}
+              accessibilityRole="button"
+              accessibilityLabel="Annulla appunto"
+            >
+              <Text style={styles.draftCancel}>Annulla</Text>
+            </Pressable>
+            <Pressable
+              onPress={commitDraft}
+              disabled={!draft || draft.text.trim().length === 0}
+              style={[
+                styles.draftSave,
+                (!draft || draft.text.trim().length === 0) && styles.saveOff,
+              ]}
+              accessibilityRole="button"
+              accessibilityLabel="Salva appunto"
+            >
+              <Text style={styles.draftSaveLabel}>Salva</Text>
+            </Pressable>
+          </View>
+        </InputAccessoryView>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -471,6 +554,7 @@ export function RecordSketchScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
+  scrollContent: { paddingBottom: 28, flexGrow: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -538,6 +622,12 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     padding: 14,
   },
+  draftHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
   draftTime: {
     color: colors.accent,
     fontSize: 13,
@@ -552,10 +642,9 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   draftActions: {
-    marginTop: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: 14,
   },
   draftCancel: { color: colors.textMuted, fontSize: 16, fontWeight: '500' },
   draftSave: {
@@ -565,7 +654,17 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   draftSaveLabel: { color: colors.text, fontSize: 16, fontWeight: '700' },
-  notesScroll: { flexGrow: 0, maxHeight: 160, marginTop: 12, paddingHorizontal: 16 },
+  accessoryBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: colors.surface,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+  },
+  notesList: { marginTop: 12, paddingHorizontal: 16 },
   noteRow: {
     backgroundColor: colors.surface,
     borderRadius: 12,
@@ -580,8 +679,7 @@ const styles = StyleSheet.create({
     fontVariant: ['tabular-nums'],
   },
   noteText: { marginTop: 4, color: colors.text, fontSize: 15, lineHeight: 20 },
-  formScroll: { flex: 1, marginTop: 16 },
-  form: { paddingHorizontal: 16, paddingBottom: 16 },
+  form: { paddingHorizontal: 16, paddingBottom: 16, marginTop: 16 },
   addFolder: { color: colors.accent, fontSize: 16, fontWeight: '700' },
   label: {
     marginTop: 8,
