@@ -915,7 +915,7 @@ export function Waveform() {
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.cueRow}
-            accessibilityLabel="Punti del brano"
+            accessibilityLabel="Punti dell’audio"
           >
             {cuePoints.map((marker) => {
               const preview = markerPreview(marker.text);

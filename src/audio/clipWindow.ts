@@ -37,7 +37,8 @@ export function formatClipShareMessage(
   noteText: string,
   includeOpenHint: boolean,
 ): string {
-  const heading = title.trim() || 'Brano';
+  const heading = title.trim() || 'Audio';
+
   const time = formatTimecode(timestampMs);
   const note = noteText.replace(/\s+/g, ' ').trim();
   const lines = [heading, time];
@@ -45,7 +46,7 @@ export function formatClipShareMessage(
     lines.push('', note);
   }
   if (includeOpenHint) {
-    lines.push('', 'Apri il brano e vai a questo momento.');
+    lines.push('', 'Apri l’audio e vai a questo momento.');
   }
   return lines.join('\n');
 }

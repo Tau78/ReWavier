@@ -23,7 +23,7 @@ function fileNameFromUri(uri: string): string {
 
 function safeFileName(name: string): string {
   const cleaned = name.replace(/[/\\?%*:|"<>]/g, '-').replace(/\s+/g, ' ').trim();
-  return cleaned || 'brano';
+  return cleaned || 'audio';
 }
 
 function clipBaseName(title: string, timestampMs: number): string {
@@ -157,7 +157,7 @@ async function presentFallback(
 
 async function shareMarkerClipUnsafe(input: ShareMarkerClipInput): Promise<void> {
   const { track, timestampMs, noteText } = input;
-  const title = track.title.trim() || 'Brano';
+  const title = track.title.trim() || 'Audio';
   const clip = resolveClipWindow(timestampMs, track);
   const noteMessage = formatClipShareMessage(title, timestampMs, noteText, false);
   const fallbackMessage = formatClipShareMessage(title, timestampMs, noteText, true);

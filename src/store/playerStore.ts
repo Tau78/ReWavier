@@ -748,7 +748,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
             lastLoadErrorTrackId = track.id;
             Alert.alert(
               'Audio',
-              'Questo brano non si apre. Controlla che il file sia sul telefono e riprova.',
+              'Questo audio non si apre. Controlla che il file sia sul telefono e riprova.',
             );
           }
         }

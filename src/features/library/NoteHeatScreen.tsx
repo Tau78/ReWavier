@@ -147,7 +147,7 @@ export function NoteHeatScreen() {
                 onPress={() => playAt(bin.startMs)}
                 style={styles.row}
                 accessibilityRole="button"
-                accessibilityLabel={`${stretchLabel(bin)}. Apri il brano da lì.`}
+                accessibilityLabel={`${stretchLabel(bin)}. Apri l’audio da lì.`}
               >
                 <View
                   style={[

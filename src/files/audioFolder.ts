@@ -19,7 +19,7 @@ export type ImportedBundle = {
 const README_NAME = 'Come usare questa cartella.txt';
 const README_TEXT = `Questa è la cartella dei brani di ReWavier.
 
-Ogni brano ha accanto un file degli appunti, con lo stesso nome.
+Ogni audio ha accanto un file degli appunti, con lo stesso nome.
 
 Due iPhone, stesso ID Apple: all’apertura ReWavier allinea anche iCloud Drive → ReWavier.
 
