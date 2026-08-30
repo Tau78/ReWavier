@@ -12,14 +12,14 @@
       "resizeMode": "contain"
     },
     "primaryColor": "#FF6B35",
-    "description": "Ascolta un brano, metti in pausa e annota il momento esatto sulla waveform.",
+    "description": "Ascolta un audio, metti in pausa e annota il momento esatto sulla waveform.",
     "platforms": [
       "ios",
       "android"
     ],
     "ios": {
       "bundleIdentifier": "app.rewavier",
-      "buildNumber": "44",
+      "buildNumber": "45",
       "usesIcloudStorage": true,
       "entitlements": {
         "com.apple.developer.icloud-container-identifiers": [

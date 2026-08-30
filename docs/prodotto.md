@@ -6,9 +6,9 @@ Tre sezioni per chi non sviluppa l’app: cosa è, come si usa, come generare lo
 
 ## 1. Descrizione del progetto (per un esterno)
 
-ReWavier è un’app per **iPhone e iPad** che serve a chi ascolta un brano e vuole **segnare un momento preciso** con un appunto. Non è un social, non è un registratore, non è un DAW. È un taccuino attaccato alla linea del tempo della canzone.
+ReWavier è un’app per **iPhone e iPad** che serve a chi ascolta un audio e vuole **segnare un momento preciso** con un appunto. Non è un social, non è un registratore, non è un DAW. È un taccuino attaccato alla linea del tempo dell’audio.
 
-Il gesto centrale è semplice: ascolti, tocchi **+**, la musica va in pausa e si apre un fumetto con l’orario esatto (minuti, secondi, millisecondi). Scrivi cosa succede in quel punto — un errore, un accordo, una nota per lo studente, un’idea per il mix, un passaggio di una riunione — e salvi. Sulla forma d’onda restano dei segnalini: li puoi riaprire, spostare o cancellare.
+Il gesto centrale è semplice: ascolti, tocchi **+**, l’audio va in pausa e si apre un fumetto con l’orario esatto (minuti, secondi, millisecondi). Scrivi cosa succede in quel punto — un errore, un accordo, una nota per lo studente, un’idea per il mix, un passaggio di una riunione — e salvi. Sulla forma d’onda restano dei segnalini: li puoi riaprire, spostare o cancellare.
 
 A chi serve oggi:
 
@@ -28,7 +28,7 @@ Cosa fa oggi (versione 1):
 
 Cosa non fa (e non va promesso a un cliente o a un negozio):
 
-- non ha un sito ReWavier in cui teniamo le tue canzoni
+- non ha un sito ReWavier in cui teniamo i tuoi file audio
 - non sincronizza l’ascolto in tempo reale tra più persone
 - non è un social: gli appunti sono tuoi, non una bacheca pubblica
 
@@ -42,7 +42,7 @@ Vale per chi usa l’app, fa una demo o scrive le note per l’App Store. Nessun
 
 ### Prima di iniziare
 
-La libreria parte **vuota**. Non ci sono canzoni di esempio. Serve almeno un file audio sul telefono o su iCloud/Drive (mp3, m4a, wav e simili).
+La libreria parte **vuota**. Non ci sono audio di esempio. Serve almeno un file audio sul telefono o su iCloud/Drive (mp3, m4a, wav e simili).
 
 I dati restano sul dispositivo. Se disinstalli l’app, libreria e appunti se ne vanno.
 
@@ -94,7 +94,7 @@ ReWavier **non** carica da solo su Drive.
 1. Tieni premuta la traccia → **Esporta marker**.
 2. iOS apre il foglio di condivisione.
 3. Scegli tu dove metterlo: File, Drive, Mail, AirDrop.
-4. Per condividerlo con qualcuno, metti **insieme** il file audio e il file `.rewavier.json` (stesso nome, es. `Canzone.mp3` + `Canzone.rewavier.json`).
+4. Per condividerlo con qualcuno, metti **insieme** il file audio e il file `.rewavier.json` (stesso nome, es. `Audio.mp3` + `Audio.rewavier.json`).
 5. Chi importa entrambi in ReWavier ritrova gli appunti.
 
 ### Impostazioni
@@ -143,7 +143,7 @@ No in-app purchases or subscriptions. Notes are private (not a public social fee
 - iPad supported (this is an iPhone + iPad app)
 
 3) WHAT THE APP DOES / WHO IT IS FOR
-ReWavier is a practice notebook for musicians, bands, teachers, and work use (meetings, training, interviews, voice notes). You listen to a track and pin a note on the exact timestamp (minutes, seconds, milliseconds) on the waveform. It solves “I heard something at 1:23 and I cannot find it again.” Audio and notes stay on the device. Optional iCloud (iPhone to iPhone, same Apple ID) or Google Drive (also toward Android) only copies the user’s own folder. There is no ReWavier cloud catalog and no ads.
+ReWavier is a notebook for audio — music, lessons, and work use (meetings, training, interviews, voice notes). You listen to a track and pin a note on the exact timestamp (minutes, seconds, milliseconds) on the waveform. It solves “I heard something at 1:23 and I cannot find it again.” Audio and notes stay on the device. Optional iCloud (iPhone to iPhone, same Apple ID) or Google Drive (also toward Android) only copies the user’s own folder. There is no ReWavier cloud catalog and no ads.
 
 4) HOW TO SET UP AND USE THE MAIN FEATURES
 SIGN IN — use Email and Password on the first screen. Do not use Sign in with Apple or Google.
