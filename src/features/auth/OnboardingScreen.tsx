@@ -11,9 +11,14 @@ import { KindRow, ScreenAura } from '../../theme/graphics';
 import { BandDraftFields, SavedBandRow } from './BandFields';
 
 const USAGES: { id: UsageType; title: string; body: string }[] = [
-  { id: 'band', title: 'Band', body: 'Album condivisi su Drive. Con Google, Drive è già collegato.' },
-  { id: 'creator', title: 'Creator', body: 'Lavori sui tuoi brani. Con Google, Drive è già collegato.' },
-  { id: 'teacher', title: 'Teacher', body: 'Lezioni e cartelle per studente. Con Google, Drive è già collegato.' },
+  { id: 'band', title: 'Band', body: 'Album condivisi su Drive. Con Google, colleghi anche Drive.' },
+  { id: 'creator', title: 'Creator', body: 'Lavori sui tuoi brani. Con Google, colleghi anche Drive.' },
+  { id: 'teacher', title: 'Teacher', body: 'Lezioni e cartelle per studente. Con Google, colleghi anche Drive.' },
+  {
+    id: 'business',
+    title: 'Business',
+    body: 'Riunioni, meeting, corsi, formazione aziendale, colloqui e appunti vocali. Con Google, colleghi anche Drive.',
+  },
 ];
 
 export function OnboardingScreen() {

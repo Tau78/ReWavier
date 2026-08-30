@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" href="img/icon-180.png">
   <meta property="og:type" content="website">
   <meta property="og:title" content="ReWavier — un appunto sul momento esatto">
-  <meta property="og:description" content="Ascolti, tocchi +, scrivi. Loop, bozza al volo e album condivisi per la band.">
+  <meta property="og:description" content="Ascolti, tocchi +, scrivi. Loop, bozza al volo e album condivisi. Per creator, band, lezione o lavoro.">
   <meta property="og:image" content="img/player.png">
   <meta property="og:locale" content="it_IT">
   <meta name="twitter:card" content="summary_large_image">
@@ -249,7 +249,7 @@
     .who { background: #111114; }
     .pills {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 1rem;
       margin-top: 2rem;
     }
@@ -343,7 +343,7 @@
     .foot a:hover { color: var(--text); }
 
     @media (max-width: 1100px) {
-      .extras { grid-template-columns: 1fr 1fr; }
+      .extras, .pills { grid-template-columns: 1fr 1fr; }
     }
     @media (max-width: 860px) {
       .hero, .steps, .pills, .extras, .shots, .facts { grid-template-columns: 1fr; }
@@ -442,7 +442,7 @@
     <section class="who" id="per-chi">
       <div class="wrap">
         <h2>Per chi riascolta e deve ricordare.</h2>
-        <p class="sub">Creator, band o lezione. Stesso gesto: ascolti e segni il momento.</p>
+        <p class="sub">Creator, band, lezione o lavoro: riunioni, formazione e appunti. Stesso gesto: ascolti e segni il momento.</p>
         <div class="pills">
           <article class="card pill">
             <h3>Creator</h3>
@@ -455,6 +455,10 @@
           <article class="card pill">
             <h3>Teacher</h3>
             <p>Lezioni in cartelle. Un appunto sul passaggio, con l’orario già scritto.</p>
+          </article>
+          <article class="card pill">
+            <h3>Business</h3>
+            <p>Riunioni, meeting, corsi, formazione, colloqui o appunti vocali. Ascolti e segni il momento da ricordare.</p>
           </article>
         </div>
       </div>

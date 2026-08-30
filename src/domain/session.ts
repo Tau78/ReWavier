@@ -1,6 +1,6 @@
 export type AuthProvider = 'email' | 'apple' | 'google';
 
-export type UsageType = 'band' | 'creator' | 'teacher';
+export type UsageType = 'band' | 'creator' | 'teacher' | 'business';
 
 export type DriveLink = 'google' | 'files' | null;
 
@@ -27,7 +27,7 @@ export type SessionUser = {
   markersEditableByOthers: boolean;
 };
 
-const USAGE_PRIORITY: UsageType[] = ['band', 'teacher', 'creator'];
+const USAGE_PRIORITY: UsageType[] = ['band', 'teacher', 'creator', 'business'];
 
 export function userUsages(user: Pick<SessionUser, 'usageType' | 'usageTypes'> | null | undefined): UsageType[] {
   if (!user) {

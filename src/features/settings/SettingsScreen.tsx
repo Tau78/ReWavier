@@ -20,6 +20,7 @@ const USAGES: { id: UsageType; title: string }[] = [
   { id: 'band', title: 'Band' },
   { id: 'creator', title: 'Creator' },
   { id: 'teacher', title: 'Teacher' },
+  { id: 'business', title: 'Business' },
 ];
 
 export function SettingsScreen() {
@@ -45,7 +46,7 @@ export function SettingsScreen() {
       ? selected.filter((item) => item !== id)
       : [...selected, id];
     if (next.length === 0) {
-      Alert.alert('Profilo', 'Tieni almeno un’opzione tra Band, Creator e Teacher.');
+      Alert.alert('Profilo', 'Tieni almeno un’opzione tra Band, Creator, Teacher e Business.');
       return;
     }
     setUsageTypes(next);

@@ -16,7 +16,7 @@ No App Tracking Transparency, location, contacts, or camera unless listed here.
 Do not invent models. Ask the owner if unknown.
 
 3) WHAT THE APP DOES / WHO IT IS FOR
-[One short paragraph. Problem + who + what stays on device vs cloud.]
+[One short paragraph. Problem + who (Creator / Band / Teacher / Business) + what stays on device vs cloud.]
 
 4) HOW TO SET UP AND USE THE MAIN FEATURES
 SIGN IN — [which button]. Do not use [Apple/Google] unless that is the demo path.

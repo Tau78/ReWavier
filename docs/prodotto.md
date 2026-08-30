@@ -8,13 +8,14 @@ Tre sezioni per chi non sviluppa l’app: cosa è, come si usa, come generare lo
 
 ReWavier è un’app per **iPhone e iPad** che serve a chi ascolta un brano e vuole **segnare un momento preciso** con un appunto. Non è un social, non è un registratore, non è un DAW. È un taccuino attaccato alla linea del tempo della canzone.
 
-Il gesto centrale è semplice: ascolti, tocchi **+**, la musica va in pausa e si apre un fumetto con l’orario esatto (minuti, secondi, millisecondi). Scrivi cosa succede in quel punto — un errore, un accordo, una nota per lo studente, un’idea per il mix — e salvi. Sulla forma d’onda restano dei segnalini: li puoi riaprire, spostare o cancellare.
+Il gesto centrale è semplice: ascolti, tocchi **+**, la musica va in pausa e si apre un fumetto con l’orario esatto (minuti, secondi, millisecondi). Scrivi cosa succede in quel punto — un errore, un accordo, una nota per lo studente, un’idea per il mix, un passaggio di una riunione — e salvi. Sulla forma d’onda restano dei segnalini: li puoi riaprire, spostare o cancellare.
 
 A chi serve oggi:
 
 - un musicista da solo che riascolta un take
 - una band in sala prove
 - un insegnante o uno studente in lezione
+- chi al lavoro riascolta riunioni, corsi, formazione, colloqui o appunti vocali
 
 Cosa fa oggi (versione 1):
 
@@ -101,7 +102,7 @@ ReWavier **non** carica da solo su Drive.
 Dalla libreria, ingranaggio in alto a destra:
 
 - il tuo account (Apple, Google o email)
-- come usi l’app (Band, Creator, Teacher)
+- come usi l’app (Band, Creator, Teacher, Business)
 - telefoni collegati
 - informativa privacy
 - **Esci** (torni al login; i brani restano)
@@ -142,7 +143,7 @@ No in-app purchases or subscriptions. Notes are private (not a public social fee
 - iPad supported (this is an iPhone + iPad app)
 
 3) WHAT THE APP DOES / WHO IT IS FOR
-ReWavier is a music practice notebook for musicians, bands, and teachers. You listen to a track and pin a note on the exact timestamp (minutes, seconds, milliseconds) on the waveform. It solves “I heard something at 1:23 and I cannot find it again.” Audio and notes stay on the device. Optional iCloud (iPhone to iPhone, same Apple ID) or Google Drive (also toward Android) only copies the user’s own folder. There is no ReWavier cloud catalog and no ads.
+ReWavier is a practice notebook for musicians, bands, teachers, and work use (meetings, training, interviews, voice notes). You listen to a track and pin a note on the exact timestamp (minutes, seconds, milliseconds) on the waveform. It solves “I heard something at 1:23 and I cannot find it again.” Audio and notes stay on the device. Optional iCloud (iPhone to iPhone, same Apple ID) or Google Drive (also toward Android) only copies the user’s own folder. There is no ReWavier cloud catalog and no ads.
 
 4) HOW TO SET UP AND USE THE MAIN FEATURES
 SIGN IN — use Email and Password on the first screen. Do not use Sign in with Apple or Google.
