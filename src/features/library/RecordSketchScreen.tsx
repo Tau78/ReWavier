@@ -10,7 +10,13 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Audio } from 'expo-av';
+import {
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  useAudioRecorder,
+  useAudioRecorderState,
+} from 'expo-audio';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,6 +30,7 @@ import { formatTimecode } from '../../domain/models';
 import { copyToDownloads } from '../../files/downloads';
 import type { RootStackParamList } from '../../navigation/types';
 import { useLibraryStore } from '../../store/libraryStore';
+import { releaseAudioForRecording } from '../../store/playerStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { colors, layout } from '../../theme/colors';
 import { KindRow } from '../../theme/graphics';
@@ -45,6 +52,14 @@ function defaultTitle(): string {
   return `Bozza ${day} ${time}`;
 }
 
+function friendlyRecordError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : '';
+  if (/not prepared|prepare/i.test(raw)) {
+    return 'Il microfono non è pronto. Chiudi altre app che usano l’audio e riprova.';
+  }
+  return raw || 'Riprova';
+}
+
 export function RecordSketchScreen() {
   const navigation = useNavigation<Nav>();
   const { folderId, albumId } = useRoute<Route>().params ?? {};
@@ -53,7 +68,8 @@ export function RecordSketchScreen() {
   const user = useSessionStore((s) => s.user);
   const displayName = user?.displayName ?? 'Bozza';
 
-  const recordingRef = useRef<Audio.Recording | null>(null);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(recorder, 200);
   const [recording, setRecording] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [uri, setUri] = useState<string | null>(null);
@@ -71,17 +87,24 @@ export function RecordSketchScreen() {
   const sharedDrive = destAlbum?.origin === 'drive' && Boolean(destAlbum.driveFolderId);
 
   useEffect(() => {
+    if (recorderState.isRecording) {
+      setElapsedMs(recorderState.durationMillis);
+    }
+  }, [recorderState.isRecording, recorderState.durationMillis]);
+
+  useEffect(() => {
     return () => {
-      const active = recordingRef.current;
-      if (active) {
-        void active.stopAndUnloadAsync().catch(() => undefined);
+      if (recorder.isRecording) {
+        void recorder.stop().catch(() => undefined);
       }
-      void Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
+      void setAudioModeAsync({
+        allowsRecording: false,
+        playsInSilentMode: true,
+        shouldPlayInBackground: false,
       });
     };
+    // recorder identity is stable for the screen lifetime
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -140,30 +163,25 @@ export function RecordSketchScreen() {
 
   const start = async () => {
     try {
-      const permission = await Audio.requestPermissionsAsync();
+      await releaseAudioForRecording();
+      const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) {
         Alert.alert('Microfono', 'Per registrare una bozza serve il permesso microfono.');
         return;
       }
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: false,
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+        shouldPlayInBackground: false,
+        interruptionMode: 'doNotMix',
       });
-      const created = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY,
-        (status) => {
-          if (status.isRecording) {
-            setElapsedMs(status.durationMillis ?? 0);
-          }
-        },
-        200,
-      );
-      recordingRef.current = created.recording;
+      await recorder.prepareToRecordAsync();
+      recorder.record();
       setRecording(true);
       setUri(null);
       setElapsedMs(0);
     } catch (error) {
+      setRecording(false);
       if (shouldExplainScreenMicConflict(isScreenCaptured(), true)) {
         Alert.alert(
           'Microfono occupato',
@@ -171,32 +189,30 @@ export function RecordSketchScreen() {
         );
         return;
       }
-      Alert.alert('Registrazione', error instanceof Error ? error.message : 'Riprova');
+      Alert.alert('Registrazione', friendlyRecordError(error));
     }
   };
 
   const stop = async () => {
-    const active = recordingRef.current;
-    recordingRef.current = null;
     setRecording(false);
-    if (!active) {
-      return;
-    }
     commitDraft();
     try {
-      await active.stopAndUnloadAsync();
-      setUri(active.getURI());
-      const status = await active.getStatusAsync();
+      await recorder.stop();
+      const status = recorder.getStatus();
+      const nextUri = recorder.uri ?? status.url;
+      if (nextUri) {
+        setUri(nextUri);
+      }
       if (status.durationMillis) {
         setElapsedMs(status.durationMillis);
       }
     } catch (error) {
-      Alert.alert('Registrazione', error instanceof Error ? error.message : 'Stop fallito');
+      Alert.alert('Registrazione', friendlyRecordError(error));
     }
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
+    await setAudioModeAsync({
+      allowsRecording: false,
+      playsInSilentMode: true,
+      shouldPlayInBackground: false,
     });
   };
 
@@ -353,8 +369,10 @@ export function RecordSketchScreen() {
               onPress={commitDraft}
               disabled={draft.text.trim().length === 0}
               style={[styles.draftSave, draft.text.trim().length === 0 && styles.saveOff]}
+              accessibilityRole="button"
+              accessibilityLabel="Salva appunto"
             >
-              <Text style={styles.draftSaveLabel}>Fatto</Text>
+              <Text style={styles.draftSaveLabel}>Salva</Text>
             </Pressable>
           </View>
         </View>

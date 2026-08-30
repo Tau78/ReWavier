@@ -20,35 +20,50 @@ import { BrandMark, ScreenAura } from '../../theme/graphics';
 
 function GoogleContinueButton({
   busy,
-  run,
+  setBusy,
 }: {
   busy: boolean;
-  run: (work: () => Promise<void>) => Promise<void>;
+  setBusy: (value: boolean) => void;
 }) {
   if (!isGoogleConfigured()) {
     return null;
   }
-  return <GoogleContinueButtonConfigured busy={busy} run={run} />;
+  return <GoogleContinueButtonConfigured busy={busy} setBusy={setBusy} />;
 }
 
 function GoogleContinueButtonConfigured({
   busy,
-  run,
+  setBusy,
 }: {
   busy: boolean;
-  run: (work: () => Promise<void>) => Promise<void>;
+  setBusy: (value: boolean) => void;
 }) {
   const google = useGoogleSignIn();
   return (
     <Pressable
       onPress={() => {
-        void run(async () => {
-          const result = await google.prompt();
-          if (result.type === 'dismiss' || result.type === 'cancel') {
-            return;
+        if (busy) {
+          return;
+        }
+        // Do not flip busy before the Google window: that re-render used to
+        // rebuild the OAuth request and break the Drive code exchange.
+        void (async () => {
+          try {
+            const result = await google.prompt();
+            if (result.type === 'dismiss' || result.type === 'cancel') {
+              return;
+            }
+            setBusy(true);
+            try {
+              await google.completeGoogleSignIn(result);
+            } finally {
+              setBusy(false);
+            }
+          } catch (error) {
+            setBusy(false);
+            Alert.alert('Accesso', error instanceof Error ? error.message : 'Riprova');
           }
-          await google.completeGoogleSignIn(result);
-        });
+        })();
       }}
       disabled={busy}
       style={({ pressed }) => [styles.google, pressed && styles.pressed]}
@@ -126,7 +141,7 @@ export function LoginScreen() {
             su questo telefono.
           </Text>
 
-          <GoogleContinueButton busy={busy} run={run} />
+          <GoogleContinueButton busy={busy} setBusy={setBusy} />
 
           {Platform.OS === 'ios' ? (
             <AppleAuthentication.AppleAuthenticationButton

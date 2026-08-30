@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import { Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
@@ -47,6 +47,7 @@ function readClientIds() {
     googleIosClientId?: string;
     googleExpoIosClientId?: string;
     googleWebClientId?: string;
+    googleAndroidClientId?: string;
   };
   const storeIos = validClientId(
     extra.googleIosClientId || process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
@@ -54,12 +55,21 @@ function readClientIds() {
   const expoIos = validClientId(
     extra.googleExpoIosClientId || process.env.EXPO_PUBLIC_GOOGLE_EXPO_IOS_CLIENT_ID,
   );
+  const android = validClientId(
+    extra.googleAndroidClientId || process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+  );
   const web = validClientId(extra.googleWebClientId || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID);
   const inExpoGo = Constants.appOwnership === 'expo';
   const iosClientId = inExpoGo ? undefined : storeIos ?? expoIos;
-  const clientId = inExpoGo ? web ?? expoIos ?? storeIos : iosClientId ?? web;
+  const clientId =
+    Platform.OS === 'android'
+      ? android ?? web
+      : inExpoGo
+        ? web ?? expoIos ?? storeIos
+        : iosClientId ?? web;
   return {
     iosClientId,
+    androidClientId: android,
     webClientId: web,
     clientId,
     inExpoGo,
@@ -205,6 +215,9 @@ export function isGoogleConfigured(): boolean {
   if (Platform.OS === 'ios') {
     return Boolean(ids.iosClientId);
   }
+  if (Platform.OS === 'android') {
+    return Boolean(ids.androidClientId ?? ids.webClientId);
+  }
   return Boolean(ids.clientId);
 }
 
@@ -218,18 +231,27 @@ export function useGoogleSignIn() {
         path: 'oauth',
       });
 
-  const [request, , promptAsync] = Google.useAuthRequest({
-    iosClientId: ids.iosClientId,
-    webClientId: ids.webClientId,
-    clientId: clientId ?? ids.webClientId,
-    redirectUri,
-    language: 'it',
-    shouldAutoExchangeCode: false,
-    scopes: DRIVE_SCOPES,
-    extraParams: GOOGLE_OAUTH_EXTRA_PARAMS,
-  });
+  // Stable config so a loading-state re-render does not mint a new PKCE verifier mid-login.
+  const authRequestConfig = useMemo(
+    () => ({
+      iosClientId: ids.iosClientId,
+      androidClientId: ids.androidClientId,
+      webClientId: ids.webClientId,
+      clientId: clientId ?? ids.webClientId,
+      redirectUri,
+      language: 'it' as const,
+      shouldAutoExchangeCode: false as const,
+      scopes: DRIVE_SCOPES,
+      extraParams: GOOGLE_OAUTH_EXTRA_PARAMS,
+    }),
+    [ids.iosClientId, ids.androidClientId, ids.webClientId, clientId, redirectUri],
+  );
+
+  const [request, , promptAsync] = Google.useAuthRequest(authRequestConfig);
   const requestRef = useRef(request);
   requestRef.current = request;
+  const promptAsyncRef = useRef(promptAsync);
+  promptAsyncRef.current = promptAsync;
   const exchangeRef = useRef<GoogleExchangeExtras | null>(null);
 
   return {
@@ -253,7 +275,7 @@ export function useGoogleSignIn() {
         redirectUri,
         requestRef.current?.codeVerifier,
       );
-      return promptAsync();
+      return promptAsyncRef.current();
     },
   };
 }

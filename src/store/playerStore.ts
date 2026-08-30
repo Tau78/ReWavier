@@ -215,6 +215,17 @@ export function refreshPlayingArtwork(trackId: string) {
   fileEngine.updateMetadata(nowPlayingMetadata(next));
 }
 
+/** Free the shared audio session so a sketch can open the mic (expo-audio). */
+export async function releaseAudioForRecording(): Promise<void> {
+  usePlayerStore.getState().pause();
+  if (!usingFile) {
+    return;
+  }
+  usingFile = false;
+  await fileEngine.unload();
+  usePlayerStore.setState({ isPlaying: false, loadState: 'idle' });
+}
+
 export const usePlayerStore = create<PlayerStore>((set, get) => ({
   track: EMPTY_TRACK,
   peaks: [],

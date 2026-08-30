@@ -29,8 +29,9 @@ function googleTokenHasDriveScope(scope) {
   if (!scope) {
     return false;
   }
+  const normalized = scope.replace(/\+/g, ' ').replace(/%20/gi, ' ');
   return /(?:^|\s)(https:\/\/www\.googleapis\.com\/auth\/)?drive(\.file|\.readonly)?(?:\s|$)/.test(
-    scope,
+    normalized,
   );
 }
 
@@ -93,6 +94,10 @@ assert.equal(googleExchangeIsReady(undefined), false);
 assert.equal(GOOGLE_OAUTH_EXTRA_PARAMS.access_type, 'offline');
 assert.match(GOOGLE_OAUTH_EXTRA_PARAMS.prompt, /consent/);
 assert.equal(googleTokenHasDriveScope('openid https://www.googleapis.com/auth/drive.file'), true);
+assert.equal(
+  googleTokenHasDriveScope('openid+https://www.googleapis.com/auth/drive.file+email'),
+  true,
+);
 assert.equal(googleTokenHasDriveScope('openid email profile'), false);
 assert.equal(googleTokenHasDriveScope(undefined), false);
 

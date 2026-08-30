@@ -51,7 +51,9 @@ export function googleTokenHasDriveScope(scope?: string | null): boolean {
   if (!scope) {
     return false;
   }
+  // Redirect params often use `+` / `%20` instead of spaces.
+  const normalized = scope.replace(/\+/g, ' ').replace(/%20/gi, ' ');
   return /(?:^|\s)(https:\/\/www\.googleapis\.com\/auth\/)?drive(\.file|\.readonly)?(?:\s|$)/.test(
-    scope,
+    normalized,
   );
 }
