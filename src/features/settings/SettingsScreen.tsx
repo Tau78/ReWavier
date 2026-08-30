@@ -63,17 +63,21 @@ export function SettingsScreen() {
     setDraftColor(draftColor);
   };
 
+  const showBack = navigation.canGoBack();
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
-        <Pressable
-          onPress={() => navigation.goBack()}
-          hitSlop={layout.hitSlop}
-          accessibilityRole="button"
-          accessibilityLabel="Indietro"
-        >
-          <Text style={styles.back}>‹</Text>
-        </Pressable>
+        {showBack ? (
+          <Pressable
+            onPress={() => navigation.goBack()}
+            hitSlop={layout.hitSlop}
+            accessibilityRole="button"
+            accessibilityLabel="Indietro"
+          >
+            <Text style={styles.back}>‹</Text>
+          </Pressable>
+        ) : null}
         <View>
           <KindRow label="App" />
           <Text style={styles.title}>Impostazioni</Text>
