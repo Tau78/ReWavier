@@ -125,7 +125,10 @@ if ! load_asc_api; then
 fi
 
 mkdir -p "$HOME/.appstoreconnect/private_keys"
-cp -f "$ASC_KEY_PATH" "$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+KEY_DEST="$HOME/.appstoreconnect/private_keys/AuthKey_${ASC_KEY_ID}.p8"
+if [[ ! -e "$KEY_DEST" ]] || ! cmp -s "$ASC_KEY_PATH" "$KEY_DEST"; then
+  cp -f "$ASC_KEY_PATH" "$KEY_DEST"
+fi
 
 echo "→ Upload to App Store Connect (API key $ASC_KEY_ID)"
 xcrun altool --upload-app --type ios --file "$IPA" --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID"
