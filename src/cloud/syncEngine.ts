@@ -25,7 +25,7 @@ import { writeSidecarToLibrary } from '../files/libraryFiles';
 import { useLibraryStore } from '../store/libraryStore';
 import { usePlayerStore } from '../store/playerStore';
 import { useSessionStore } from '../store/sessionStore';
-import { isSyncInFlight, SYNC_STALE_MS, useSyncStore, type AudioUpdate } from '../store/syncStore';
+import { isSyncInFlight, SYNC_STALE_MS, useSyncStore } from '../store/syncStore';
 import { runDeviceSync } from './deviceSync/runDeviceSync';
 import {
   downloadDriveFile,
@@ -42,18 +42,52 @@ import {
   type DriveFile,
 } from './driveApi';
 import { mergeMarkers } from './mergeNotes';
+import {
+  remoteAudioChanged,
+  trackMatchesRemote,
+  trackPresentRemotely,
+} from './remoteAudioChange';
 
-function remoteChanged(track: Track, remote: DriveFile): boolean {
-  if (remote.md5Checksum && track.remoteHash && remote.md5Checksum !== track.remoteHash) {
-    return true;
+function archiveAllMarkers(markers: Marker[]): Marker[] {
+  const now = Date.now();
+  return markers.map((marker) =>
+    marker.hidden === true ? marker : { ...marker, hidden: true, updatedAt: now },
+  );
+}
+
+function syncAlbumMessage(input: {
+  added: number;
+  removed: number;
+  versioned: number;
+  notesArchived: number;
+  notesPulled: number;
+  deviceMessage: string;
+}): string | null {
+  const parts: string[] = [];
+  if (input.added > 0) {
+    parts.push(input.added === 1 ? '1 brano nuovo' : `${input.added} brani nuovi`);
   }
-  if (remote.modifiedTime && track.remoteModifiedAt) {
-    return Date.parse(remote.modifiedTime) > Date.parse(track.remoteModifiedAt);
+  if (input.removed > 0) {
+    parts.push(input.removed === 1 ? '1 tolto' : `${input.removed} tolti`);
   }
-  if (remote.size && track.remoteSize && Number(remote.size) !== track.remoteSize) {
-    return true;
+  if (input.versioned > 0) {
+    parts.push(
+      input.notesArchived > 0
+        ? input.versioned === 1
+          ? '1 nuova versione (appunti in archivio)'
+          : `${input.versioned} nuove versioni (appunti in archivio)`
+        : input.versioned === 1
+          ? '1 nuova versione'
+          : `${input.versioned} nuove versioni`,
+    );
   }
-  return Boolean(remote.modifiedTime && !track.remoteModifiedAt);
+  if (parts.length > 0) {
+    return `Album aggiornato da Drive: ${parts.join(', ')}.`;
+  }
+  if (input.notesPulled > 0) {
+    return `${input.notesPulled} appunti nuovi dai compagni.`;
+  }
+  return input.deviceMessage || null;
 }
 
 function metaFrom(remote: DriveFile): Pick<Track, 'driveFileId' | 'remoteModifiedAt' | 'remoteSize' | 'remoteHash'> {
@@ -136,9 +170,12 @@ export async function runCloudSync(): Promise<void> {
     }
 
   const selfSlug = user.authorSlug;
-  const reviews: AudioUpdate[] = [];
   let notesPulled = 0;
   let needsFolderLink = false;
+  let added = 0;
+  let removed = 0;
+  let versioned = 0;
+  let notesArchived = 0;
 
   try {
     const store = useLibraryStore.getState();
@@ -168,13 +205,7 @@ export async function runCloudSync(): Promise<void> {
       for (const remote of audios) {
         const existing = store
           .tracksIn('album', album.id)
-          .find(
-            (track) =>
-              track.driveFileId === remote.id ||
-              (track.sourceFileName &&
-                audioBasename(track.sourceFileName).toLowerCase() ===
-                  audioBasename(remote.name).toLowerCase()),
-          );
+          .find((track) => trackMatchesRemote(track, remote));
 
         if (!existing) {
           const id = createId('track');
@@ -197,34 +228,39 @@ export async function runCloudSync(): Promise<void> {
             ],
             { albumId: album.id },
           );
+          added += 1;
           continue;
         }
 
-        store.updateTrackRemote(existing.id, metaFrom(remote));
-        if (!remoteChanged(existing, remote)) {
+        if (!remoteAudioChanged(existing, remote)) {
+          store.updateTrackRemote(existing.id, metaFrom(remote));
           continue;
         }
+        const beforeMarkers = store.markersByTrackId[existing.id] ?? [];
+        const visibleBefore = beforeMarkers.filter((marker) => marker.hidden !== true).length;
         const destUri = await saveAudio(remote, existing.id, existing.downloaded === true);
+        // New remote version: archive current notes automatically and clear waveform.
         if (existing.downloaded) {
-          store.replaceTrackFile(
-            existing.id,
-            destUri,
-            (store.markersByTrackId[existing.id] ?? []).map((marker) => marker.id),
-          );
+          store.replaceTrackFile(existing.id, destUri, []);
         } else {
           store.setTrackInbox(existing.id, destUri);
+          store.setTrackMarkers(existing.id, archiveAllMarkers(beforeMarkers));
         }
         store.updateTrackRemote(existing.id, metaFrom(remote));
+        const afterMarkers = useLibraryStore.getState().markersByTrackId[existing.id] ?? [];
+        refreshMarkersIfPlaying(existing.id, afterMarkers);
         reloadIfPlaying(existing.id);
-        const markers = store.markersByTrackId[existing.id] ?? [];
-        if (markers.length > 0) {
-          reviews.push({
-            trackId: existing.id,
-            title: existing.title,
-            fileName: remote.name,
-            markers,
-          });
+        versioned += 1;
+        notesArchived += visibleBefore;
+      }
+
+      const localTracks = useLibraryStore.getState().tracksIn('album', album.id);
+      for (const track of localTracks) {
+        if (trackPresentRemotely(track, audios)) {
+          continue;
         }
+        await useLibraryStore.getState().deleteTrack(track.id, { deleteFromDevice: true });
+        removed += 1;
       }
 
       for (const remote of sidecars) {
@@ -328,16 +364,18 @@ export async function runCloudSync(): Promise<void> {
 
       sync.finish({
         lastSyncedAt: Date.now(),
-        pendingReviews: reviews,
+        pendingReviews: [],
         notesPulled,
         needsFolderLink,
         needsFileRefresh: false,
-        message:
-          reviews.length > 0
-            ? `${reviews.length} brani aggiornati da Drive. Tocca per rivedere gli appunti.`
-            : notesPulled > 0
-              ? `${notesPulled} appunti nuovi dai compagni.`
-              : deviceMessage || null,
+        message: syncAlbumMessage({
+          added,
+          removed,
+          versioned,
+          notesArchived,
+          notesPulled,
+          deviceMessage,
+        }),
       });
     } catch {
       sync.fail('Allineamento non riuscito. Riprova tra un attimo.');

@@ -289,7 +289,16 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   setTrackInbox(trackId, inboxUri) {
     set((state) => ({
       tracks: state.tracks.map((track) =>
-        track.id === trackId ? { ...track, inboxUri, downloaded: false } : track,
+        track.id === trackId
+          ? {
+              ...track,
+              inboxUri,
+              downloaded: false,
+              durationMs: 0,
+              startMs: undefined,
+              endMs: undefined,
+            }
+          : track,
       ),
       peaksByTrackId: Object.fromEntries(
         Object.entries(state.peaksByTrackId).filter(([id]) => id !== trackId),
@@ -668,7 +677,15 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       return {
         tracks: state.tracks.map((track) =>
           track.id === trackId
-            ? { ...track, fileUri, downloaded: true, downloadedAt: Date.now() }
+            ? {
+                ...track,
+                fileUri,
+                downloaded: true,
+                downloadedAt: Date.now(),
+                durationMs: 0,
+                startMs: undefined,
+                endMs: undefined,
+              }
             : track,
         ),
         markersByTrackId: { ...state.markersByTrackId, [trackId]: nextMarkers },
