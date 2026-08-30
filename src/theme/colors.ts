@@ -11,6 +11,16 @@ export const colors = {
   overlay: 'rgba(0,0,0,0.55)',
   border: '#2C2C31',
   danger: '#FF453A',
+  /** Deep purple at the top of shell backdrops (not the locked player). */
+  gradientDeepTop: '#2A1040',
+  /** Warm mid stop; fades the purple toward `background`. */
+  gradientDeepMid: '#180E22',
+  /** Same as `background` so the gradient lands on the app black. */
+  gradientDeepBottom: '#0D0D0F',
+  /** Translucent `surface` (#1A1A1E) for glass cards. */
+  glassFill: 'rgba(26, 26, 30, 0.62)',
+  glassBorder: 'rgba(255, 255, 255, 0.10)',
+  glassHighlight: 'rgba(255, 255, 255, 0.14)',
 } as const;
 
 export const layout = {
