@@ -12,19 +12,18 @@ import {
   type NativeSyntheticEvent,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { albumTrackCount, type CollectionKind } from '../../domain/library';
 import { resolveLibraryUri } from '../../files/libraryUris';
-import type { RootStackParamList } from '../../navigation/types';
+import type { MainTabNavigation } from '../../navigation/types';
 import { isDemoUser } from '../../auth/demoAccount';
 import { runCloudSync } from '../../cloud/syncEngine';
 import { useLibraryStore } from '../../store/libraryStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { libraryNeedsBanner, useSyncStore } from '../../store/syncStore';
-import { colors, layout } from '../../theme/colors';
-import { AlbumMark, BrandMark, EmptyGraphic, FolderMark, ScreenAura } from '../../theme/graphics';
+import { colors, DeepBackdrop, GlassCard, layout } from '../../theme';
+import { AlbumMark, BrandMark, EmptyGraphic, FolderMark } from '../../theme/graphics';
 import {
   HomeDraggableTrack,
   HomeDropTargetBox,
@@ -36,7 +35,7 @@ import { openTrack } from './openTrack';
 import { TrackRow } from './TrackRow';
 import { useLibraryActions } from './useLibraryActions';
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'Library'>;
+type Nav = MainTabNavigation<'Libreria'>;
 
 function Section({
   title,
@@ -63,7 +62,7 @@ function Section({
   const expanded = forceExpanded || !collapsible || open;
 
   return (
-    <View style={styles.card}>
+    <GlassCard style={styles.card}>
       <View style={styles.cardHeader}>
         <Pressable
           onPress={collapsible ? () => setOpen((value) => !value) : undefined}
@@ -93,7 +92,7 @@ function Section({
         </View>
       </View>
       {expanded ? children : null}
-    </View>
+    </GlassCard>
   );
 }
 
@@ -270,7 +269,7 @@ export function LibraryScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <ScreenAura />
+      <DeepBackdrop />
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <BrandMark size="sm" />
@@ -623,15 +622,10 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 16,
     paddingTop: 12,
-    paddingBottom: 32,
+    paddingBottom: 140,
     gap: 12,
   },
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    overflow: 'hidden',
     paddingBottom: 4,
   },
   cardHeader: {
