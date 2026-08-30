@@ -1,2 +1,2 @@
 export { colors, layout } from './colors';
-export { BrandMark, EmptyGraphic, KindRow, ScreenAura } from './graphics';
+export { AlbumMark, BrandMark, EmptyGraphic, FolderMark, KindRow, ScreenAura } from './graphics';

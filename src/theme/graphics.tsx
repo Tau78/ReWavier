@@ -72,6 +72,111 @@ export function ScreenAura() {
   );
 }
 
+/** Mini folder: stacked rounded plates + pin, same tokens as BrandMark. */
+export function FolderMark({ size = 18 }: { size?: number }) {
+  const plate = colors.waveform;
+  const tabH = Math.max(4, Math.round(size * 0.28));
+  const bodyH = Math.max(7, Math.round(size * 0.48));
+  const tabW = Math.round(size * 0.52);
+  const bodyW = size;
+  const radius = Math.max(2, Math.round(size * 0.16));
+  const pin = Math.max(3, Math.round(size * 0.22));
+
+  return (
+    <View
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
+      style={{ width: size, height: size, justifyContent: 'flex-end' }}
+    >
+      <View
+        style={{
+          width: tabW,
+          height: tabH,
+          borderTopLeftRadius: radius,
+          borderTopRightRadius: radius,
+          backgroundColor: plate,
+          opacity: 0.72,
+          marginLeft: 1,
+        }}
+      />
+      <View
+        style={{
+          width: bodyW,
+          height: bodyH,
+          borderRadius: radius,
+          backgroundColor: plate,
+          marginTop: -1,
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: 1,
+          width: pin,
+          height: pin,
+          borderRadius: pin / 2,
+          backgroundColor: colors.accent,
+        }}
+      />
+    </View>
+  );
+}
+
+/** Mini album cover: square + waveform bars + pin. */
+export function AlbumMark({ size = 18 }: { size?: number }) {
+  const bars = [0.42, 0.72, 1, 0.58];
+  const pad = Math.max(2, Math.round(size * 0.16));
+  const inner = size - pad * 2;
+  const barW = Math.max(2, Math.round(inner * 0.14));
+  const gap = Math.max(1.5, barW * 0.45);
+  const pin = Math.max(3, Math.round(barW * 0.95));
+
+  return (
+    <View
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: Math.max(4, Math.round(size * 0.22)),
+        backgroundColor: colors.surfaceRaised,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: colors.border,
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+        paddingBottom: pad,
+        overflow: 'hidden',
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap, height: inner * 0.78 }}>
+        {bars.map((frac, index) => (
+          <View
+            key={index}
+            style={{
+              width: barW,
+              height: Math.max(barW, inner * 0.78 * frac),
+              borderRadius: barW / 2,
+              backgroundColor: colors.waveform,
+            }}
+          />
+        ))}
+      </View>
+      <View
+        style={{
+          position: 'absolute',
+          top: Math.max(2, pad - 1),
+          left: pad + 2 * (barW + gap) + barW * 0.05,
+          width: pin,
+          height: pin,
+          borderRadius: pin / 2,
+          backgroundColor: colors.accent,
+        }}
+      />
+    </View>
+  );
+}
+
 export function KindRow({ label }: { label: string }) {
   return (
     <View style={styles.kindRow}>

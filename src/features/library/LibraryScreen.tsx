@@ -24,7 +24,7 @@ import { useLibraryStore } from '../../store/libraryStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { libraryNeedsBanner, useSyncStore } from '../../store/syncStore';
 import { colors, layout } from '../../theme/colors';
-import { BrandMark, EmptyGraphic, ScreenAura } from '../../theme/graphics';
+import { AlbumMark, BrandMark, EmptyGraphic, FolderMark, ScreenAura } from '../../theme/graphics';
 import {
   HomeDraggableTrack,
   HomeDropTargetBox,
@@ -40,26 +40,59 @@ type Nav = NativeStackNavigationProp<RootStackParamList, 'Library'>;
 
 function Section({
   title,
+  icon,
   actionLabel,
   onAction,
+  collapsible,
+  defaultCollapsed = false,
+  forceExpanded,
+  collapsedMeta,
   children,
 }: {
   title: string;
+  icon?: ReactNode;
   actionLabel?: string;
   onAction?: () => void;
+  collapsible?: boolean;
+  defaultCollapsed?: boolean;
+  forceExpanded?: boolean;
+  collapsedMeta?: string;
   children: ReactNode;
 }) {
+  const [open, setOpen] = useState(!defaultCollapsed);
+  const expanded = forceExpanded || !collapsible || open;
+
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
-        <Text style={styles.cardLabel}>{title}</Text>
-        {actionLabel && onAction ? (
-          <Pressable onPress={onAction} hitSlop={layout.hitSlop}>
-            <Text style={styles.cardAction}>{actionLabel}</Text>
-          </Pressable>
-        ) : null}
+        <Pressable
+          onPress={collapsible ? () => setOpen((value) => !value) : undefined}
+          disabled={!collapsible}
+          style={styles.cardTitleHit}
+          accessibilityRole={collapsible ? 'button' : undefined}
+          accessibilityLabel={
+            collapsible ? `${title}, ${expanded ? 'aperto' : 'chiuso'}` : undefined
+          }
+          accessibilityHint={collapsible ? 'Tocca per aprire o chiudere' : undefined}
+        >
+          {icon}
+          <Text style={styles.cardLabel}>{title}</Text>
+        </Pressable>
+        <View style={styles.cardHeaderRight}>
+          {collapsible && !expanded && collapsedMeta ? (
+            <Text style={styles.collapsedMeta}>{collapsedMeta}</Text>
+          ) : null}
+          {collapsible ? (
+            <Text style={[styles.chevron, expanded && styles.chevronOpen]}>›</Text>
+          ) : null}
+          {actionLabel && onAction ? (
+            <Pressable onPress={onAction} hitSlop={layout.hitSlop}>
+              <Text style={styles.cardAction}>{actionLabel}</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
-      {children}
+      {expanded ? children : null}
     </View>
   );
 }
@@ -330,6 +363,7 @@ export function LibraryScreen() {
       >
         <Section
           title="Cartelle"
+          icon={<FolderMark />}
           actionLabel="Nuova"
           onAction={() => actions.newFolder(null)}
         >
@@ -364,6 +398,7 @@ export function LibraryScreen() {
 
         <Section
           title="Album"
+          icon={<AlbumMark />}
           actionLabel="Nuova"
           onAction={() => actions.openAlbumCreateMenu()}
         >
@@ -414,7 +449,16 @@ export function LibraryScreen() {
           </Section>
         ) : null}
 
-        <Section title="Tutte le tracce">
+        <Section
+          title="Tutte le tracce"
+          icon={<BrandMark size="xs" />}
+          collapsible
+          defaultCollapsed
+          forceExpanded={query.trim().length > 0}
+          collapsedMeta={
+            filteredTracks.length === 1 ? '1 traccia' : `${filteredTracks.length} tracce`
+          }
+        >
           {filteredTracks.length > 0 && dropTargets.length > 0 ? (
             <Text style={styles.dragHint}>
               Tieni premuto una traccia e trascinala in una cartella o in un album.
@@ -597,6 +641,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingTop: 12,
     paddingBottom: 6,
+    gap: 10,
+  },
+  cardTitleHit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
+  },
+  cardHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   cardLabel: {
     color: colors.textMuted,
@@ -604,6 +661,19 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     letterSpacing: 0.6,
     textTransform: 'uppercase',
+  },
+  collapsedMeta: {
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  chevron: {
+    color: colors.textMuted,
+    fontSize: 20,
+    lineHeight: 22,
+    marginTop: -1,
+  },
+  chevronOpen: {
+    transform: [{ rotate: '90deg' }],
   },
   cardAction: {
     color: colors.accent,
