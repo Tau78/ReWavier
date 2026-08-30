@@ -55,23 +55,76 @@ export async function hasDriveToken(): Promise<boolean> {
   return Boolean((await loadGoogleAuth())?.accessToken);
 }
 
+function nameContainsFilter(query?: string): string {
+  const needle = query?.trim();
+  if (!needle) {
+    return '';
+  }
+  return ` and name contains '${needle.replace(/'/g, "\\'")}'`;
+}
+
 export async function listDriveFolders(query?: string): Promise<DriveFile[]> {
-  const nameFilter = query?.trim()
-    ? ` and name contains '${query.trim().replace(/'/g, "\\'")}'`
-    : '';
   const q = encodeURIComponent(
-    `mimeType = 'application/vnd.google-apps.folder' and trashed = false${nameFilter}`,
+    `mimeType = 'application/vnd.google-apps.folder' and trashed = false and 'me' in owners${nameContainsFilter(query)}`,
   );
   const fields = 'files(id,name,mimeType,modifiedTime)';
-  const shared = `/files?q=${q}&pageSize=40&fields=${fields}&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives`;
-  const mine = `/files?q=${q}&pageSize=40&fields=${fields}&orderBy=${encodeURIComponent('modifiedTime desc')}`;
-  let files: DriveFile[] = [];
-  try {
-    files = (await driveGet<{ files?: DriveFile[] }>(shared)).files ?? [];
-  } catch {
-    files = (await driveGet<{ files?: DriveFile[] }>(mine)).files ?? [];
-  }
+  const mine = `/files?q=${q}&pageSize=40&fields=${fields}&orderBy=${encodeURIComponent('modifiedTime desc')}&corpora=user`;
+  const files = (await driveGet<{ files?: DriveFile[] }>(mine)).files ?? [];
   return [...files].sort((a, b) => (b.modifiedTime ?? '').localeCompare(a.modifiedTime ?? ''));
+}
+
+export type SharedDriveKind = 'shared-drive' | 'shared-folder';
+
+export type SharedDriveEntry = DriveFile & { sharedKind: SharedDriveKind };
+
+/** Shared Drives (team) plus folders someone shared with you. */
+export async function listSharedDriveEntries(query?: string): Promise<SharedDriveEntry[]> {
+  const needle = query?.trim().toLowerCase();
+  const matches = (name: string) => !needle || name.toLowerCase().includes(needle);
+
+  const drives: SharedDriveEntry[] = [];
+  try {
+    const data = await driveGet<{ drives?: { id: string; name: string }[] }>(
+      '/drives?pageSize=50&fields=drives(id,name)',
+    );
+    for (const drive of data.drives ?? []) {
+      if (!matches(drive.name)) {
+        continue;
+      }
+      drives.push({
+        id: drive.id,
+        name: drive.name,
+        mimeType: DRIVE_FOLDER_MIME,
+        sharedKind: 'shared-drive',
+      });
+    }
+  } catch {
+    // drive.readonly should allow this; ignore if the account has no Shared Drives
+  }
+
+  const q = encodeURIComponent(
+    `mimeType = 'application/vnd.google-apps.folder' and trashed = false and sharedWithMe = true${nameContainsFilter(query)}`,
+  );
+  const fields = 'files(id,name,mimeType,modifiedTime)';
+  const shared = `/files?q=${q}&pageSize=40&fields=${fields}&supportsAllDrives=true&includeItemsFromAllDrives=true`;
+  let folders: DriveFile[] = [];
+  try {
+    folders = (await driveGet<{ files?: DriveFile[] }>(shared)).files ?? [];
+  } catch {
+    folders = [];
+  }
+
+  const seen = new Set(drives.map((item) => item.id));
+  const extras: SharedDriveEntry[] = [];
+  for (const folder of folders) {
+    if (seen.has(folder.id) || !matches(folder.name)) {
+      continue;
+    }
+    seen.add(folder.id);
+    extras.push({ ...folder, sharedKind: 'shared-folder' });
+  }
+
+  return [...drives, ...extras];
 }
 
 export async function getDriveFile(fileId: string): Promise<DriveFile | null> {
@@ -112,7 +165,8 @@ export async function createDriveFolder(name: string, parentId?: string): Promis
 }
 
 export async function findFolderByName(name: string): Promise<DriveFile | null> {
-  const folders = await listDriveFolders(name);
+  const [mine, shared] = await Promise.all([listDriveFolders(name), listSharedDriveEntries(name)]);
+  const folders = [...mine, ...shared];
   const lower = name.trim().toLowerCase();
   return folders.find((folder) => folder.name.toLowerCase() === lower) ?? folders[0] ?? null;
 }

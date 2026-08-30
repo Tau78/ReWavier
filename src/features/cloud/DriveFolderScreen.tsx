@@ -4,7 +4,14 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { isDriveFolder, listDriveFolders, listFolderChildren, type DriveFile } from '../../cloud/driveApi';
+import {
+  isDriveFolder,
+  listDriveFolders,
+  listFolderChildren,
+  listSharedDriveEntries,
+  type DriveFile,
+  type SharedDriveEntry,
+} from '../../cloud/driveApi';
 import { importDriveFolder } from '../../cloud/syncEngine';
 import { isAudioName } from '../../domain/audioFormats';
 import type { RootStackParamList } from '../../navigation/types';
@@ -15,6 +22,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList, 'DriveFolder'>;
 type Route = RouteProp<RootStackParamList, 'DriveFolder'>;
 
 type Crumb = { id: string; name: string };
+type PickerTab = 'mine' | 'shared';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -35,8 +43,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 export function DriveFolderScreen() {
   const navigation = useNavigation<Nav>();
   const albumId = useRoute<Route>().params?.albumId;
+  const [tab, setTab] = useState<PickerTab>('mine');
   const [query, setQuery] = useState('');
-  const [searchHits, setSearchHits] = useState<DriveFile[]>([]);
+  const [searchHits, setSearchHits] = useState<Array<DriveFile | SharedDriveEntry>>([]);
   const [stack, setStack] = useState<Crumb[]>([]);
   const [children, setChildren] = useState<DriveFile[]>([]);
   const [busy, setBusy] = useState(true);
@@ -47,14 +56,26 @@ export function DriveFolderScreen() {
   const subfolders = children.filter(isDriveFolder);
   const audios = children.filter((file) => isAudioName(file.name));
 
-  const loadSearch = (needle?: string) => {
+  const loadSearch = (needle?: string, which: PickerTab = tab) => {
     setBusy(true);
-    void listDriveFolders(needle)
+    const load = which === 'shared' ? listSharedDriveEntries(needle) : listDriveFolders(needle);
+    void load
       .then(setSearchHits)
       .catch((error) => {
         Alert.alert('Drive', error instanceof Error ? error.message : 'Cartelle non disponibili');
       })
       .finally(() => setBusy(false));
+  };
+
+  const switchTab = (next: PickerTab) => {
+    if (working || next === tab) {
+      return;
+    }
+    setTab(next);
+    setStack([]);
+    setChildren([]);
+    setQuery('');
+    loadSearch('', next);
   };
 
   const openFolder = (folder: DriveFile) => {
@@ -178,10 +199,34 @@ export function DriveFolderScreen() {
           <View style={styles.chooseSpacer} />
         )}
       </View>
+      {browsing ? null : (
+        <View style={styles.tabs}>
+          <Pressable
+            onPress={() => switchTab('mine')}
+            style={[styles.tab, tab === 'mine' && styles.tabOn]}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: tab === 'mine' }}
+            accessibilityLabel="Il mio Drive"
+          >
+            <Text style={[styles.tabLabel, tab === 'mine' && styles.tabLabelOn]}>Il mio Drive</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => switchTab('shared')}
+            style={[styles.tab, tab === 'shared' && styles.tabOn]}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: tab === 'shared' }}
+            accessibilityLabel="Drive Condivisi"
+          >
+            <Text style={[styles.tabLabel, tab === 'shared' && styles.tabLabelOn]}>Drive Condivisi</Text>
+          </Pressable>
+        </View>
+      )}
       <Text style={styles.hint}>
         {browsing
           ? 'Apri una cartella dentro, oppure tocca Scegli per caricare i brani in ReWavier.'
-          : 'Cerca la cartella condivisa. Aprila per vedere cosa c’è dentro, poi tocca Scegli.'}
+          : tab === 'shared'
+            ? 'Qui ci sono i Drive della band o della scuola, e le cartelle che ti hanno condiviso. Aprine una, poi tocca Scegli.'
+            : 'Cartelle sul tuo Drive. Aprine una per vedere cosa c’è dentro, poi tocca Scegli.'}
       </Text>
       {browsing ? null : (
         <TextInput
@@ -189,7 +234,7 @@ export function DriveFolderScreen() {
           value={query}
           onChangeText={setQuery}
           onSubmitEditing={() => loadSearch(query)}
-          placeholder="Cerca cartella…"
+          placeholder={tab === 'shared' ? 'Cerca un Drive o una cartella…' : 'Cerca cartella…'}
           placeholderTextColor={colors.textMuted}
           returnKeyType="search"
         />
@@ -203,7 +248,11 @@ export function DriveFolderScreen() {
           {!browsing && searchHits.length === 0 ? (
             <View style={styles.emptyBox}>
               <EmptyGraphic />
-              <Text style={styles.empty}>Nessuna cartella. Accedi con Google e condividi l’album su Drive.</Text>
+              <Text style={styles.empty}>
+                {tab === 'shared'
+                  ? 'Nessun Drive condiviso. Se la band o la scuola ne ha uno, chiedi di esserci dentro.'
+                  : 'Nessuna cartella. Accedi con Google e crea o scegli una cartella sul tuo Drive.'}
+              </Text>
             </View>
           ) : null}
           {browsing && subfolders.length === 0 && audios.length === 0 ? (
@@ -223,7 +272,15 @@ export function DriveFolderScreen() {
               accessibilityLabel={`Apri cartella ${folder.name}`}
             >
               <Text style={styles.rowTitle}>{folder.name}</Text>
-              <Text style={styles.rowMeta}>{browsing ? 'Apri' : 'Cartella Drive · tocca per aprire'}</Text>
+              <Text style={styles.rowMeta}>
+                {browsing
+                  ? 'Apri'
+                  : 'sharedKind' in folder && folder.sharedKind === 'shared-drive'
+                    ? 'Drive condiviso · tocca per aprire'
+                    : 'sharedKind' in folder && folder.sharedKind === 'shared-folder'
+                      ? 'Condivisa con te · tocca per aprire'
+                      : 'Cartella Drive · tocca per aprire'}
+              </Text>
             </Pressable>
           ))}
 
@@ -266,6 +323,34 @@ const styles = StyleSheet.create({
   chooseOff: { opacity: 0.5 },
   chooseLabel: { color: colors.text, fontSize: 15, fontWeight: '700' },
   chooseSpacer: { width: 28 },
+  tabs: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginBottom: 10,
+    padding: 3,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    gap: 4,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 11,
+    alignItems: 'center',
+  },
+  tabOn: {
+    backgroundColor: colors.accent,
+  },
+  tabLabel: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  tabLabelOn: {
+    color: colors.text,
+  },
   hint: {
     paddingHorizontal: 20,
     marginBottom: 10,
