@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { albumTrackCount } from '../../domain/library';
 import type { MainTabNavigation } from '../../navigation/types';
 import { useLibraryStore } from '../../store/libraryStore';
-import { colors } from '../../theme/colors';
+import { colors, DeepBackdrop } from '../../theme';
 import { openTrack } from '../library/openTrack';
 
 type Nav = MainTabNavigation<'Cerca'>;
@@ -54,6 +54,7 @@ export function SearchScreen() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <DeepBackdrop />
       <View style={styles.header}>
         <Text style={styles.title}>Cerca</Text>
       </View>
@@ -191,7 +192,7 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 32,
+    paddingBottom: 140,
     gap: 12,
   },
   empty: {

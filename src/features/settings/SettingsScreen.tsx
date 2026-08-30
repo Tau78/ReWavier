@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,7 +12,7 @@ import { createId } from '../../domain/library';
 import { userHasUsage, userUsages, type UsageType } from '../../domain/session';
 import type { RootStackParamList } from '../../navigation/types';
 import { useSessionStore } from '../../store/sessionStore';
-import { colors, layout } from '../../theme/colors';
+import { colors, DeepBackdrop, layout } from '../../theme';
 import { KindRow } from '../../theme/graphics';
 import { ColorSwatches, SavedBandRow } from '../auth/BandFields';
 
@@ -63,10 +63,11 @@ export function SettingsScreen() {
     setDraftColor(draftColor);
   };
 
-  const showBack = navigation.canGoBack();
+  const showBack = useRoute().name === 'Settings';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <DeepBackdrop />
       <View style={styles.header}>
         {showBack ? (
           <Pressable
@@ -320,7 +321,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   scroll: {
-    paddingBottom: 36,
+    paddingBottom: 140,
   },
   card: {
     marginHorizontal: 16,
