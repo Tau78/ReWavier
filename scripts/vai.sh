@@ -348,19 +348,28 @@ push_always() {
 
 # --- FTP ---
 
+# Prefer this app's .env.ftp / .env.local, then Eventi FTP for the public docs site.
 load_env_file "$ROOT/.env.ftp"
 load_env_file "$ROOT/.env.local"
 load_env_file "$ROOT/.env"
 
 EVENTI_ENV="${EVENTI_ENV:-$HOME/APP Eventi da GAS/musicpro-eventi-app/apps/headless/.env}"
-if [[ -z "${FTP_HOST:-}${FTP_HOST_EVENTI:-}" && -f "$EVENTI_ENV" ]]; then
+if [[ -f "$EVENTI_ENV" ]]; then
+  # Always read Eventi keys (do not inherit another project's FTP_HOST from the shell).
   load_env_file "$EVENTI_ENV"
 fi
 
-FTP_HOST="$(strip_quotes "${FTP_HOST:-${FTP_HOST_EVENTI:-}}")"
-FTP_USER="$(strip_quotes "${FTP_USER:-${FTP_USER_EVENTI:-}}")"
-FTP_PASS="$(strip_quotes "${FTP_PASS:-${FTP_PASS_EVENTI:-}}")"
-FTP_REMOTE_DIR="$(strip_quotes "${FTP_REMOTE_DIR:-ReWavier}")"
+# ReWavier docs live on eventi.musicproeventi.it/ReWavier/ — never the MusicPro hub root.
+if [[ -f "$ROOT/.env.ftp" ]]; then
+  load_env_file "$ROOT/.env.ftp"
+fi
+FTP_HOST="$(strip_quotes "${FTP_HOST_EVENTI:-${FTP_HOST:-}}")"
+FTP_USER="$(strip_quotes "${FTP_USER_EVENTI:-${FTP_USER:-}}")"
+FTP_PASS="$(strip_quotes "${FTP_PASS_EVENTI:-${FTP_PASS:-}}")"
+FTP_REMOTE_DIR="$(strip_quotes "${FTP_REMOTE_DIR:-${FTP_REMOTE_EVENTI:-ReWavier}}")"
+if [[ -z "$FTP_REMOTE_DIR" || "$FTP_REMOTE_DIR" == "." ]]; then
+  FTP_REMOTE_DIR="ReWavier"
+fi
 FTP_PUBLIC_URL="${FTP_PUBLIC_URL:-https://eventi.musicproeventi.it/ReWavier/}"
 HASH_FILE="$ROOT/.ftp-last-hash"
 
