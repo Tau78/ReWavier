@@ -7,6 +7,8 @@ const DRIVE = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
 const DRIVE_FIELDS = 'id,name,mimeType,modifiedTime,md5Checksum,size';
 
+export const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
+
 export type DriveFile = {
   id: string;
   name: string;
@@ -15,6 +17,10 @@ export type DriveFile = {
   md5Checksum?: string;
   size?: string;
 };
+
+export function isDriveFolder(file: Pick<DriveFile, 'mimeType'>): boolean {
+  return file.mimeType === DRIVE_FOLDER_MIME;
+}
 
 async function token(): Promise<string> {
   return getValidGoogleAccessToken();
@@ -127,6 +133,47 @@ export async function listFolderChildren(folderId: string): Promise<DriveFile[]>
     }
   }
   return files;
+}
+
+const TREE_MAX_NODES = 80;
+
+/** Root first. `maxDepth` 0 = only this folder’s children. */
+export async function listDriveFolderTree(
+  folderId: string,
+  folderName: string,
+  maxDepth: number,
+): Promise<{ id: string; parentId: string | null; name: string; children: DriveFile[] }[]> {
+  const nodes: { id: string; parentId: string | null; name: string; children: DriveFile[] }[] = [];
+  const queue: { id: string; parentId: string | null; name: string; depth: number }[] = [
+    { id: folderId, parentId: null, name: folderName, depth: 0 },
+  ];
+  const seen = new Set<string>();
+  while (queue.length > 0 && nodes.length < TREE_MAX_NODES) {
+    const current = queue.shift();
+    if (!current || seen.has(current.id)) {
+      continue;
+    }
+    seen.add(current.id);
+    const children = await listFolderChildren(current.id);
+    nodes.push({
+      id: current.id,
+      parentId: current.parentId,
+      name: current.name,
+      children,
+    });
+    if (current.depth >= maxDepth) {
+      continue;
+    }
+    for (const child of children.filter(isDriveFolder)) {
+      queue.push({
+        id: child.id,
+        parentId: current.id,
+        name: child.name,
+        depth: current.depth + 1,
+      });
+    }
+  }
+  return nodes;
 }
 
 export async function downloadDriveFile(fileId: string, destUri: string): Promise<string> {

@@ -33,6 +33,8 @@ import {
   findFolderByName,
   getDriveFileParentId,
   hasDriveToken,
+  isDriveFolder,
+  listDriveFolderTree,
   listFolderChildren,
   renameDriveFile,
   updateDriveFileMedia,
@@ -154,9 +156,14 @@ export async function runCloudSync(): Promise<void> {
         continue;
       }
 
-      const children = await listFolderChildren(folderId);
-      const audios = children.filter((file) => isAudioName(file.name));
-      const sidecars = children.filter((file) => isSidecarName(file.name));
+      const tree = await listDriveFolderTree(
+        folderId,
+        album.driveFolderName || album.name,
+        album.driveRecursive ? 8 : 0,
+      );
+      const children = tree[0]?.children ?? [];
+      const audios = tree.flatMap((node) => node.children.filter((file) => isAudioName(file.name)));
+      const sidecars = tree.flatMap((node) => node.children.filter((file) => isSidecarName(file.name)));
 
       for (const remote of audios) {
         const existing = store
@@ -559,14 +566,114 @@ function applyKeep(markers: Marker[], keepIds: string[]): Marker[] {
   );
 }
 
-export async function importDriveFolder(folderId: string, folderName: string): Promise<string> {
+async function importAudiosInFolder(
+  albumId: string,
+  appFolderId: string | null,
+  children: DriveFile[],
+): Promise<void> {
   const store = useLibraryStore.getState();
-  const albumId = store.createAlbum(folderName, {
-    origin: 'drive',
-    artist: 'Drive',
-    driveFolderName: folderName,
-    driveFolderId: folderId,
-  });
-  await runCloudSync();
+  const audios = children.filter((file) => isAudioName(file.name));
+  const sidecars = children.filter((file) => isSidecarName(file.name));
+
+  for (const remote of audios) {
+    const existing = store.tracks.find(
+      (track) =>
+        track.driveFileId === remote.id ||
+        (track.sourceFileName &&
+          audioBasename(track.sourceFileName).toLowerCase() === audioBasename(remote.name).toLowerCase()),
+    );
+    if (existing) {
+      if (appFolderId) {
+        store.addTrackToFolder(existing.id, appFolderId);
+      }
+      store.addTracksToAlbum(albumId, [existing.id]);
+      continue;
+    }
+
+    const id = createId('track');
+    const inboxUri = await saveAudio(remote, id, false);
+    let markers: Marker[] = [];
+    const sidecar = sidecars.find(
+      (file) => audioBasename(file.name).toLowerCase() === audioBasename(remote.name).toLowerCase(),
+    );
+    if (sidecar) {
+      const dest = new File(inboxDirectory(), `import-${sidecar.id}.json`);
+      try {
+        await downloadDriveFile(sidecar.id, dest.uri);
+        const parsed = parseSidecar(await dest.text());
+        if (parsed?.markers) {
+          markers = parsed.markers;
+        }
+      } catch {
+        // audio still imports; notes can arrive on the next sync
+      }
+      if (dest.exists) {
+        dest.delete();
+      }
+    }
+
+    const album = store.albums.find((item) => item.id === albumId);
+    store.importBundles(
+      [
+        {
+          track: {
+            id,
+            title: titleFromFileName(remote.name),
+            artist: album?.name ?? 'Drive',
+            durationMs: 0,
+            inboxUri,
+            sourceFileName: remote.name,
+            downloaded: false,
+            ...metaFrom(remote),
+          },
+          markers,
+        },
+      ],
+      { albumId, folderId: appFolderId ?? undefined },
+    );
+  }
+}
+
+export async function importDriveFolder(
+  folderId: string,
+  folderName: string,
+  options?: { recursive?: boolean; albumId?: string },
+): Promise<string> {
+  const store = useLibraryStore.getState();
+  const recursive = options?.recursive === true;
+  const albumId =
+    options?.albumId ??
+    store.createAlbum(folderName, {
+      origin: 'drive',
+      artist: 'Drive',
+      driveFolderName: folderName,
+      driveFolderId: folderId,
+      driveRecursive: recursive,
+    });
+  if (options?.albumId) {
+    store.linkAlbumDrive(albumId, folderId, folderName, { driveRecursive: recursive });
+  }
+
+  const tree = await listDriveFolderTree(folderId, folderName, recursive ? 8 : 0);
+  const driveToApp = new Map<string, string | null>();
+  const rootAppId = recursive ? store.createFolder(folderName, null, { driveFolderId: folderId }) : null;
+  driveToApp.set(folderId, rootAppId);
+
+  for (const node of tree) {
+    if (recursive) {
+      for (const child of node.children.filter(isDriveFolder)) {
+        if (driveToApp.has(child.id)) {
+          continue;
+        }
+        const parentApp = driveToApp.get(node.id) ?? rootAppId;
+        driveToApp.set(
+          child.id,
+          store.createFolder(child.name, parentApp, { driveFolderId: child.id }),
+        );
+      }
+    }
+    await importAudiosInFolder(albumId, driveToApp.get(node.id) ?? null, node.children);
+  }
+
   return albumId;
 }

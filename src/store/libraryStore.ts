@@ -54,7 +54,11 @@ export type LibraryState = {
 
 export type LibraryActions = {
   setTrackMarkers: (trackId: string, markers: Marker[]) => void;
-  createFolder: (name: string, parentId?: string | null) => string;
+  createFolder: (
+    name: string,
+    parentId?: string | null,
+    extras?: { driveFolderId?: string },
+  ) => string;
   createAlbum: (
     name: string,
     extras?: {
@@ -62,9 +66,15 @@ export type LibraryActions = {
       origin?: AlbumOrigin;
       driveFolderName?: string;
       driveFolderId?: string;
+      driveRecursive?: boolean;
     },
   ) => string;
-  linkAlbumDrive: (albumId: string, folderId: string, folderName: string) => void;
+  linkAlbumDrive: (
+    albumId: string,
+    folderId: string,
+    folderName: string,
+    extras?: { driveRecursive?: boolean },
+  ) => void;
   touchAlbumSync: (albumId: string) => void;
   updateTrackRemote: (
     trackId: string,
@@ -211,11 +221,14 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     persistSidecar(get().getTrack(trackId), markers);
   },
 
-  createFolder(name, parentId = null) {
+  createFolder(name, parentId = null, extras) {
     const id = createId('folder');
     const trimmed = name.trim() || 'Nuova cartella';
     set((state) => ({
-      folders: [...state.folders, { id, name: trimmed, parentId, trackIds: [] }],
+      folders: [
+        ...state.folders,
+        { id, name: trimmed, parentId, trackIds: [], driveFolderId: extras?.driveFolderId },
+      ],
     }));
     return id;
   },
@@ -234,17 +247,24 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           origin: extras?.origin ?? 'local',
           driveFolderName: extras?.driveFolderName,
           driveFolderId: extras?.driveFolderId,
+          driveRecursive: extras?.driveRecursive,
         },
       ],
     }));
     return id;
   },
 
-  linkAlbumDrive(albumId, folderId, folderName) {
+  linkAlbumDrive(albumId, folderId, folderName, extras) {
     set((state) => ({
       albums: state.albums.map((album) =>
         album.id === albumId
-          ? { ...album, origin: 'drive', driveFolderId: folderId, driveFolderName: folderName }
+          ? {
+              ...album,
+              origin: 'drive',
+              driveFolderId: folderId,
+              driveFolderName: folderName,
+              driveRecursive: extras?.driveRecursive ?? album.driveRecursive,
+            }
           : album,
       ),
     }));

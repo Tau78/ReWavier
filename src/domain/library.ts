@@ -7,6 +7,7 @@ export type Folder = {
   name: string;
   parentId: string | null;
   trackIds: string[];
+  driveFolderId?: string;
 };
 
 export type AlbumOrigin = 'local' | 'drive';
@@ -24,6 +25,8 @@ export type Album = {
   origin?: AlbumOrigin;
   driveFolderName?: string;
   driveFolderId?: string;
+  /** When true, sync also walks Drive subfolders and keeps the same tree in the app. */
+  driveRecursive?: boolean;
   lastSyncedAt?: number;
   orderUpdatedAt?: number;
   shared?: boolean;
