@@ -1,15 +1,17 @@
-import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useCallback, useMemo, useState } from 'react';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { runCloudSync } from '../../cloud/syncEngine';
 import { isDownloaded } from '../../domain/audioFormats';
 import type { Album, CollectionKind } from '../../domain/library';
 import type { Track } from '../../domain/models';
 import type { RootStackParamList } from '../../navigation/types';
 import { useLibraryStore } from '../../store/libraryStore';
 import { usePlayerStore } from '../../store/playerStore';
+import { useSyncStore } from '../../store/syncStore';
 import { colors, layout } from '../../theme/colors';
 import { EmptyGraphic, KindRow } from '../../theme/graphics';
 import { CollectionMarkers } from './CollectionMarkers';
@@ -89,6 +91,30 @@ export function CollectionScreen() {
   const [dragging, setDragging] = useState(false);
   const canReorder = kind !== 'smart';
   const album = kind === 'album' ? albums.find((item) => item.id === id) : undefined;
+  const isDriveAlbum = album?.origin === 'drive';
+  const syncStatus = useSyncStore((s) => s.status);
+  const syncMessage = useSyncStore((s) => s.message);
+  const [pulling, setPulling] = useState(false);
+  const refreshFromDrive = useCallback(async () => {
+    if (!isDriveAlbum) {
+      return;
+    }
+    try {
+      await runCloudSync();
+    } catch (error) {
+      Alert.alert(
+        'Drive',
+        error instanceof Error ? error.message : 'Non riesco a ricontrollare la cartella.',
+      );
+    }
+  }, [isDriveAlbum]);
+  useFocusEffect(
+    useCallback(() => {
+      if (isDriveAlbum) {
+        void refreshFromDrive();
+      }
+    }, [isDriveAlbum, refreshFromDrive]),
+  );
   const listItems = useMemo<ListItem[]>(
     () =>
       album
@@ -163,6 +189,10 @@ export function CollectionScreen() {
           <View style={styles.headerButtons}>
             <Pressable
               onPress={() => {
+                if (tracks.length > 0 && tracks.every((track) => isDownloaded(track))) {
+                  Alert.alert('Sul telefono', 'Tutti i brani di questo album sono già qui.');
+                  return;
+                }
                 void useLibraryStore
                   .getState()
                   .downloadAlbum(id)
@@ -175,7 +205,13 @@ export function CollectionScreen() {
               }}
               style={({ pressed }) => [styles.plus, pressed && styles.plusPressed]}
               accessibilityRole="button"
-              accessibilityLabel="Scarica album"
+              accessibilityLabel={
+                tracks.some((track) => downloadingIds[track.id] != null)
+                  ? 'Download in corso'
+                  : tracks.length > 0 && tracks.every((track) => isDownloaded(track))
+                    ? 'Album già sul telefono'
+                    : 'Scarica album'
+              }
             >
               <Text
                 style={[
@@ -227,6 +263,19 @@ export function CollectionScreen() {
         scrollEnabled={!dragging}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        refreshControl={
+          isDriveAlbum ? (
+            <RefreshControl
+              refreshing={pulling}
+              onRefresh={() => {
+                setPulling(true);
+                void refreshFromDrive().finally(() => setPulling(false));
+              }}
+              tintColor={colors.accent}
+              colors={[colors.accent]}
+            />
+          ) : undefined
+        }
       >
         {album ? (
           <>
@@ -244,6 +293,15 @@ export function CollectionScreen() {
           <CollectionMarkers tracks={tracks} markersByTrackId={markersByTrackId} />
         ) : null}
         {album ? <Text style={styles.sectionLabel}>Tracce</Text> : null}
+        {isDriveAlbum ? (
+          <Text style={[styles.hint, styles.hintInScroll]}>
+            {syncStatus === 'syncing'
+              ? 'Cerco i brani nuovi nella cartella Drive…'
+              : syncMessage?.startsWith('Album aggiornato')
+                ? syncMessage
+                : 'Trascina in basso per cercare i brani nuovi nella cartella Drive.'}
+          </Text>
+        ) : null}
         {canReorder && listItems.length > 1 ? (
           <Text style={[styles.hint, album && styles.hintInScroll]}>
             {album

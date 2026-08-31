@@ -8,11 +8,13 @@ import type { Track } from '../../domain/models';
 import { userHasUsage } from '../../domain/session';
 import { ensurePeaks } from '../../audio/extractPeaks';
 import { hasDriveToken } from '../../cloud/driveApi';
+import { runCloudSync } from '../../cloud/syncEngine';
 import { pickAndSaveAlbumArtwork, pickAndSaveArtwork } from '../../files/albumArtwork';
 import { pickAndImportAudio, shareSidecar } from '../../files/libraryFiles';
 import type { RootStackParamList } from '../../navigation/types';
 import { useLibraryStore } from '../../store/libraryStore';
 import { useSessionStore } from '../../store/sessionStore';
+import { useSyncStore } from '../../store/syncStore';
 import { ActionMenu, type ActionItem } from './ActionMenu';
 import { DeleteTrackModal } from './DeleteTrackModal';
 import { MovePicker } from './MovePicker';
@@ -287,6 +289,31 @@ export function useLibraryActions(
       label: 'Collega cartella Drive',
       onPress: () => navigation.navigate('DriveFolder', { albumId }),
     },
+    ...(useLibraryStore.getState().albums.find((item) => item.id === albumId)?.origin === 'drive'
+      ? [
+          {
+            label: 'Cerca brani nuovi',
+            onPress: () => {
+              void runCloudSync()
+                .then(() => {
+                  const message = useSyncStore.getState().message;
+                  Alert.alert(
+                    'Drive',
+                    message?.startsWith('Album aggiornato')
+                      ? message
+                      : 'Nessun brano nuovo. I file in cartella sono già in questo album.',
+                  );
+                })
+                .catch((error: unknown) => {
+                  Alert.alert(
+                    'Drive',
+                    error instanceof Error ? error.message : 'Non riesco a ricontrollare la cartella.',
+                  );
+                });
+            },
+          } satisfies ActionItem,
+        ]
+      : []),
     {
       label: 'Scarica album',
       onPress: () => {

@@ -264,8 +264,9 @@ export function SettingsScreen() {
         <View style={styles.card}>
           <Text style={styles.rowLabel}>Album della band</Text>
           <Text style={styles.rowValue}>
-            Un album collegato a una cartella Drive della band si aggiorna da solo. Tocca ↓ per
-            tenerlo anche sul telefono.
+            Un album collegato a una cartella Drive della band si aggiorna quando apri l’album o
+            torni nell’app. Trascina in basso per ricontrollare ora. Tocca ↓ per tenerlo anche sul
+            telefono.
           </Text>
         </View>
         <Pressable onPress={() => navigation.navigate('Privacy')} style={styles.card}>
