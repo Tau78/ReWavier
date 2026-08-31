@@ -7,11 +7,14 @@ import { fileExists, removeUri } from './downloads';
 import { persistLibraryUri } from './libraryUris';
 import { libraryDirectory } from './libraryPaths';
 
+import { isImageName } from '../domain/driveMedia';
+
 const IMAGE_PICKER_TYPES = [
   'image/*',
   'public.image',
   'image/jpeg',
   'image/png',
+  'image/gif',
   'image/heic',
   'image/webp',
 ];
@@ -43,11 +46,24 @@ function extensionFor(name: string, mimeType?: string): string {
   if (mimeType === 'image/heic' || mimeType === 'image/heif') {
     return 'heic';
   }
+  if (mimeType === 'image/gif') {
+    return 'gif';
+  }
   return 'jpg';
 }
 
-export function isImageName(fileName: string): boolean {
-  return IMAGE_NAME.test(fileName);
+export { isImageName } from '../domain/driveMedia';
+
+export async function saveArtworkFromUri(
+  ownerId: string,
+  sourceUri: string,
+  fileName: string,
+  mimeType?: string,
+): Promise<string> {
+  const ext = extensionFor(fileName, mimeType);
+  const dest = new File(artworkDirectory(), `${ownerId}-${createId('art')}.${ext}`);
+  await LegacyFS.copyAsync({ from: sourceUri, to: dest.uri });
+  return persistLibraryUri(dest.uri) ?? dest.uri;
 }
 
 export async function pickAndSaveArtwork(ownerId: string): Promise<string | null> {

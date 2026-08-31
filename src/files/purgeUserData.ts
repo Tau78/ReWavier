@@ -36,6 +36,12 @@ export async function purgeUserLibraryData(userId: string): Promise<void> {
         await removeUri(track.inboxUri);
         await removeUri(track.artworkUri);
       }
+      for (const album of snapshot.albums ?? []) {
+        await removeUri(album.artworkUri);
+        for (const document of album.documents ?? []) {
+          await removeUri(document.fileUri);
+        }
+      }
     } catch {
       // Still remove folders below.
     }

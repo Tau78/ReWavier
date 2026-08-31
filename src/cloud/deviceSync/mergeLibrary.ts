@@ -1,4 +1,4 @@
-import type { Album, Folder, Playlist, SmartPlaylist } from '../../domain/library';
+import type { Album, AlbumDocument, Folder, Playlist, SmartPlaylist } from '../../domain/library';
 import { mergeMarkers } from '../mergeNotes';
 import type { Marker, Track } from '../../domain/models';
 import type { LibrarySnapshot } from '../../files/libraryPersist';
@@ -71,6 +71,35 @@ function mergeFolders(local: Folder[], remote: Folder[], idRemap: Map<string, st
   return [...byId.values()];
 }
 
+function documentKey(document: AlbumDocument): string {
+  return document.driveFileId || document.id;
+}
+
+function mergeDocuments(
+  local?: AlbumDocument[],
+  remote?: AlbumDocument[],
+): AlbumDocument[] | undefined {
+  const byKey = new Map<string, AlbumDocument>();
+  for (const document of local ?? []) {
+    byKey.set(documentKey(document), document);
+  }
+  for (const incoming of remote ?? []) {
+    const key = documentKey(incoming);
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, incoming);
+      continue;
+    }
+    byKey.set(key, {
+      ...incoming,
+      id: existing.id,
+      fileUri: existing.fileUri || incoming.fileUri,
+    });
+  }
+  const list = [...byKey.values()];
+  return list.length > 0 ? list : undefined;
+}
+
 function mergeAlbums(local: Album[], remote: Album[], idRemap: Map<string, string>): Album[] {
   const byId = new Map(local.map((album) => [album.id, album]));
   for (const incoming of remote) {
@@ -94,6 +123,7 @@ function mergeAlbums(local: Album[], remote: Album[], idRemap: Map<string, strin
       trackIds,
       notes: existing.notes || incoming.notes,
       artworkUri: existing.artworkUri || incoming.artworkUri,
+      documents: mergeDocuments(existing.documents, incoming.documents),
       driveFolderId: existing.driveFolderId || incoming.driveFolderId,
       driveFolderName: existing.driveFolderName || incoming.driveFolderName,
     });

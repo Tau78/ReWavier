@@ -10,6 +10,7 @@ import {
   mergeAlbumOrderFromCloud,
   trackMatchesSmart,
   type Album,
+  type AlbumDocument,
   type AlbumOrigin,
   type CollectionKind,
   type Folder,
@@ -87,6 +88,8 @@ export type LibraryActions = {
   moveFolder: (id: string, parentId: string | null) => void;
   renameAlbum: (id: string, name: string) => void;
   setAlbumArtwork: (id: string, artworkUri?: string) => void;
+  upsertAlbumDocument: (albumId: string, document: AlbumDocument) => void;
+  deleteAlbumDocument: (albumId: string, documentId: string) => void;
   setAlbumNotes: (id: string, notes: string) => void;
   addAlbumSeparator: (albumId: string, name: string) => string;
   renameAlbumSeparator: (albumId: string, separatorId: string, name: string) => void;
@@ -381,6 +384,47 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     }));
   },
 
+  upsertAlbumDocument(albumId, document) {
+    set((state) => ({
+      albums: state.albums.map((album) => {
+        if (album.id !== albumId) {
+          return album;
+        }
+        const current = album.documents ?? [];
+        const index = current.findIndex(
+          (item) =>
+            item.id === document.id ||
+            (document.driveFileId && item.driveFileId === document.driveFileId),
+        );
+        if (index < 0) {
+          return { ...album, documents: [...current, document] };
+        }
+        const previous = current[index];
+        if (previous && previous.fileUri !== document.fileUri) {
+          void removeUri(previous.fileUri);
+        }
+        const next = [...current];
+        next[index] = { ...previous, ...document };
+        return { ...album, documents: next };
+      }),
+    }));
+  },
+
+  deleteAlbumDocument(albumId, documentId) {
+    const album = get().albums.find((item) => item.id === albumId);
+    const document = album?.documents?.find((item) => item.id === documentId);
+    if (document) {
+      void removeUri(document.fileUri);
+    }
+    set((state) => ({
+      albums: state.albums.map((item) =>
+        item.id === albumId
+          ? { ...item, documents: (item.documents ?? []).filter((doc) => doc.id !== documentId) }
+          : item,
+      ),
+    }));
+  },
+
   setAlbumNotes(id, notes) {
     set((state) => ({
       albums: state.albums.map((album) =>
@@ -442,10 +486,13 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   deleteAlbum(id) {
-    const artworkUri = get().albums.find((album) => album.id === id)?.artworkUri;
-    void removeUri(artworkUri);
+    const album = get().albums.find((item) => item.id === id);
+    void removeUri(album?.artworkUri);
+    for (const document of album?.documents ?? []) {
+      void removeUri(document.fileUri);
+    }
     set((state) => ({
-      albums: state.albums.filter((album) => album.id !== id),
+      albums: state.albums.filter((item) => item.id !== id),
     }));
   },
 

@@ -108,6 +108,12 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
         separators: separators.length > 0 ? separators : undefined,
         artworkUri: persistAndKeep(album.artworkUri),
         notes: album.notes?.trim() ? album.notes : undefined,
+        documents: (album.documents ?? [])
+          .map((document) => {
+            const fileUri = persistAndKeep(document.fileUri);
+            return fileUri ? { ...document, fileUri } : null;
+          })
+          .filter((document): document is NonNullable<typeof document> => document != null),
       };
     }),
     playlists: snapshot.playlists.map((playlist) => ({

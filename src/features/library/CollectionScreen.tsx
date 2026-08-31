@@ -14,6 +14,7 @@ import { colors, layout } from '../../theme/colors';
 import { EmptyGraphic, KindRow } from '../../theme/graphics';
 import { CollectionMarkers } from './CollectionMarkers';
 import { AlbumHero } from './AlbumHero';
+import { AlbumDocuments } from './AlbumDocuments';
 import { AlbumNotes } from './AlbumNotes';
 import { AlbumSeparatorRow, SEPARATOR_ROW_HEIGHT } from './AlbumSeparatorRow';
 import { CollectionPlayer } from './CollectionPlayer';
@@ -236,6 +237,7 @@ export function CollectionScreen() {
               onPlay={playAlbum}
             />
             <AlbumNotes albumId={album.id} notes={album.notes} />
+            <AlbumDocuments documents={album.documents ?? []} />
           </>
         ) : null}
         {kind === 'album' || kind === 'folder' ? (

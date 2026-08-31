@@ -9,6 +9,11 @@ import {
   sortTracksByOrder,
 } from '../domain/albumOrder';
 import { isAudioName, playableUri } from '../domain/audioFormats';
+import {
+  findAlbumCoverFile,
+  findTrackCoverFile,
+  isPdfName,
+} from '../domain/driveMedia';
 import { createId } from '../domain/library';
 import type { Marker, Track } from '../domain/models';
 import { userHasUsage } from '../domain/session';
@@ -20,10 +25,12 @@ import {
   sidecarNameForAudio,
   titleFromFileName,
 } from '../domain/sidecar';
+import { saveArtworkFromUri } from '../files/albumArtwork';
+import { saveDocumentFromUri } from '../files/albumDocuments';
 import { copyToDownloads, inboxDirectory } from '../files/downloads';
 import { writeSidecarToLibrary } from '../files/libraryFiles';
 import { useLibraryStore } from '../store/libraryStore';
-import { usePlayerStore } from '../store/playerStore';
+import { refreshPlayingArtwork, usePlayerStore } from '../store/playerStore';
 import { useSessionStore } from '../store/sessionStore';
 import { isSyncInFlight, SYNC_STALE_MS, useSyncStore } from '../store/syncStore';
 import { runDeviceSync } from './deviceSync/runDeviceSync';
@@ -331,6 +338,8 @@ export async function runCloudSync(): Promise<void> {
         }
       }
 
+      await applyDriveMediaTree(album.id, tree);
+
       const orderRemote = children.find((file) => isOrderManifestName(file.name));
       if (orderRemote) {
         const dest = new File(inboxDirectory(), `sync-order-${album.id}.json`);
@@ -604,6 +613,153 @@ function applyKeep(markers: Marker[], keepIds: string[]): Marker[] {
   );
 }
 
+function safeRemoteName(name: string): string {
+  return name.replace(/[/\\?%*:|"<>]/g, '-');
+}
+
+async function downloadDriveTemp(remote: DriveFile, prefix: string): Promise<string | null> {
+  const dest = new File(inboxDirectory(), `${prefix}-${remote.id}-${safeRemoteName(remote.name)}`);
+  try {
+    await downloadDriveFile(remote.id, dest.uri);
+    return dest.uri;
+  } catch {
+    if (dest.exists) {
+      dest.delete();
+    }
+    return null;
+  }
+}
+
+async function applyTrackCover(
+  trackId: string,
+  audioName: string,
+  children: DriveFile[],
+): Promise<void> {
+  const cover = findTrackCoverFile(audioName, children);
+  if (!cover) {
+    return;
+  }
+  const temp = await downloadDriveTemp(cover, 'art');
+  if (!temp) {
+    return;
+  }
+  try {
+    const uri = await saveArtworkFromUri(trackId, temp, cover.name, cover.mimeType);
+    useLibraryStore.getState().setTrackArtwork(trackId, uri);
+    refreshPlayingArtwork(trackId);
+  } finally {
+    const file = new File(temp);
+    if (file.exists) {
+      file.delete();
+    }
+  }
+}
+
+async function applyAlbumCoverFromFiles(albumId: string, children: DriveFile[]): Promise<void> {
+  const cover = findAlbumCoverFile(children);
+  if (!cover) {
+    return;
+  }
+  const temp = await downloadDriveTemp(cover, 'cover');
+  if (!temp) {
+    return;
+  }
+  try {
+    const uri = await saveArtworkFromUri(albumId, temp, cover.name, cover.mimeType);
+    useLibraryStore.getState().setAlbumArtwork(albumId, uri);
+  } finally {
+    const file = new File(temp);
+    if (file.exists) {
+      file.delete();
+    }
+  }
+}
+
+function albumDocumentUnchanged(
+  existing:
+    | { remoteHash?: string; remoteModifiedAt?: string }
+    | undefined,
+  remote: DriveFile,
+): boolean {
+  if (!existing) {
+    return false;
+  }
+  if (remote.md5Checksum && existing.remoteHash) {
+    return existing.remoteHash === remote.md5Checksum;
+  }
+  if (remote.modifiedTime && existing.remoteModifiedAt) {
+    return existing.remoteModifiedAt === remote.modifiedTime;
+  }
+  return false;
+}
+
+async function applyPdfsFromFiles(
+  albumId: string,
+  children: DriveFile[],
+  folderPath?: string,
+): Promise<void> {
+  for (const pdf of children.filter((file) => isPdfName(file.name))) {
+    const album = useLibraryStore.getState().albums.find((item) => item.id === albumId);
+    const existing = album?.documents?.find((item) => item.driveFileId === pdf.id);
+    if (albumDocumentUnchanged(existing, pdf)) {
+      if (existing && existing.folderPath !== folderPath) {
+        useLibraryStore.getState().upsertAlbumDocument(albumId, { ...existing, folderPath });
+      }
+      continue;
+    }
+    const temp = await downloadDriveTemp(pdf, 'pdf');
+    if (!temp) {
+      continue;
+    }
+    try {
+      const fileUri = await saveDocumentFromUri(albumId, temp, pdf.name);
+      useLibraryStore.getState().upsertAlbumDocument(albumId, {
+        id: existing?.id ?? createId('doc'),
+        name: pdf.name,
+        fileUri,
+        folderPath,
+        driveFileId: pdf.id,
+        remoteModifiedAt: pdf.modifiedTime,
+        remoteHash: pdf.md5Checksum,
+      });
+    } finally {
+      const file = new File(temp);
+      if (file.exists) {
+        file.delete();
+      }
+    }
+  }
+}
+
+async function applyDriveMediaTree(
+  albumId: string,
+  tree: { id: string; parentId: string | null; name: string; children: DriveFile[] }[],
+): Promise<void> {
+  const root = tree[0];
+  if (root) {
+    await applyAlbumCoverFromFiles(albumId, root.children);
+  }
+  const tracks = useLibraryStore.getState().tracksIn('album', albumId);
+  const keepPdfIds = new Set<string>();
+  for (const node of tree) {
+    const folderPath = node.parentId ? node.name : undefined;
+    for (const pdf of node.children.filter((file) => isPdfName(file.name))) {
+      keepPdfIds.add(pdf.id);
+    }
+    await applyPdfsFromFiles(albumId, node.children, folderPath);
+    for (const track of tracks) {
+      const audioName = track.sourceFileName ?? `${track.title}.m4a`;
+      await applyTrackCover(track.id, audioName, node.children);
+    }
+  }
+  const album = useLibraryStore.getState().albums.find((item) => item.id === albumId);
+  for (const document of album?.documents ?? []) {
+    if (document.driveFileId && !keepPdfIds.has(document.driveFileId)) {
+      useLibraryStore.getState().deleteAlbumDocument(albumId, document.id);
+    }
+  }
+}
+
 async function importAudiosInFolder(
   albumId: string,
   appFolderId: string | null,
@@ -712,6 +868,8 @@ export async function importDriveFolder(
     }
     await importAudiosInFolder(albumId, driveToApp.get(node.id) ?? null, node.children);
   }
+
+  await applyDriveMediaTree(albumId, tree);
 
   return albumId;
 }

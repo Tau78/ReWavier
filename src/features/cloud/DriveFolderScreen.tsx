@@ -14,6 +14,7 @@ import {
 } from '../../cloud/driveApi';
 import { importDriveFolder } from '../../cloud/syncEngine';
 import { isAudioName } from '../../domain/audioFormats';
+import { findTrackCoverFile, isAlbumCoverName, isImageName, isPdfName } from '../../domain/driveMedia';
 import type { RootStackParamList } from '../../navigation/types';
 import { colors, layout } from '../../theme/colors';
 import { EmptyGraphic, KindRow } from '../../theme/graphics';
@@ -55,6 +56,20 @@ export function DriveFolderScreen() {
   const current = stack[stack.length - 1];
   const subfolders = children.filter(isDriveFolder);
   const audios = children.filter((file) => isAudioName(file.name));
+  const extras = children.filter((file) => isImageName(file.name) || isPdfName(file.name));
+
+  const extraLabel = (file: DriveFile): string => {
+    if (isPdfName(file.name)) {
+      return 'Documento PDF';
+    }
+    if (isAlbumCoverName(file.name)) {
+      return 'Copertina album';
+    }
+    if (audios.some((audio) => findTrackCoverFile(audio.name, [file]))) {
+      return 'Copertina brano';
+    }
+    return 'Immagine';
+  };
 
   const loadSearch = (needle?: string, which: PickerTab = tab) => {
     setBusy(true);
@@ -223,7 +238,7 @@ export function DriveFolderScreen() {
       )}
       <Text style={styles.hint}>
         {browsing
-          ? 'Apri una cartella dentro, oppure tocca Scegli per caricare i brani in ReWavier.'
+          ? 'Tocca Scegli per portare i brani. Una foto con lo stesso nome del brano ne è la copertina (anche GIF). cover.jpg è la copertina dell’album. I PDF finiscono in Documenti.'
           : tab === 'shared'
             ? 'Qui ci sono i Drive della band o della scuola, e le cartelle che ti hanno condiviso. Aprine una, poi tocca Scegli.'
             : 'Cartelle sul tuo Drive. Aprine una per vedere cosa c’è dentro, poi tocca Scegli.'}
@@ -241,7 +256,7 @@ export function DriveFolderScreen() {
       )}
       {busy ? <ActivityIndicator color={colors.accent} style={styles.spinner} /> : null}
       {working ? (
-        <Text style={styles.working}>Carico i brani da Drive…</Text>
+        <Text style={styles.working}>Carico brani, copertine e documenti da Drive…</Text>
       ) : null}
       {busy ? null : (
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
@@ -255,7 +270,7 @@ export function DriveFolderScreen() {
               </Text>
             </View>
           ) : null}
-          {browsing && subfolders.length === 0 && audios.length === 0 ? (
+          {browsing && subfolders.length === 0 && audios.length === 0 && extras.length === 0 ? (
             <View style={styles.emptyBox}>
               <EmptyGraphic />
               <Text style={styles.empty}>Questa cartella è vuota. Tocca Scegli se è quella giusta, o torna indietro.</Text>
@@ -291,6 +306,16 @@ export function DriveFolderScreen() {
                     {file.name}
                   </Text>
                   <Text style={styles.rowMeta}>Audio</Text>
+                </View>
+              ))
+            : null}
+          {browsing
+            ? extras.map((file) => (
+                <View key={file.id} style={styles.fileRow}>
+                  <Text style={styles.rowTitle} numberOfLines={1}>
+                    {file.name}
+                  </Text>
+                  <Text style={styles.rowMeta}>{extraLabel(file)}</Text>
                 </View>
               ))
             : null}

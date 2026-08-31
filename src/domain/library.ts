@@ -17,6 +17,16 @@ export type AlbumSeparator = {
   name: string;
 };
 
+export type AlbumDocument = {
+  id: string;
+  name: string;
+  fileUri: string;
+  folderPath?: string;
+  driveFileId?: string;
+  remoteModifiedAt?: string;
+  remoteHash?: string;
+};
+
 export type Album = {
   id: string;
   name: string;
@@ -33,6 +43,7 @@ export type Album = {
   artworkUri?: string;
   notes?: string;
   separators?: AlbumSeparator[];
+  documents?: AlbumDocument[];
 };
 
 export function isSeparatorId(id: string): boolean {
