@@ -118,7 +118,20 @@ async function saveAudio(remote: DriveFile, trackId: string, _downloaded: boolea
   return stored;
 }
 
-export async function runCloudSync(): Promise<void> {
+let cloudSyncJob: Promise<void> | null = null;
+
+/** One Drive pass at a time. A second caller waits for the one already running. */
+export function runCloudSync(): Promise<void> {
+  if (cloudSyncJob) {
+    return cloudSyncJob;
+  }
+  cloudSyncJob = runCloudSyncBody().finally(() => {
+    cloudSyncJob = null;
+  });
+  return cloudSyncJob;
+}
+
+async function runCloudSyncBody(): Promise<void> {
   const sync = useSyncStore.getState();
   if (isSyncInFlight(sync)) {
     return;
