@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { runGoogleDriveConnect, useGoogleDriveConnect } from '../../auth/useGoogleSignIn';
 import { BAND_COLORS } from '../../domain/bandColors';
 import { createId } from '../../domain/library';
 import type { UsageType, UserBand } from '../../domain/session';
@@ -33,6 +34,7 @@ export function OnboardingScreen() {
   const [draftColor, setDraftColor] = useState<string>(BAND_COLORS[0]);
   const [editable, setEditable] = useState(false);
 
+  const googleDrive = useGoogleDriveConnect();
   const driveOk = user?.driveConnected === true && user.driveLink != null;
   const wantsBand = usageTypes.includes('band');
   const canAdvance = usageTypes.length > 0;
@@ -74,6 +76,19 @@ export function OnboardingScreen() {
       'Drive collegato da File',
       'In Libreria, apri un album e collega la cartella Drive. I brani arrivano da lì; sul telefono restano anche nella cartella ReWavier.',
     );
+  };
+
+  const onGoogleDrive = () => {
+    void (async () => {
+      try {
+        const linked = await runGoogleDriveConnect(googleDrive);
+        if (linked) {
+          Alert.alert('Drive', 'Google Drive è collegato. In Libreria scegli la cartella.');
+        }
+      } catch (error) {
+        Alert.alert('Drive', error instanceof Error ? error.message : 'Riprova');
+      }
+    })();
   };
 
   const finish = (includeBand: boolean) => {
@@ -173,17 +188,20 @@ export function OnboardingScreen() {
 
             <View style={styles.block}>
               <Text style={styles.blockTitle}>Drive</Text>
-              {user?.provider === 'google' || (driveOk && user?.driveLink === 'google') ? (
-                <Text style={styles.ok}>Già collegato col login Google</Text>
+              {driveOk && user?.driveLink === 'google' ? (
+                <Text style={styles.ok}>Google Drive è collegato</Text>
               ) : driveOk ? (
                 <Text style={styles.ok}>Collegato · File</Text>
               ) : (
                 <>
                   <Text style={styles.blockBody}>
-                    Sei entrato senza Google. Puoi collegare Drive da File, oppure tornare al login
-                    e usare Continua con Google.
+                    Se vuoi i brani da Drive, collegalo ora. Altrimenti puoi farlo dopo dalla
+                    libreria.
                   </Text>
-                  <Pressable onPress={onFilesDrive} style={styles.google}>
+                  <Pressable onPress={onGoogleDrive} style={styles.google}>
+                    <Text style={styles.googleLabel}>Collega Google Drive</Text>
+                  </Pressable>
+                  <Pressable onPress={onFilesDrive} style={styles.googleLater}>
                     <Text style={styles.googleLabel}>Collega da File</Text>
                   </Pressable>
                 </>
@@ -339,6 +357,13 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingVertical: 13,
     alignItems: 'center',
+  },
+  googleLater: {
+    backgroundColor: colors.accent,
+    borderRadius: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginTop: 10,
   },
   googleLabel: {
     color: colors.text,

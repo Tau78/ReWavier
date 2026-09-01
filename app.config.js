@@ -28,6 +28,13 @@ const webClientId = isGoogleClientId(
 )
   ? process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || appJson.expo.extra?.googleWebClientId
   : '';
+const androidClientId = isGoogleClientId(
+  process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
+    appJson.expo.extra?.googleAndroidClientId ||
+    '',
+)
+  ? process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || appJson.expo.extra?.googleAndroidClientId
+  : '';
 const storeScheme = reversedGoogleScheme(iosClientId);
 const expoScheme = reversedGoogleScheme(expoIosClientId);
 const urlSchemes = ['rewavier'];
@@ -45,6 +52,7 @@ module.exports = {
       ...appJson.expo.extra,
       googleIosClientId: iosClientId,
       googleExpoIosClientId: expoIosClientId,
+      googleAndroidClientId: androidClientId,
       googleWebClientId: webClientId,
       iosBuildNumber: appJson.expo.ios?.buildNumber ?? '',
     },

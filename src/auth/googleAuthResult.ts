@@ -17,11 +17,20 @@ export type GoogleExchangeExtras = {
   codeVerifier?: string;
 };
 
-export const GOOGLE_OAUTH_EXTRA_PARAMS = {
+/** Login only: no Drive scopes, so Google does not show “app not verified / unsafe”. */
+export const GOOGLE_IDENTITY_EXTRA_PARAMS = {
+  prompt: 'select_account',
+} as const;
+
+/** Drive connect: refresh token + folder access. Incremental after identity login. */
+export const GOOGLE_DRIVE_EXTRA_PARAMS = {
   access_type: 'offline',
   prompt: 'consent select_account',
   include_granted_scopes: 'true',
 } as const;
+
+/** @deprecated Use GOOGLE_DRIVE_EXTRA_PARAMS. Kept so older imports keep compiling. */
+export const GOOGLE_OAUTH_EXTRA_PARAMS = GOOGLE_DRIVE_EXTRA_PARAMS;
 
 export function googleAccessTokenFromResult(result: GoogleAuthPayload): string | undefined {
   return result.authentication?.accessToken || result.params.access_token || undefined;

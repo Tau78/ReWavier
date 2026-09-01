@@ -1,0 +1,1 @@
+Google sign-in no longer asks for Drive on first login, so you will not see the “app isn’t safe” warning. Connect Drive later from the library if you want folders in sync. This build also fixes the Android splash screen.

@@ -24,10 +24,13 @@ gcloud services enable \
   --project="$PROJECT_ID"
 
 echo
-echo "Apro la console per i due client OAuth (30 secondi):"
+echo "Apro la console per i client OAuth (30 secondi):"
 echo "1) Crea client iOS  → Bundle ID: $BUNDLE_ID"
 echo "2) Crea client Web  → URI di reindirizzamento: rewavier://oauth"
+echo "3) Crea client Android → package $BUNDLE_ID + impronta SHA-1 della firma Play/EAS"
+echo "4) Schermata consenso: pubblica in Produzione, nome ReWavier,"
+echo "   privacy https://eventi.musicproeventi.it/ReWavier/Privacy.html"
 echo
 open "https://console.cloud.google.com/apis/credentials?project=${PROJECT_ID}"
-echo "Quando hai i due ID (…apps.googleusercontent.com), incollali in .env.local"
+echo "Quando hai gli ID (…apps.googleusercontent.com), incollali in .env.local"
 echo "e riavvia Expo."
