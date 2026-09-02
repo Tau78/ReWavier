@@ -3,6 +3,7 @@ import * as LegacyFS from 'expo-file-system/legacy';
 
 import { isDownloaded } from '../domain/audioFormats';
 import type { Track } from '../domain/models';
+import { safeDisplayFileName } from './fileNames';
 import { audioRelativePrefix } from './libraryOwner';
 import { audioDirectory, downloadsDirectory, ensureAudioDirectory, inboxDirectory } from './libraryPaths';
 import {
@@ -15,12 +16,8 @@ import {
 
 export { audioDirectory, downloadsDirectory, ensureInboxDirectory, inboxDirectory } from './libraryPaths';
 
-function safeFileName(name: string): string {
-  return name.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'traccia.m4a';
-}
-
 export function uniqueAudioFileName(fileName: string): string {
-  const safe = safeFileName(fileName);
+  const safe = safeDisplayFileName(fileName);
   const dir = audioDirectory();
   if (!new File(dir, safe).exists) {
     return safe;
@@ -57,7 +54,18 @@ export async function copyToDownloads(
   if (from === dest.uri) {
     return persistLibraryUri(dest.uri) ?? `${audioRelativePrefix()}/${name}`;
   }
-  await LegacyFS.copyAsync({ from, to: dest.uri });
+  try {
+    const source = new File(from);
+    if (!source.exists) {
+      throw new Error('missing');
+    }
+    if (dest.exists) {
+      dest.delete();
+    }
+    source.copy(dest);
+  } catch {
+    throw new Error('Questo brano non è arrivato sul telefono. Riprova.');
+  }
   return persistLibraryUri(dest.uri) ?? `${audioRelativePrefix()}/${name}`;
 }
 

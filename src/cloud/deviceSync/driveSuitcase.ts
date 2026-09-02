@@ -1,10 +1,10 @@
 import { File } from 'expo-file-system';
-import * as LegacyFS from 'expo-file-system/legacy';
 
 import { shouldSkipCloudSync } from '../../auth/demoAccount';
 import { getActiveLibraryOwner } from '../../files/libraryOwner';
 import { useSessionStore } from '../../store/sessionStore';
 import { inboxDirectory } from '../../files/downloads';
+import { safeTempFileName } from '../../files/fileNames';
 import { loadDeviceSyncPrefs, saveDeviceSyncPrefs } from '../../files/deviceSyncPersist';
 import { audioDirectory } from '../../files/libraryPaths';
 import {
@@ -84,9 +84,13 @@ async function pullFile(remote: DriveFile): Promise<void> {
   if (dest.exists && dest.size != null && remote.size && Number(remote.size) === dest.size) {
     return;
   }
-  const tmp = new File(inboxDirectory(), `bag-${remote.id}-${remote.name.replace(/[/\\?%*:|"<>]/g, '-')}`);
+  const tmp = new File(inboxDirectory(), safeTempFileName('bag', remote.id, remote.name));
   const uri = await downloadDriveFile(remote.id, tmp.uri);
-  await LegacyFS.copyAsync({ from: uri, to: dest.uri });
+  const source = new File(uri);
+  if (dest.exists) {
+    dest.delete();
+  }
+  source.copy(dest);
   try {
     tmp.delete();
   } catch {

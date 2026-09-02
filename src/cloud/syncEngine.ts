@@ -28,6 +28,7 @@ import {
 import { saveArtworkFromUri } from '../files/albumArtwork';
 import { saveDocumentFromUri } from '../files/albumDocuments';
 import { copyToDownloads, inboxDirectory } from '../files/downloads';
+import { safeTempFileName } from '../files/fileNames';
 import { writeSidecarToLibrary } from '../files/libraryFiles';
 import { useLibraryStore } from '../store/libraryStore';
 import { refreshPlayingArtwork, usePlayerStore } from '../store/playerStore';
@@ -107,7 +108,7 @@ function metaFrom(remote: DriveFile): Pick<Track, 'driveFileId' | 'remoteModifie
 }
 
 async function saveAudio(remote: DriveFile, trackId: string, _downloaded: boolean): Promise<string> {
-  const dest = new File(inboxDirectory(), `sync-${trackId}-${remote.name.replace(/[/\\?%*:|"<>]/g, '-')}`);
+  const dest = new File(inboxDirectory(), safeTempFileName('sync', trackId, remote.name));
   const uri = await downloadDriveFile(remote.id, dest.uri);
   const stored = await copyToDownloads(uri, trackId, remote.name);
   try {
@@ -627,12 +628,8 @@ function applyKeep(markers: Marker[], keepIds: string[]): Marker[] {
   );
 }
 
-function safeRemoteName(name: string): string {
-  return name.replace(/[/\\?%*:|"<>]/g, '-');
-}
-
 async function downloadDriveTemp(remote: DriveFile, prefix: string): Promise<string | null> {
-  const dest = new File(inboxDirectory(), `${prefix}-${remote.id}-${safeRemoteName(remote.name)}`);
+  const dest = new File(inboxDirectory(), safeTempFileName(prefix, remote.id, remote.name));
   try {
     await downloadDriveFile(remote.id, dest.uri);
     return dest.uri;

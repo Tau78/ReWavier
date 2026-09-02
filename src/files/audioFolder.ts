@@ -6,6 +6,7 @@ import { isAudioName } from '../domain/audioFormats';
 import { parseSidecar, sidecarNameForAudio, titleFromFileName } from '../domain/sidecar';
 import type { Marker, Track } from '../domain/models';
 import { uniqueAudioFileName } from './downloads';
+import { decodeOverEncodedName } from './fileNames';
 import { audioRelativePrefix } from './libraryOwner';
 import { ensureDirAsync, pathExistsAsync } from './fsSafe';
 import { audioDirectory, downloadsDirectory, inboxDirectory, libraryDirectory } from './libraryPaths';
@@ -31,7 +32,7 @@ Puoi ancora copiare questa cartella a mano (AirDrop o un cavo).
 function basename(uri: string): string {
   const clean = uri.split('?')[0] ?? uri;
   const parts = clean.replace(/\/$/, '').split('/');
-  return decodeURIComponent(parts[parts.length - 1] ?? '');
+  return decodeOverEncodedName(parts[parts.length - 1] ?? '');
 }
 
 function stripLegacyPrefix(name: string, trackId?: string): string {
@@ -68,14 +69,21 @@ async function moveIntoAudio(fromStored: string, preferredName: string): Promise
   const name = uniqueAudioFileName(preferredName);
   const dest = new File(audioDirectory(), name);
   try {
-    await LegacyFS.moveAsync({ from, to: dest.uri });
-  } catch {
-    try {
-      await LegacyFS.copyAsync({ from, to: dest.uri });
-      await LegacyFS.deleteAsync(from, { idempotent: true });
-    } catch {
+    const source = new File(from);
+    if (!source.exists) {
       return already;
     }
+    if (dest.exists) {
+      dest.delete();
+    }
+    try {
+      source.move(dest);
+    } catch {
+      source.copy(dest);
+      source.delete();
+    }
+  } catch {
+    return already;
   }
   return persistLibraryUri(dest.uri) ?? `${audioRelativePrefix()}/${name}`;
 }

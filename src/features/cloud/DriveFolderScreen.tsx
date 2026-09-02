@@ -167,7 +167,13 @@ export function DriveFolderScreen() {
         }
         navigation.replace('Collection', { kind: 'album', id });
       } catch (error) {
-        Alert.alert('Drive', error instanceof Error ? error.message : 'Import non riuscito');
+        const raw = error instanceof Error ? error.message : '';
+        Alert.alert(
+          'Drive',
+          raw && !raw.includes('file://') && !raw.includes('%25')
+            ? raw
+            : 'Questo brano non è arrivato sul telefono. Riprova.',
+        );
       } finally {
         setWorking(false);
       }

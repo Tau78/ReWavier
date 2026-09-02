@@ -258,7 +258,10 @@ export async function downloadDriveFile(fileId: string, destUri: string): Promis
     headers: { Authorization: `Bearer ${access}` },
   });
   if (result.status !== 200) {
-    throw new Error(`Download Drive non riuscito (${result.status})`);
+    throw new Error('Drive non ha scaricato il brano. Riprova.');
+  }
+  if (dest.exists) {
+    return dest.uri;
   }
   return result.uri;
 }
