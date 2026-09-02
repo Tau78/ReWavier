@@ -35,6 +35,8 @@ export type Album = {
   origin?: AlbumOrigin;
   driveFolderName?: string;
   driveFolderId?: string;
+  /** Shared Drive (team) id when the album lives outside My Drive. */
+  driveSharedDriveId?: string;
   /** When true, sync also walks Drive subfolders and keeps the same tree in the app. */
   driveRecursive?: boolean;
   lastSyncedAt?: number;

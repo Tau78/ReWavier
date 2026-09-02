@@ -2,6 +2,7 @@ import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
 import { getValidGoogleAccessToken, loadGoogleAuth } from '../auth/googleToken';
+import { ensureParentDirAsync } from '../files/fsSafe';
 
 const DRIVE = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
@@ -171,14 +172,20 @@ export async function findFolderByName(name: string): Promise<DriveFile | null> 
   return folders.find((folder) => folder.name.toLowerCase() === lower) ?? folders[0] ?? null;
 }
 
-export async function listFolderChildren(folderId: string): Promise<DriveFile[]> {
+export async function listFolderChildren(
+  folderId: string,
+  options?: { sharedDriveId?: string },
+): Promise<DriveFile[]> {
   const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
+  const driveScope = options?.sharedDriveId
+    ? `&corpora=drive&driveId=${encodeURIComponent(options.sharedDriveId)}`
+    : '';
   const files: DriveFile[] = [];
   let page: string | undefined;
   for (let i = 0; i < 8; i += 1) {
     const tokenParam = page ? `&pageToken=${encodeURIComponent(page)}` : '';
     const data = await driveGet<{ files?: DriveFile[]; nextPageToken?: string }>(
-      `/files?q=${q}&pageSize=100&fields=nextPageToken,files(id,name,mimeType,modifiedTime,md5Checksum,size)&supportsAllDrives=true&includeItemsFromAllDrives=true${tokenParam}`,
+      `/files?q=${q}&pageSize=100&fields=nextPageToken,files(id,name,mimeType,modifiedTime,md5Checksum,size)&supportsAllDrives=true&includeItemsFromAllDrives=true${driveScope}${tokenParam}`,
     );
     files.push(...(data.files ?? []));
     page = data.nextPageToken;
@@ -196,6 +203,7 @@ export async function listDriveFolderTree(
   folderId: string,
   folderName: string,
   maxDepth: number,
+  options?: { sharedDriveId?: string },
 ): Promise<{ id: string; parentId: string | null; name: string; children: DriveFile[] }[]> {
   const nodes: { id: string; parentId: string | null; name: string; children: DriveFile[] }[] = [];
   const queue: { id: string; parentId: string | null; name: string; depth: number }[] = [
@@ -208,7 +216,7 @@ export async function listDriveFolderTree(
       continue;
     }
     seen.add(current.id);
-    const children = await listFolderChildren(current.id);
+    const children = await listFolderChildren(current.id, options);
     nodes.push({
       id: current.id,
       parentId: current.parentId,
@@ -233,6 +241,7 @@ export async function listDriveFolderTree(
 export async function downloadDriveFile(fileId: string, destUri: string): Promise<string> {
   const access = await token();
   const url = `${DRIVE}/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`;
+  await ensureParentDirAsync(destUri);
   const dest = new File(destUri);
   if (dest.exists) {
     dest.delete();

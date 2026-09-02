@@ -22,7 +22,7 @@ import { EmptyGraphic, KindRow } from '../../theme/graphics';
 type Nav = NativeStackNavigationProp<RootStackParamList, 'DriveFolder'>;
 type Route = RouteProp<RootStackParamList, 'DriveFolder'>;
 
-type Crumb = { id: string; name: string };
+type Crumb = { id: string; name: string; sharedDriveId?: string };
 type PickerTab = 'mine' | 'shared';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
@@ -93,14 +93,18 @@ export function DriveFolderScreen() {
     loadSearch('', next);
   };
 
-  const openFolder = (folder: DriveFile) => {
+  const openFolder = (folder: DriveFile | SharedDriveEntry) => {
     if (working) {
       return;
     }
+    const sharedDriveId =
+      ('sharedKind' in folder && folder.sharedKind === 'shared-drive'
+        ? folder.id
+        : undefined) ?? stack[0]?.sharedDriveId;
     setBusy(true);
-    setStack((prev) => [...prev, { id: folder.id, name: folder.name }]);
+    setStack((prev) => [...prev, { id: folder.id, name: folder.name, sharedDriveId }]);
     void withTimeout(
-      listFolderChildren(folder.id),
+      listFolderChildren(folder.id, sharedDriveId ? { sharedDriveId } : undefined),
       25_000,
       'Drive ci ha messo troppo. Riprova.',
     )
@@ -126,7 +130,14 @@ export function DriveFolderScreen() {
     const parent = next[next.length - 1];
     setStack(next);
     setBusy(true);
-    void withTimeout(listFolderChildren(parent.id), 25_000, 'Drive ci ha messo troppo. Riprova.')
+    void withTimeout(
+      listFolderChildren(
+        parent.id,
+        parent.sharedDriveId ? { sharedDriveId: parent.sharedDriveId } : undefined,
+      ),
+      25_000,
+      'Drive ci ha messo troppo. Riprova.',
+    )
       .then(setChildren)
       .catch((error) => {
         Alert.alert('Drive', error instanceof Error ? error.message : 'Cartella non aperta. Riprova.');
@@ -145,7 +156,11 @@ export function DriveFolderScreen() {
     setWorking(true);
     void (async () => {
       try {
-        const id = await importDriveFolder(current.id, current.name, { recursive, albumId });
+        const id = await importDriveFolder(current.id, current.name, {
+          recursive,
+          albumId,
+          sharedDriveId: current.sharedDriveId,
+        });
         if (albumId) {
           navigation.goBack();
           return;

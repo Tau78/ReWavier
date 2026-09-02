@@ -67,6 +67,7 @@ export type LibraryActions = {
       origin?: AlbumOrigin;
       driveFolderName?: string;
       driveFolderId?: string;
+      driveSharedDriveId?: string;
       driveRecursive?: boolean;
     },
   ) => string;
@@ -74,7 +75,7 @@ export type LibraryActions = {
     albumId: string,
     folderId: string,
     folderName: string,
-    extras?: { driveRecursive?: boolean },
+    extras?: { driveRecursive?: boolean; driveSharedDriveId?: string },
   ) => void;
   touchAlbumSync: (albumId: string) => void;
   updateTrackRemote: (
@@ -250,6 +251,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           origin: extras?.origin ?? 'local',
           driveFolderName: extras?.driveFolderName,
           driveFolderId: extras?.driveFolderId,
+          driveSharedDriveId: extras?.driveSharedDriveId,
           driveRecursive: extras?.driveRecursive,
         },
       ],
@@ -266,6 +268,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
               origin: 'drive',
               driveFolderId: folderId,
               driveFolderName: folderName,
+              driveSharedDriveId: extras?.driveSharedDriveId ?? album.driveSharedDriveId,
               driveRecursive: extras?.driveRecursive ?? album.driveRecursive,
             }
           : album,

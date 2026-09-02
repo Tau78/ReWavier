@@ -13,7 +13,7 @@ import {
   resolvedPlayableUri,
 } from './libraryUris';
 
-export { audioDirectory, downloadsDirectory, inboxDirectory } from './libraryPaths';
+export { audioDirectory, downloadsDirectory, ensureInboxDirectory, inboxDirectory } from './libraryPaths';
 
 function safeFileName(name: string): string {
   return name.replace(/[/\\?%*:|"<>]/g, '-').trim() || 'traccia.m4a';

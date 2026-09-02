@@ -217,6 +217,7 @@ async function runCloudSyncBody(): Promise<void> {
         folderId,
         album.driveFolderName || album.name,
         album.driveRecursive ? 8 : 0,
+        album.driveSharedDriveId ? { sharedDriveId: album.driveSharedDriveId } : undefined,
       );
       const children = tree[0]?.children ?? [];
       const audios = tree.flatMap((node) => node.children.filter((file) => isAudioName(file.name)));
@@ -844,10 +845,11 @@ async function importAudiosInFolder(
 export async function importDriveFolder(
   folderId: string,
   folderName: string,
-  options?: { recursive?: boolean; albumId?: string },
+  options?: { recursive?: boolean; albumId?: string; sharedDriveId?: string },
 ): Promise<string> {
   const store = useLibraryStore.getState();
   const recursive = options?.recursive === true;
+  const sharedDriveId = options?.sharedDriveId;
   const albumId =
     options?.albumId ??
     store.createAlbum(folderName, {
@@ -855,13 +857,22 @@ export async function importDriveFolder(
       artist: 'Drive',
       driveFolderName: folderName,
       driveFolderId: folderId,
+      driveSharedDriveId: sharedDriveId,
       driveRecursive: recursive,
     });
   if (options?.albumId) {
-    store.linkAlbumDrive(albumId, folderId, folderName, { driveRecursive: recursive });
+    store.linkAlbumDrive(albumId, folderId, folderName, {
+      driveRecursive: recursive,
+      driveSharedDriveId: sharedDriveId,
+    });
   }
 
-  const tree = await listDriveFolderTree(folderId, folderName, recursive ? 8 : 0);
+  const tree = await listDriveFolderTree(
+    folderId,
+    folderName,
+    recursive ? 8 : 0,
+    sharedDriveId ? { sharedDriveId } : undefined,
+  );
   const driveToApp = new Map<string, string | null>();
   const rootAppId = recursive ? store.createFolder(folderName, null, { driveFolderId: folderId }) : null;
   driveToApp.set(folderId, rootAppId);
