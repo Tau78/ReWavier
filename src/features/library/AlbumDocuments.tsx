@@ -1,7 +1,9 @@
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import type { AlbumDocument } from '../../domain/library';
-import { openAlbumDocument } from '../../files/albumDocuments';
+import type { RootStackParamList } from '../../navigation/types';
 import { colors } from '../../theme/colors';
 
 function displayName(name: string): string {
@@ -9,34 +11,29 @@ function displayName(name: string): string {
 }
 
 export function AlbumDocuments({ documents }: { documents: AlbumDocument[] }) {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+
   if (documents.length === 0) {
     return null;
   }
 
-  const open = (document: AlbumDocument) => {
-    void openAlbumDocument(document.fileUri, document.name).catch((error: unknown) => {
-      Alert.alert(
-        'Documento',
-        error instanceof Error ? error.message : 'Non riesco ad aprire il documento.',
-      );
-    });
-  };
-
   return (
     <View style={styles.card}>
       <Text style={styles.label}>Documenti</Text>
-      <Text style={styles.hint}>PDF della cartella Drive. Tocca per aprire.</Text>
+      <Text style={styles.hint}>PDF della cartella Drive. Tocca per vederlo.</Text>
       {documents.map((document, index) => (
         <Pressable
           key={document.id}
-          onPress={() => open(document)}
+          onPress={() =>
+            navigation.navigate('PdfPreview', { fileUri: document.fileUri, name: document.name })
+          }
           style={({ pressed }) => [
             styles.row,
             index < documents.length - 1 && styles.rowBorder,
             pressed && styles.pressed,
           ]}
           accessibilityRole="button"
-          accessibilityLabel={`Apri ${displayName(document.name)}`}
+          accessibilityLabel={`Vedi ${displayName(document.name)}`}
         >
           <Text style={styles.name} numberOfLines={2}>
             {displayName(document.name)}

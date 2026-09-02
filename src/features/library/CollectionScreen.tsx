@@ -6,9 +6,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { runCloudSync } from '../../cloud/syncEngine';
 import { isDownloaded } from '../../domain/audioFormats';
+import { formatDownloadPercent } from '../../domain/downloadProgress';
 import type { Album, CollectionKind } from '../../domain/library';
 import type { Track } from '../../domain/models';
 import type { RootStackParamList } from '../../navigation/types';
+import { useDownloadProgressStore } from '../../store/downloadProgressStore';
 import { useLibraryStore } from '../../store/libraryStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { useSyncStore } from '../../store/syncStore';
@@ -95,6 +97,8 @@ export function CollectionScreen() {
   const syncStatus = useSyncStore((s) => s.status);
   const syncMessage = useSyncStore((s) => s.message);
   const [pulling, setPulling] = useState(false);
+  const downloadActive = useDownloadProgressStore((s) => s.active);
+  const downloadPercent = useDownloadProgressStore((s) => s.percent);
   const refreshFromDrive = useCallback(async () => {
     if (!isDriveAlbum) {
       return;
@@ -135,6 +139,35 @@ export function CollectionScreen() {
       : kind === 'smart'
         ? `${smartPlaylists.find((item) => item.id === id)?.conditions.length ?? 0} regole`
         : `${tracks.length} tracce`;
+
+  const startCollectionDownload = () => {
+    if (tracks.length === 0) {
+      Alert.alert('Download', 'Non c’è nessun brano da scaricare.');
+      return;
+    }
+    if (tracks.length > 0 && tracks.every((track) => isDownloaded(track))) {
+      Alert.alert(
+        'Sul telefono',
+        kind === 'folder'
+          ? 'Tutti i brani di questa cartella sono già qui.'
+          : 'Tutti i brani di questo album sono già qui.',
+      );
+      return;
+    }
+    void useLibraryStore
+      .getState()
+      .downloadCollection(kind === 'folder' ? 'folder' : 'album', id)
+      .catch((error) => {
+        Alert.alert('Download', error instanceof Error ? error.message : 'Download non riuscito');
+      });
+  };
+  const downloadGlyph = downloadActive
+    ? formatDownloadPercent(downloadPercent)
+    : tracks.some((track) => downloadingIds[track.id] != null)
+      ? '…'
+      : tracks.length > 0 && tracks.every((track) => isDownloaded(track))
+        ? '✓'
+        : '↓';
 
   const playAlbum = () => {
     if (isPlayingThisAlbum) {
@@ -188,26 +221,12 @@ export function CollectionScreen() {
         ) : kind === 'album' ? (
           <View style={styles.headerButtons}>
             <Pressable
-              onPress={() => {
-                if (tracks.length > 0 && tracks.every((track) => isDownloaded(track))) {
-                  Alert.alert('Sul telefono', 'Tutti i brani di questo album sono già qui.');
-                  return;
-                }
-                void useLibraryStore
-                  .getState()
-                  .downloadAlbum(id)
-                  .catch((error) => {
-                    Alert.alert(
-                      'Download',
-                      error instanceof Error ? error.message : 'Download non riuscito',
-                    );
-                  });
-              }}
+              onPress={startCollectionDownload}
               style={({ pressed }) => [styles.plus, pressed && styles.plusPressed]}
               accessibilityRole="button"
               accessibilityLabel={
-                tracks.some((track) => downloadingIds[track.id] != null)
-                  ? 'Download in corso'
+                downloadActive
+                  ? `Download ${formatDownloadPercent(downloadPercent)}`
                   : tracks.length > 0 && tracks.every((track) => isDownloaded(track))
                     ? 'Album già sul telefono'
                     : 'Scarica album'
@@ -216,14 +235,11 @@ export function CollectionScreen() {
               <Text
                 style={[
                   styles.plusGlyph,
+                  downloadActive && styles.percentGlyph,
                   tracks.every((track) => isDownloaded(track)) && styles.downloadDone,
                 ]}
               >
-                {tracks.some((track) => downloadingIds[track.id] != null)
-                  ? '…'
-                  : tracks.every((track) => isDownloaded(track))
-                    ? '✓'
-                    : '↓'}
+                {downloadGlyph}
               </Text>
             </Pressable>
             <Pressable
@@ -236,14 +252,38 @@ export function CollectionScreen() {
             </Pressable>
           </View>
         ) : kind === 'folder' ? (
-          <Pressable
-            onPress={() => actions.openFolderCreateMenu()}
-            style={({ pressed }) => [styles.plus, pressed && styles.plusPressed]}
-            accessibilityRole="button"
-            accessibilityLabel="Nuovo"
-          >
-            <Text style={styles.plusGlyph}>＋</Text>
-          </Pressable>
+          <View style={styles.headerButtons}>
+            <Pressable
+              onPress={startCollectionDownload}
+              style={({ pressed }) => [styles.plus, pressed && styles.plusPressed]}
+              accessibilityRole="button"
+              accessibilityLabel={
+                downloadActive
+                  ? `Download ${formatDownloadPercent(downloadPercent)}`
+                  : tracks.length > 0 && tracks.every((track) => isDownloaded(track))
+                    ? 'Cartella già sul telefono'
+                    : 'Scarica cartella'
+              }
+            >
+              <Text
+                style={[
+                  styles.plusGlyph,
+                  downloadActive && styles.percentGlyph,
+                  tracks.every((track) => isDownloaded(track)) && styles.downloadDone,
+                ]}
+              >
+                {downloadGlyph}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => actions.openFolderCreateMenu()}
+              style={({ pressed }) => [styles.plus, pressed && styles.plusPressed]}
+              accessibilityRole="button"
+              accessibilityLabel="Nuovo"
+            >
+              <Text style={styles.plusGlyph}>＋</Text>
+            </Pressable>
+          </View>
         ) : kind === 'playlist' ? (
           <Pressable
             onPress={() => actions.openPlaylistMenu(id)}
@@ -291,6 +331,16 @@ export function CollectionScreen() {
         ) : null}
         {kind === 'album' || kind === 'folder' ? (
           <CollectionMarkers tracks={tracks} markersByTrackId={markersByTrackId} />
+        ) : null}
+        {downloadActive && (kind === 'album' || kind === 'folder') ? (
+          <View style={styles.downloadBox}>
+            <Text style={styles.downloadHint}>
+              Sto scaricando… {formatDownloadPercent(downloadPercent)}
+            </Text>
+            <View style={styles.barTrack}>
+              <View style={[styles.barFill, { width: `${downloadPercent}%` }]} />
+            </View>
+          </View>
         ) : null}
         {album ? <Text style={styles.sectionLabel}>Tracce</Text> : null}
         {isDriveAlbum ? (
@@ -463,6 +513,31 @@ const styles = StyleSheet.create({
   },
   downloadDone: {
     color: '#34C759',
+  },
+  percentGlyph: {
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 0,
+  },
+  downloadBox: {
+    marginBottom: 12,
+  },
+  downloadHint: {
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  barTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.surfaceRaised,
+    overflow: 'hidden',
+  },
+  barFill: {
+    height: '100%',
+    backgroundColor: colors.accent,
+    borderRadius: 3,
   },
   editSpacer: {
     width: 28,

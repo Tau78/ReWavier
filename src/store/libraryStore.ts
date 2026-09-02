@@ -37,6 +37,7 @@ import {
 import { sourceFileNameFromTitle } from '../domain/sidecar';
 import { writeSidecarToLibrary, removeSidecarFromLibrary, type ImportedBundle } from '../files/libraryFiles';
 import { userHasUsage } from '../domain/session';
+import { useDownloadProgressStore } from './downloadProgressStore';
 import { useSessionStore } from './sessionStore';
 import { useSyncStore } from './syncStore';
 
@@ -114,6 +115,7 @@ export type LibraryActions = {
   downloadTrack: (trackId: string) => Promise<void>;
   removeDownload: (trackId: string) => Promise<void>;
   downloadAlbum: (albumId: string) => Promise<void>;
+  downloadCollection: (kind: 'album' | 'folder', id: string) => Promise<void>;
   updateTrackDuration: (id: string, durationMs: number) => void;
   setTrackPeaks: (id: string, peaks: number[]) => void;
   createSmartPlaylist: (playlist: Omit<SmartPlaylist, 'id'>) => string;
@@ -804,12 +806,21 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   async downloadAlbum(albumId) {
-    const tracks = get().tracksIn('album', albumId);
-    for (const track of tracks) {
-      if (track.downloaded && track.fileUri) {
-        continue;
+    await get().downloadCollection('album', albumId);
+  },
+
+  async downloadCollection(kind, id) {
+    const tracks = get().tracksIn(kind, id);
+    const pending = tracks.filter((track) => !(track.downloaded && track.fileUri));
+    const progress = useDownloadProgressStore.getState();
+    progress.begin(pending.length);
+    try {
+      for (const track of pending) {
+        await get().downloadTrack(track.id);
+        progress.advance();
       }
-      await get().downloadTrack(track.id);
+    } finally {
+      progress.end();
     }
   },
 

@@ -15,4 +15,5 @@ export type RootStackParamList = {
   RecordSketch: { folderId?: string; albumId?: string };
   LessonRecap: { kind: 'album' | 'folder' | 'track'; id: string };
   NoteHeat: { trackId: string };
+  PdfPreview: { fileUri: string; name: string };
 };

@@ -7,6 +7,7 @@ import { HomeScreen } from '../features/home/HomeScreen';
 import { CollectionScreen } from '../features/library/CollectionScreen';
 import { LessonRecapScreen } from '../features/library/LessonRecapScreen';
 import { NoteHeatScreen } from '../features/library/NoteHeatScreen';
+import { PdfPreviewScreen } from '../features/library/PdfPreviewScreen';
 import { ConditionsScreen } from '../features/library/ConditionsScreen';
 import { LibraryScreen } from '../features/library/LibraryScreen';
 import { RecordSketchScreen } from '../features/library/RecordSketchScreen';
@@ -56,6 +57,7 @@ export function AppStack() {
         <Stack.Screen name="RecordSketch" component={RecordSketchScreen} />
         <Stack.Screen name="LessonRecap" component={LessonRecapScreen} />
         <Stack.Screen name="NoteHeat" component={NoteHeatScreen} />
+        <Stack.Screen name="PdfPreview" component={PdfPreviewScreen} />
         <Stack.Screen name="Player" component={PlayerScreen} />
       </Stack.Navigator>
     </NavigationContainer>
