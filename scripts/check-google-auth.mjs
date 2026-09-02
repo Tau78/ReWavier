@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
 
-const GOOGLE_OAUTH_EXTRA_PARAMS = {
+const GOOGLE_IDENTITY_EXTRA_PARAMS = {
+  prompt: 'select_account',
+};
+
+const GOOGLE_DRIVE_EXTRA_PARAMS = {
   access_type: 'offline',
   prompt: 'consent select_account',
   include_granted_scopes: 'true',
 };
+
+const GOOGLE_OAUTH_EXTRA_PARAMS = GOOGLE_DRIVE_EXTRA_PARAMS;
 
 function googleAccessTokenFromResult(result) {
   return result.authentication?.accessToken || result.params.access_token || undefined;
@@ -91,8 +97,11 @@ assert.equal(googleExchangeIsReady(snapshot), true);
 assert.equal(googleExchangeIsReady({ redirectUri: snapshot.redirectUri }), false);
 assert.equal(googleExchangeIsReady(undefined), false);
 
+assert.equal(GOOGLE_IDENTITY_EXTRA_PARAMS.prompt, 'select_account');
+assert.doesNotMatch(GOOGLE_IDENTITY_EXTRA_PARAMS.prompt, /consent/);
 assert.equal(GOOGLE_OAUTH_EXTRA_PARAMS.access_type, 'offline');
 assert.match(GOOGLE_OAUTH_EXTRA_PARAMS.prompt, /consent/);
+assert.equal(GOOGLE_DRIVE_EXTRA_PARAMS.include_granted_scopes, 'true');
 assert.equal(googleTokenHasDriveScope('openid https://www.googleapis.com/auth/drive.file'), true);
 assert.equal(
   googleTokenHasDriveScope('openid+https://www.googleapis.com/auth/drive.file+email'),
@@ -101,4 +110,4 @@ assert.equal(
 assert.equal(googleTokenHasDriveScope('openid email profile'), false);
 assert.equal(googleTokenHasDriveScope(undefined), false);
 
-console.log('ok google auth snapshots the code before Drive login');
+console.log('ok google auth snapshots the code; identity login skips Drive consent');

@@ -7,6 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BAND_COLORS } from '../../domain/bandColors';
 import { isDemoUser } from '../../auth/demoAccount';
+import { runGoogleDriveConnect, useGoogleDriveConnect } from '../../auth/useGoogleSignIn';
 import { LinkedDevicesCard } from './LinkedDevicesCard';
 import { createId } from '../../domain/library';
 import { userHasUsage, userUsages, type UsageType } from '../../domain/session';
@@ -34,6 +35,8 @@ export function SettingsScreen() {
   const setActiveBand = useSessionStore((s) => s.setActiveBand);
   const version = Constants.expoConfig?.version ?? '1.0.0';
   const build = Constants.expoConfig?.ios?.buildNumber;
+  const googleDrive = useGoogleDriveConnect();
+  const driveLinked = user?.driveConnected === true && user.driveLink === 'google';
 
   const selected = userUsages(user);
   const bands = user?.bands ?? [];
@@ -90,7 +93,9 @@ export function SettingsScreen() {
           </Text>
           <Text style={styles.rowHint}>
             {user?.provider === 'google'
-              ? 'Google · Drive già collegato'
+              ? driveLinked
+                ? 'Google · Drive collegato'
+                : 'Google'
               : user?.provider === 'apple'
                 ? 'Apple'
                 : 'Email'}
@@ -99,6 +104,29 @@ export function SettingsScreen() {
               : ''}
           </Text>
         </View>
+
+        {user?.provider === 'google' && !driveLinked ? (
+          <Pressable
+            onPress={() => {
+              void (async () => {
+                try {
+                  const linked = await runGoogleDriveConnect(googleDrive);
+                  if (linked) {
+                    Alert.alert('Drive', 'Google Drive è collegato.');
+                  }
+                } catch (error) {
+                  Alert.alert('Drive', error instanceof Error ? error.message : 'Riprova');
+                }
+              })();
+            }}
+            style={styles.card}
+          >
+            <Text style={styles.rowLabel}>Collega Google Drive</Text>
+            <Text style={styles.rowValue}>
+              Per aprire le cartelle Drive e tenere i brani allineati.
+            </Text>
+          </Pressable>
+        ) : null}
 
         <Pressable onPress={() => void logout()} style={styles.card}>
           <Text style={styles.rowLabel}>Esci</Text>

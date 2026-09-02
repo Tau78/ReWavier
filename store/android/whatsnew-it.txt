@@ -1,0 +1,1 @@
+Accedi con Google senza l’avviso “app non sicura”: al login chiediamo solo il tuo account. Drive lo colleghi dopo, se ti serve. Questa build include anche lo splash corretto per Android.

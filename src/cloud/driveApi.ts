@@ -1,6 +1,7 @@
 import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
+import { googleTokenHasDriveScope } from '../auth/googleAuthResult';
 import { getValidGoogleAccessToken, loadGoogleAuth } from '../auth/googleToken';
 import { ensureParentDirAsync } from '../files/fsSafe';
 
@@ -53,7 +54,14 @@ async function driveGet<T>(path: string): Promise<T> {
 }
 
 export async function hasDriveToken(): Promise<boolean> {
-  return Boolean((await loadGoogleAuth())?.accessToken);
+  const auth = await loadGoogleAuth();
+  if (!auth?.accessToken) {
+    return false;
+  }
+  if (!auth.scope) {
+    return true;
+  }
+  return googleTokenHasDriveScope(auth.scope);
 }
 
 function nameContainsFilter(query?: string): string {

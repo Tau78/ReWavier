@@ -3,13 +3,13 @@ export const PRIVACY_TITLE = 'Informativa sulla privacy';
 export const PRIVACY_BODY = `Informativa sulla privacy di ReWavier
 Ultimo aggiornamento: 22 agosto 2026
 
-ReWavier è un’app per iPhone e iPad. Serve ad ascoltare un audio e a scrivere un appunto sul momento esatto.
+ReWavier è un’app per iPhone, iPad e Android. Serve ad ascoltare un audio e a scrivere un appunto sul momento esatto.
 
 Chi gestisce i dati
 I tuoi file e i tuoi appunti restano sul telefono o sul tablet. ReWavier non ha un sito in cui conserviamo i tuoi audio.
 
 Account
-Puoi entrare con Apple, Google o email. Nome e email restano su quel dispositivo. Con Google colleghi anche Drive. Non abbiamo un elenco di account sul web.
+Puoi entrare con Apple, Google o email. Nome e email restano su quel dispositivo. Se vuoi, dopo l’accesso colleghi anche Drive. Non abbiamo un elenco di account sul web.
 
 Per togliere l’account: Impostazioni → Elimina account. Puoi togliere solo l’accesso (i brani restano in File) oppure cancellare anche brani e appunti di quell’account su quel telefono.
 

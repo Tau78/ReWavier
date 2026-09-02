@@ -44,6 +44,15 @@ export type SessionActions = {
     refreshToken?: string;
     clientId?: string;
     expiresIn?: number;
+    scope?: string;
+    driveConnected?: boolean;
+  }) => Promise<void>;
+  attachGoogleDrive: (input: {
+    accessToken: string;
+    refreshToken?: string;
+    clientId?: string;
+    expiresIn?: number;
+    scope?: string;
   }) => Promise<void>;
   completeOnboarding: (input: {
     usageType?: UsageType;
@@ -209,14 +218,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   async signInSocial(input) {
-    if (input.provider === 'google') {
-      if (!input.accessToken) {
-        throw new Error('Google non ha collegato Drive. Tocca di nuovo Continua con Google.');
-      }
+    const driveOk =
+      input.provider === 'google' && input.driveConnected === true && Boolean(input.accessToken);
+    if (driveOk && input.accessToken) {
       await saveGoogleAuth({
         accessToken: input.accessToken,
         refreshToken: input.refreshToken,
         clientId: input.clientId,
+        scope: input.scope,
         expiresAt: input.expiresIn
           ? Date.now() + Math.max(30, input.expiresIn - 60) * 1000
           : Date.now() + 50 * 60 * 1000,
@@ -230,20 +239,33 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           email: input.email || existing.email,
           displayName: input.displayName || existing.displayName,
           provider: input.provider,
-          driveConnected: input.provider === 'google' ? true : existing.driveConnected,
-          driveLink: input.provider === 'google' ? 'google' : existing.driveLink,
+          driveConnected: input.provider === 'google' ? driveOk : existing.driveConnected,
+          driveLink: input.provider === 'google' ? (driveOk ? 'google' : existing.driveLink) : existing.driveLink,
         }
       : makeUser({
           id: input.id,
           email: input.email,
           displayName: input.displayName,
           provider: input.provider,
-          driveConnected: input.provider === 'google',
-          driveLink: input.provider === 'google' ? 'google' : null,
+          driveConnected: driveOk,
+          driveLink: driveOk ? 'google' : null,
         });
     set({ user: normalizeSessionUser(user) });
     persist(get());
     await reloadLibrary();
+  },
+
+  async attachGoogleDrive(input) {
+    await saveGoogleAuth({
+      accessToken: input.accessToken,
+      refreshToken: input.refreshToken,
+      clientId: input.clientId,
+      scope: input.scope,
+      expiresAt: input.expiresIn
+        ? Date.now() + Math.max(30, input.expiresIn - 60) * 1000
+        : Date.now() + 50 * 60 * 1000,
+    });
+    get().connectDrive('google');
   },
 
   completeOnboarding(input) {

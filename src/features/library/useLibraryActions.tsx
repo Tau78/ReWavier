@@ -7,6 +7,7 @@ import type { CollectionKind, Folder } from '../../domain/library';
 import type { Track } from '../../domain/models';
 import { userHasUsage } from '../../domain/session';
 import { ensurePeaks } from '../../audio/extractPeaks';
+import { runGoogleDriveConnect, useGoogleDriveConnect } from '../../auth/useGoogleSignIn';
 import { hasDriveToken } from '../../cloud/driveApi';
 import { runCloudSync } from '../../cloud/syncEngine';
 import { pickAndSaveAlbumArtwork, pickAndSaveArtwork } from '../../files/albumArtwork';
@@ -54,6 +55,7 @@ export function useLibraryActions(
   onOpened?: (kind: CollectionKind, id: string) => void,
 ) {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const googleDrive = useGoogleDriveConnect();
   const folders = useLibraryStore((s) => s.folders);
   const albums = useLibraryStore((s) => s.albums);
   const playlists = useLibraryStore((s) => s.playlists);
@@ -127,12 +129,11 @@ export function useLibraryActions(
     }
     setBusy(true);
     try {
-      const bundles = await pickAndImportAudio();
-      if (bundles.length === 0) {
+      const linked = await runGoogleDriveConnect(googleDrive);
+      if (!linked) {
         return;
       }
-      setPendingBundles(bundles);
-      setPrompt({ type: 'drive-album' });
+      navigation.navigate('DriveFolder', {});
     } catch (error) {
       Alert.alert('Album Drive', error instanceof Error ? error.message : 'Riprova');
     } finally {

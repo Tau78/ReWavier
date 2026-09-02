@@ -7,7 +7,8 @@ import Constants from 'expo-constants';
 
 import { useSessionStore } from '../store/sessionStore';
 import {
-  GOOGLE_OAUTH_EXTRA_PARAMS,
+  GOOGLE_DRIVE_EXTRA_PARAMS,
+  GOOGLE_IDENTITY_EXTRA_PARAMS,
   googleAccessTokenFromResult,
   googleAuthNeedsCodeExchange,
   googleExchangeIsReady,
@@ -22,13 +23,19 @@ const CLIENT_ID_RE = /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/i;
 const GOOGLE_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
 const GOOGLE_USERINFO = 'https://openidconnect.googleapis.com/v1/userinfo';
 
-const DRIVE_SCOPES = [
+const IDENTITY_SCOPES = [
   'openid',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/userinfo.profile',
+];
+
+const DRIVE_SCOPES = [
+  ...IDENTITY_SCOPES,
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/drive.readonly',
 ];
+
+export type GoogleAuthKind = 'identity' | 'drive';
 
 const DRIVE_CONNECT_ERROR =
   'Google non ha collegato Drive. Tocca di nuovo Continua con Google.';
@@ -136,13 +143,14 @@ async function exchangeGoogleCode(
   clientId: string,
   redirectUri: string,
   codeVerifier: string,
+  scopes: string[],
 ): Promise<AuthSession.TokenResponse> {
   return AuthSession.exchangeCodeAsync(
     {
       clientId,
       code,
       redirectUri,
-      scopes: DRIVE_SCOPES,
+      scopes,
       extraParams: {
         code_verifier: codeVerifier,
       },
@@ -151,13 +159,21 @@ async function exchangeGoogleCode(
   );
 }
 
-export async function completeGoogleSignIn(
+async function tokensFromGoogleResult(
   response: AuthSession.AuthSessionResult,
   clientId: string,
-  extras?: GoogleExchangeExtras,
-): Promise<void> {
+  extras: GoogleExchangeExtras | undefined,
+  failMessage: string,
+  scopes: string[],
+): Promise<{
+  idToken?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
+  scope?: string;
+}> {
   if (response.type !== 'success') {
-    throw new Error('Login Google non riuscito. Riprova con Apple o email.');
+    throw new Error(failMessage);
   }
 
   let idToken = response.params.id_token ?? response.authentication?.idToken ?? undefined;
@@ -168,7 +184,7 @@ export async function completeGoogleSignIn(
 
   if (googleAuthNeedsCodeExchange(response)) {
     if (!googleExchangeIsReady(extras)) {
-      throw new Error(DRIVE_CONNECT_ERROR);
+      throw new Error(failMessage);
     }
     try {
       const exchanged = await exchangeGoogleCode(
@@ -176,6 +192,7 @@ export async function completeGoogleSignIn(
         clientId,
         extras.redirectUri,
         extras.codeVerifier,
+        scopes,
       );
       accessToken = exchanged.accessToken || accessToken;
       idToken = exchanged.idToken ?? idToken;
@@ -183,28 +200,71 @@ export async function completeGoogleSignIn(
       expiresIn = exchanged.expiresIn ?? expiresIn;
       scope = exchanged.scope ?? scope;
     } catch {
-      throw new Error(DRIVE_CONNECT_ERROR);
+      throw new Error(failMessage);
     }
   }
 
-  if (!accessToken) {
-    throw new Error(DRIVE_CONNECT_ERROR);
-  }
-  if (scope && !googleTokenHasDriveScope(scope)) {
-    throw new Error(DRIVE_CONNECT_ERROR);
-  }
+  return { idToken, accessToken, refreshToken, expiresIn, scope };
+}
 
-  const profile = await profileFromGoogle(idToken, accessToken);
+export async function completeGoogleSignIn(
+  response: AuthSession.AuthSessionResult,
+  clientId: string,
+  extras?: GoogleExchangeExtras,
+): Promise<void> {
+  const tokens = await tokensFromGoogleResult(
+    response,
+    clientId,
+    extras,
+    'Login Google non riuscito. Riprova con Apple o email.',
+    IDENTITY_SCOPES,
+  );
+  const profile = await profileFromGoogle(tokens.idToken, tokens.accessToken);
+  if (!profile.email && profile.sub.startsWith('google-')) {
+    throw new Error('Login Google non riuscito. Riprova con Apple o email.');
+  }
+  const driveOk = Boolean(tokens.accessToken && googleTokenHasDriveScope(tokens.scope));
   await useSessionStore.getState().signInSocial({
     provider: 'google',
     id: `google:${profile.sub}`,
     email: profile.email,
     displayName: profile.name,
-    accessToken,
-    refreshToken,
-    clientId,
-    expiresIn,
+    accessToken: driveOk ? tokens.accessToken : undefined,
+    refreshToken: driveOk ? tokens.refreshToken : undefined,
+    clientId: driveOk ? clientId : undefined,
+    expiresIn: driveOk ? tokens.expiresIn : undefined,
+    scope: tokens.scope,
+    driveConnected: driveOk,
   });
+}
+
+export async function completeGoogleDriveConnect(
+  response: AuthSession.AuthSessionResult,
+  clientId: string,
+  extras?: GoogleExchangeExtras,
+): Promise<void> {
+  const tokens = await tokensFromGoogleResult(
+    response,
+    clientId,
+    extras,
+    DRIVE_CONNECT_ERROR,
+    DRIVE_SCOPES,
+  );
+  if (!tokens.accessToken || !googleTokenHasDriveScope(tokens.scope)) {
+    throw new Error(DRIVE_CONNECT_ERROR);
+  }
+  const session = useSessionStore.getState();
+  if (session.user) {
+    await session.attachGoogleDrive({
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      clientId,
+      expiresIn: tokens.expiresIn,
+      scope: tokens.scope,
+    });
+    return;
+  }
+  await completeGoogleSignIn(response, clientId, extras);
 }
 
 export function isGoogleConfigured(): boolean {
@@ -221,7 +281,7 @@ export function isGoogleConfigured(): boolean {
   return Boolean(ids.clientId);
 }
 
-export function useGoogleSignIn() {
+function useGoogleAuthRequest(kind: GoogleAuthKind) {
   const ids = readClientIds();
   const clientId = ids.clientId;
   const redirectUri = ids.iosClientId
@@ -241,10 +301,10 @@ export function useGoogleSignIn() {
       redirectUri,
       language: 'it' as const,
       shouldAutoExchangeCode: false as const,
-      scopes: DRIVE_SCOPES,
-      extraParams: GOOGLE_OAUTH_EXTRA_PARAMS,
+      scopes: kind === 'drive' ? DRIVE_SCOPES : IDENTITY_SCOPES,
+      extraParams: kind === 'drive' ? GOOGLE_DRIVE_EXTRA_PARAMS : GOOGLE_IDENTITY_EXTRA_PARAMS,
     }),
-    [ids.iosClientId, ids.androidClientId, ids.webClientId, clientId, redirectUri],
+    [kind, ids.iosClientId, ids.androidClientId, ids.webClientId, clientId, redirectUri],
   );
 
   const [request, , promptAsync] = Google.useAuthRequest(authRequestConfig);
@@ -254,28 +314,82 @@ export function useGoogleSignIn() {
   promptAsyncRef.current = promptAsync;
   const exchangeRef = useRef<GoogleExchangeExtras | null>(null);
 
+  const notReady = 'Google non è ancora pronto. Entra con Apple o crea un account email.';
+
   return {
     ready: Boolean(clientId && request),
+    clientId,
+    redirectUri,
+    requestRef,
+    promptAsyncRef,
+    exchangeRef,
+    notReady,
+  };
+}
+
+export function useGoogleSignIn() {
+  const auth = useGoogleAuthRequest('identity');
+  return {
+    ready: auth.ready,
     completeGoogleSignIn: async (result: AuthSession.AuthSessionResult) => {
-      if (!clientId) {
-        throw new Error('Google non è ancora pronto. Entra con Apple o crea un account email.');
+      if (!auth.clientId) {
+        throw new Error(auth.notReady);
       }
       await completeGoogleSignIn(
         result,
-        clientId,
-        exchangeRef.current ??
-          snapshotGoogleExchange(redirectUri, requestRef.current?.codeVerifier),
+        auth.clientId,
+        auth.exchangeRef.current ??
+          snapshotGoogleExchange(auth.redirectUri, auth.requestRef.current?.codeVerifier),
       );
     },
     prompt: async () => {
-      if (!clientId) {
-        throw new Error('Google non è ancora pronto. Entra con Apple o crea un account email.');
+      if (!auth.clientId) {
+        throw new Error(auth.notReady);
       }
-      exchangeRef.current = snapshotGoogleExchange(
-        redirectUri,
-        requestRef.current?.codeVerifier,
+      auth.exchangeRef.current = snapshotGoogleExchange(
+        auth.redirectUri,
+        auth.requestRef.current?.codeVerifier,
       );
-      return promptAsyncRef.current();
+      return auth.promptAsyncRef.current();
+    },
+  };
+}
+
+export async function runGoogleDriveConnect(
+  drive: ReturnType<typeof useGoogleDriveConnect>,
+): Promise<boolean> {
+  const result = await drive.prompt();
+  if (result.type === 'dismiss' || result.type === 'cancel') {
+    return false;
+  }
+  await drive.completeDriveConnect(result);
+  return true;
+}
+
+export function useGoogleDriveConnect() {
+  const auth = useGoogleAuthRequest('drive');
+  return {
+    ready: auth.ready,
+    completeDriveConnect: async (result: AuthSession.AuthSessionResult) => {
+      if (!auth.clientId) {
+        throw new Error(auth.notReady);
+      }
+      await completeGoogleDriveConnect(
+        result,
+        auth.clientId,
+        auth.exchangeRef.current ??
+          snapshotGoogleExchange(auth.redirectUri, auth.requestRef.current?.codeVerifier),
+      );
+    },
+    prompt: async () => {
+      if (!auth.clientId) {
+        throw new Error(auth.notReady);
+      }
+      auth.exchangeRef.current = snapshotGoogleExchange(
+        auth.redirectUri,
+        auth.requestRef.current?.codeVerifier,
+      );
+      return auth.promptAsyncRef.current();
     },
   };
 }

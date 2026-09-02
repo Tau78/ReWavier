@@ -9,6 +9,7 @@ export type GoogleAuth = {
   refreshToken?: string;
   clientId?: string;
   expiresAt?: number;
+  scope?: string;
 };
 
 const BLOB_PREFIX = 'json:';
@@ -66,6 +67,7 @@ async function refreshAccess(auth: GoogleAuth): Promise<GoogleAuth> {
     accessToken: json.access_token,
     refreshToken: json.refresh_token ?? auth.refreshToken,
     clientId: auth.clientId,
+    scope: auth.scope,
     expiresAt: Date.now() + Math.max(30, (json.expires_in ?? 3600) - 60) * 1000,
   };
   await saveGoogleAuth(next);
