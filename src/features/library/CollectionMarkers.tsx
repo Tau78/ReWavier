@@ -12,7 +12,7 @@ import {
 import { formatTimecode, type Marker, type Track } from '../../domain/models';
 import type { RootStackParamList } from '../../navigation/types';
 import { colors } from '../../theme/colors';
-import { openTrack } from './openTrack';
+import { ensurePlayableAndOpen } from './openTrack';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -51,20 +51,16 @@ export function CollectionMarkers({
   }
 
   const playCue = (row: CueRow) => {
-    if (
-      !openTrack(
-        row.track.id,
-        tracks.map((track) => track.id),
-        { autoPlay: true, startAtMs: row.marker.timestampMs },
-      )
-    ) {
-      Alert.alert(
-        'Scarica',
-        'Questa traccia non è ancora sul telefono. Tocca ↓ per il download offline.',
-      );
-      return;
-    }
-    navigation.navigate('Player');
+    void ensurePlayableAndOpen(row.track.id, tracks.map((track) => track.id), {
+      autoPlay: true,
+      startAtMs: row.marker.timestampMs,
+    }).then((opened) => {
+      if (opened) {
+        navigation.navigate('Player');
+        return;
+      }
+      Alert.alert('Ascolto', 'Questo brano non è ancora arrivato. Riprova tra un attimo.');
+    });
   };
 
   return (

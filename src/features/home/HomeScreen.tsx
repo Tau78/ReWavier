@@ -33,7 +33,7 @@ import {
   targetAtPoint,
   type HomeDropTarget,
 } from '../library/homeDrop';
-import { openTrack } from '../library/openTrack';
+import { ensurePlayableAndOpen } from '../library/openTrack';
 import { TrackRow } from '../library/TrackRow';
 import { useLibraryActions } from '../library/useLibraryActions';
 
@@ -255,10 +255,11 @@ export function HomeScreen() {
   };
 
   const play = (trackId: string) => {
-    if (openTrack(trackId, matchingTracks.map((track) => track.id))) {
-      return;
-    }
-    Alert.alert('Scarica', 'Questa traccia non è ancora sul telefono. Tocca ↓ per il download offline.');
+    void ensurePlayableAndOpen(trackId, matchingTracks.map((track) => track.id)).then((opened) => {
+      if (!opened) {
+        Alert.alert('Ascolto', 'Questo brano non è ancora arrivato. Riprova tra un attimo.');
+      }
+    });
   };
 
   return (

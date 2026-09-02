@@ -57,13 +57,6 @@ import {
   trackPresentRemotely,
 } from './remoteAudioChange';
 
-function archiveAllMarkers(markers: Marker[]): Marker[] {
-  const now = Date.now();
-  return markers.map((marker) =>
-    marker.hidden === true ? marker : { ...marker, hidden: true, updatedAt: now },
-  );
-}
-
 function syncAlbumMessage(input: {
   added: number;
   removed: number;
@@ -261,7 +254,7 @@ async function runCloudSyncBody(): Promise<void> {
 
         if (!existing) {
           const id = createId('track');
-          const inboxUri = await saveAudio(remote, id, false);
+          const fileUri = await saveAudio(remote, id, false);
           store.importBundles(
             [
               {
@@ -270,9 +263,10 @@ async function runCloudSyncBody(): Promise<void> {
                   title: titleFromFileName(remote.name),
                   artist: album.name,
                   durationMs: 0,
-                  inboxUri,
+                  fileUri,
                   sourceFileName: remote.name,
-                  downloaded: false,
+                  downloaded: true,
+                  downloadedAt: Date.now(),
                   ...metaFrom(remote),
                 },
                 markers: [],
@@ -292,12 +286,7 @@ async function runCloudSyncBody(): Promise<void> {
         const visibleBefore = beforeMarkers.filter((marker) => marker.hidden !== true).length;
         const destUri = await saveAudio(remote, existing.id, existing.downloaded === true);
         // New remote version: archive current notes automatically and clear waveform.
-        if (existing.downloaded) {
-          store.replaceTrackFile(existing.id, destUri, []);
-        } else {
-          store.setTrackInbox(existing.id, destUri);
-          store.setTrackMarkers(existing.id, archiveAllMarkers(beforeMarkers));
-        }
+        store.replaceTrackFile(existing.id, destUri, []);
         store.updateTrackRemote(existing.id, metaFrom(remote));
         const afterMarkers = useLibraryStore.getState().markersByTrackId[existing.id] ?? [];
         refreshMarkersIfPlaying(existing.id, afterMarkers);
@@ -834,7 +823,7 @@ async function importAudiosInFolder(
     }
 
     const id = createId('track');
-    const inboxUri = await saveAudio(remote, id, false);
+    const fileUri = await saveAudio(remote, id, false);
     finishDriveItem();
     let markers: Marker[] = [];
     const sidecar = sidecars.find(
@@ -865,9 +854,10 @@ async function importAudiosInFolder(
             title: titleFromFileName(remote.name),
             artist: album?.name ?? 'Drive',
             durationMs: 0,
-            inboxUri,
+            fileUri,
             sourceFileName: remote.name,
-            downloaded: false,
+            downloaded: true,
+            downloadedAt: Date.now(),
             ...metaFrom(remote),
           },
           markers,

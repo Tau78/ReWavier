@@ -1,3 +1,4 @@
+import { File } from 'expo-file-system';
 import { create } from 'zustand';
 
 import {
@@ -28,10 +29,13 @@ import {
   type LibrarySnapshot,
 } from '../files/libraryPersist';
 import { setActiveLibraryOwner } from '../files/libraryOwner';
-import { playableUri } from '../domain/audioFormats';
+import { playableUri, trackCanFetchRemote } from '../domain/audioFormats';
+import { downloadDriveFile } from '../cloud/driveApi';
+import { safeTempFileName } from '../files/fileNames';
 import { audioFileNamesForTrack, migrateTracksToAudioFolder, scanAudioFolder } from '../files/audioFolder';
 import {
   copyToDownloads,
+  inboxDirectory,
   removeUri,
 } from '../files/downloads';
 import { sourceFileNameFromTitle } from '../domain/sidecar';
@@ -754,17 +758,36 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     if (!track || get().downloadingIds[trackId] != null) {
       return;
     }
-    const source = playableUri(track);
-    if (!source) {
-      throw new Error('Nessun file da scaricare');
-    }
-    if (track.downloaded && track.fileUri) {
+    if (track.downloaded && track.fileUri && playableUri(track)) {
       return;
+    }
+    const progress = useDownloadProgressStore.getState();
+    const ownsSession = !progress.active;
+    if (ownsSession) {
+      progress.begin(1);
     }
     set((state) => ({
       downloadingIds: { ...state.downloadingIds, [trackId]: 0 },
     }));
+    let tempUri: string | undefined;
     try {
+      let source = playableUri(track);
+      if (!source && track.driveFileId) {
+        const dest = new File(inboxDirectory(), safeTempFileName('dl', track.id, track.sourceFileName));
+        source = await downloadDriveFile(track.driveFileId, dest.uri, (fraction) => {
+          progress.setFileFraction(fraction);
+          set((state) => ({
+            downloadingIds: { ...state.downloadingIds, [trackId]: Math.round(fraction * 100) },
+          }));
+        });
+        tempUri = source;
+      }
+      if (!source && track.remoteUri?.startsWith('http')) {
+        source = track.remoteUri;
+      }
+      if (!source) {
+        throw new Error('Questo brano non è ancora arrivato. Riprova.');
+      }
       const fileUri = await copyToDownloads(
         source,
         track.id,
@@ -781,12 +804,27 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           ),
         };
       });
+      progress.advance();
     } catch (error) {
       set((state) => {
         const { [trackId]: _, ...rest } = state.downloadingIds;
         return { downloadingIds: rest };
       });
       throw error;
+    } finally {
+      if (tempUri) {
+        try {
+          const temp = new File(tempUri);
+          if (temp.exists) {
+            temp.delete();
+          }
+        } catch {
+          // temp already gone
+        }
+      }
+      if (ownsSession) {
+        progress.end();
+      }
     }
   },
 
@@ -811,13 +849,22 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
 
   async downloadCollection(kind, id) {
     const tracks = get().tracksIn(kind, id);
-    const pending = tracks.filter((track) => !(track.downloaded && track.fileUri));
+    const pending = tracks.filter(
+      (track) => !playableUri(track) || !track.downloaded || !track.fileUri,
+    );
+    const fetchable = pending.filter((track) => playableUri(track) || trackCanFetchRemote(track));
+    if (fetchable.length === 0) {
+      throw new Error(
+        pending.length > 0
+          ? 'Questi brani non sono ancora arrivati. Riprova.'
+          : 'Non c’è nessun brano da scaricare.',
+      );
+    }
     const progress = useDownloadProgressStore.getState();
-    progress.begin(pending.length);
+    progress.begin(fetchable.length);
     try {
-      for (const track of pending) {
+      for (const track of fetchable) {
         await get().downloadTrack(track.id);
-        progress.advance();
       }
     } finally {
       progress.end();

@@ -10,7 +10,7 @@ import { colors, DeepBackdrop, GlassCard, layout } from '../../theme';
 import { EmptyGraphic } from '../../theme/graphics';
 import { CollectionPlayer } from './CollectionPlayer';
 import { LibrarySearch, matchesLibrarySearch } from './LibrarySearch';
-import { openTrack } from './openTrack';
+import { ensurePlayableAndOpen } from './openTrack';
 import { TrackRow } from './TrackRow';
 import { useLibraryActions } from './useLibraryActions';
 
@@ -33,10 +33,11 @@ export function LibraryScreen() {
   const searching = query.trim().length > 0;
 
   const play = (trackId: string) => {
-    if (openTrack(trackId, visibleTracks.map((track) => track.id))) {
-      return;
-    }
-    Alert.alert('Scarica', 'Questa traccia non è ancora sul telefono. Tocca ↓ per il download offline.');
+    void ensurePlayableAndOpen(trackId, visibleTracks.map((track) => track.id)).then((opened) => {
+      if (!opened) {
+        Alert.alert('Ascolto', 'Questo brano non è ancora arrivato. Riprova tra un attimo.');
+      }
+    });
   };
 
   return (

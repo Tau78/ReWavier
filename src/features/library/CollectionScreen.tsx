@@ -22,7 +22,7 @@ import { AlbumDocuments } from './AlbumDocuments';
 import { AlbumNotes } from './AlbumNotes';
 import { AlbumSeparatorRow, SEPARATOR_ROW_HEIGHT } from './AlbumSeparatorRow';
 import { CollectionPlayer } from './CollectionPlayer';
-import { openTrack, playQueue } from './openTrack';
+import { ensurePlayableAndOpen, openTrack, playQueue } from './openTrack';
 import { ReorderableTrackList } from './ReorderableTrackList';
 import { TrackRow } from './TrackRow';
 import { useLibraryActions } from './useLibraryActions';
@@ -409,18 +409,22 @@ export function CollectionScreen() {
                     }
                     downloading={downloadingIds[item.track.id] != null}
                     onPress={() => {
-                      if (kind === 'album' || kind === 'folder') {
-                        if (openTrack(item.track.id, trackIds, { autoPlay: true })) {
+                      void ensurePlayableAndOpen(
+                        item.track.id,
+                        trackIds,
+                        kind === 'album' || kind === 'folder' ? { autoPlay: true } : undefined,
+                      ).then((opened) => {
+                        if (opened) {
+                          if (kind !== 'album' && kind !== 'folder') {
+                            navigation.navigate('Player');
+                          }
                           return;
                         }
-                      } else if (openTrack(item.track.id, trackIds)) {
-                        navigation.navigate('Player');
-                        return;
-                      }
-                      Alert.alert(
-                        'Scarica',
-                        'Questa traccia non è ancora sul telefono. Tocca ↓ per il download offline.',
-                      );
+                        Alert.alert(
+                          'Ascolto',
+                          'Questo brano non è ancora arrivato. Riprova tra un attimo.',
+                        );
+                      });
                     }}
                     onArtwork={() => actions.pickTrackArtwork(item.track)}
                     onMenu={() => actions.openTrackMenu(item.track)}

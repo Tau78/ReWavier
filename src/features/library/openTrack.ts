@@ -1,4 +1,4 @@
-import { playableUri } from '../../domain/audioFormats';
+import { playableUri, trackCanFetchRemote } from '../../domain/audioFormats';
 import { useLibraryStore } from '../../store/libraryStore';
 import { usePlayerStore } from '../../store/playerStore';
 
@@ -29,6 +29,23 @@ export function playQueue(trackIds: string[]): boolean {
     return false;
   }
   return openTrack(first, playableIds, { autoPlay: true });
+}
+
+/** Opens the track, fetching it from Drive first when the file is not on the phone. */
+export async function ensurePlayableAndOpen(
+  trackId: string,
+  queueIds?: string[],
+  options?: { autoPlay?: boolean; startAtMs?: number },
+): Promise<boolean> {
+  if (openTrack(trackId, queueIds, options)) {
+    return true;
+  }
+  const track = useLibraryStore.getState().getTrack(trackId);
+  if (!track || !trackCanFetchRemote(track)) {
+    return false;
+  }
+  await useLibraryStore.getState().downloadTrack(trackId);
+  return openTrack(trackId, queueIds, options);
 }
 
 /** Loads the first playable track in this list unless one is already in the player. */

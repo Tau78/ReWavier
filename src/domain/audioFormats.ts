@@ -34,3 +34,7 @@ export function playableUri(track: {
 export function isDownloaded(track: { downloaded?: boolean; fileUri?: string }): boolean {
   return track.downloaded === true && Boolean(track.fileUri);
 }
+
+export function trackCanFetchRemote(track: { driveFileId?: string; remoteUri?: string }): boolean {
+  return Boolean(track.driveFileId || track.remoteUri?.startsWith('http'));
+}
