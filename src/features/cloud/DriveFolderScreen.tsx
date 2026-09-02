@@ -14,8 +14,10 @@ import {
 } from '../../cloud/driveApi';
 import { importDriveFolder } from '../../cloud/syncEngine';
 import { isAudioName } from '../../domain/audioFormats';
+import { formatDownloadPercent } from '../../domain/downloadProgress';
 import { findTrackCoverFile, isAlbumCoverName, isImageName, isPdfName } from '../../domain/driveMedia';
 import type { RootStackParamList } from '../../navigation/types';
+import { useDownloadProgressStore } from '../../store/downloadProgressStore';
 import { colors, layout } from '../../theme/colors';
 import { EmptyGraphic, KindRow } from '../../theme/graphics';
 
@@ -51,6 +53,8 @@ export function DriveFolderScreen() {
   const [children, setChildren] = useState<DriveFile[]>([]);
   const [busy, setBusy] = useState(true);
   const [working, setWorking] = useState(false);
+  const downloadPercent = useDownloadProgressStore((s) => s.percent);
+  const downloadActive = useDownloadProgressStore((s) => s.active);
 
   const browsing = stack.length > 0;
   const current = stack[stack.length - 1];
@@ -277,7 +281,21 @@ export function DriveFolderScreen() {
       )}
       {busy ? <ActivityIndicator color={colors.accent} style={styles.spinner} /> : null}
       {working ? (
-        <Text style={styles.working}>Carico brani, copertine e documenti da Drive…</Text>
+        <View style={styles.workingBox}>
+          <Text style={styles.working}>
+            {downloadActive
+              ? `Sto scaricando la cartella… ${formatDownloadPercent(downloadPercent)}`
+              : 'Cerco i file nella cartella…'}
+          </Text>
+          <View style={styles.barTrack}>
+            <View
+              style={[
+                styles.barFill,
+                { width: `${downloadActive ? downloadPercent : 0}%` },
+              ]}
+            />
+          </View>
+        </View>
       ) : null}
       {busy ? null : (
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
@@ -417,12 +435,26 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   spinner: { marginTop: 24 },
-  working: {
+  workingBox: {
     paddingHorizontal: 20,
+    marginBottom: 12,
+  },
+  working: {
     marginBottom: 8,
     color: colors.accent,
     fontSize: 14,
     fontWeight: '600',
+  },
+  barTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.surfaceRaised,
+    overflow: 'hidden',
+  },
+  barFill: {
+    height: '100%',
+    backgroundColor: colors.accent,
+    borderRadius: 3,
   },
   scroll: { paddingHorizontal: 16, paddingBottom: 32 },
   emptyBox: { alignItems: 'center', paddingVertical: 20 },

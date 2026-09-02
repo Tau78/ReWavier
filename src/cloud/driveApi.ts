@@ -246,7 +246,11 @@ export async function listDriveFolderTree(
   return nodes;
 }
 
-export async function downloadDriveFile(fileId: string, destUri: string): Promise<string> {
+export async function downloadDriveFile(
+  fileId: string,
+  destUri: string,
+  onProgress?: (fraction: number) => void,
+): Promise<string> {
   const access = await token();
   const url = `${DRIVE}/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`;
   await ensureParentDirAsync(destUri);
@@ -254,10 +258,18 @@ export async function downloadDriveFile(fileId: string, destUri: string): Promis
   if (dest.exists) {
     dest.delete();
   }
-  const result = await LegacyFS.downloadAsync(url, destUri, {
-    headers: { Authorization: `Bearer ${access}` },
-  });
-  if (result.status !== 200) {
+  const headers = { Authorization: `Bearer ${access}` };
+  const result = onProgress
+    ? await LegacyFS.createDownloadResumable(url, destUri, { headers }, ({
+        totalBytesWritten,
+        totalBytesExpectedToWrite,
+      }) => {
+        if (totalBytesExpectedToWrite > 0) {
+          onProgress(totalBytesWritten / totalBytesExpectedToWrite);
+        }
+      }).downloadAsync()
+    : await LegacyFS.downloadAsync(url, destUri, { headers });
+  if (!result || result.status !== 200) {
     throw new Error('Drive non ha scaricato il brano. Riprova.');
   }
   if (dest.exists) {

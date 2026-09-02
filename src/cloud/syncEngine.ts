@@ -30,6 +30,7 @@ import { saveDocumentFromUri } from '../files/albumDocuments';
 import { copyToDownloads, inboxDirectory } from '../files/downloads';
 import { safeTempFileName } from '../files/fileNames';
 import { writeSidecarToLibrary } from '../files/libraryFiles';
+import { useDownloadProgressStore } from '../store/downloadProgressStore';
 import { useLibraryStore } from '../store/libraryStore';
 import { refreshPlayingArtwork, usePlayerStore } from '../store/playerStore';
 import { useSessionStore } from '../store/sessionStore';
@@ -55,13 +56,6 @@ import {
   trackMatchesRemote,
   trackPresentRemotely,
 } from './remoteAudioChange';
-
-function archiveAllMarkers(markers: Marker[]): Marker[] {
-  const now = Date.now();
-  return markers.map((marker) =>
-    marker.hidden === true ? marker : { ...marker, hidden: true, updatedAt: now },
-  );
-}
 
 function syncAlbumMessage(input: {
   added: number;
@@ -107,9 +101,38 @@ function metaFrom(remote: DriveFile): Pick<Track, 'driveFileId' | 'remoteModifie
   };
 }
 
+function reportDriveFraction(fraction: number) {
+  useDownloadProgressStore.getState().setFileFraction(fraction);
+}
+
+function finishDriveItem() {
+  useDownloadProgressStore.getState().advance();
+}
+
+function countDriveImportJobs(
+  tree: { children: DriveFile[] }[],
+): number {
+  let total = 0;
+  const root = tree[0];
+  if (root && findAlbumCoverFile(root.children)) {
+    total += 1;
+  }
+  for (const node of tree) {
+    const audios = node.children.filter((file) => isAudioName(file.name));
+    total += audios.length;
+    total += node.children.filter((file) => isPdfName(file.name)).length;
+    for (const audio of audios) {
+      if (findTrackCoverFile(audio.name, node.children)) {
+        total += 1;
+      }
+    }
+  }
+  return total;
+}
+
 async function saveAudio(remote: DriveFile, trackId: string, _downloaded: boolean): Promise<string> {
   const dest = new File(inboxDirectory(), safeTempFileName('sync', trackId, remote.name));
-  const uri = await downloadDriveFile(remote.id, dest.uri);
+  const uri = await downloadDriveFile(remote.id, dest.uri, reportDriveFraction);
   const stored = await copyToDownloads(uri, trackId, remote.name);
   try {
     dest.delete();
@@ -231,7 +254,7 @@ async function runCloudSyncBody(): Promise<void> {
 
         if (!existing) {
           const id = createId('track');
-          const inboxUri = await saveAudio(remote, id, false);
+          const fileUri = await saveAudio(remote, id, false);
           store.importBundles(
             [
               {
@@ -240,9 +263,10 @@ async function runCloudSyncBody(): Promise<void> {
                   title: titleFromFileName(remote.name),
                   artist: album.name,
                   durationMs: 0,
-                  inboxUri,
+                  fileUri,
                   sourceFileName: remote.name,
-                  downloaded: false,
+                  downloaded: true,
+                  downloadedAt: Date.now(),
                   ...metaFrom(remote),
                 },
                 markers: [],
@@ -262,12 +286,7 @@ async function runCloudSyncBody(): Promise<void> {
         const visibleBefore = beforeMarkers.filter((marker) => marker.hidden !== true).length;
         const destUri = await saveAudio(remote, existing.id, existing.downloaded === true);
         // New remote version: archive current notes automatically and clear waveform.
-        if (existing.downloaded) {
-          store.replaceTrackFile(existing.id, destUri, []);
-        } else {
-          store.setTrackInbox(existing.id, destUri);
-          store.setTrackMarkers(existing.id, archiveAllMarkers(beforeMarkers));
-        }
+        store.replaceTrackFile(existing.id, destUri, []);
         store.updateTrackRemote(existing.id, metaFrom(remote));
         const afterMarkers = useLibraryStore.getState().markersByTrackId[existing.id] ?? [];
         refreshMarkersIfPlaying(existing.id, afterMarkers);
@@ -631,7 +650,7 @@ function applyKeep(markers: Marker[], keepIds: string[]): Marker[] {
 async function downloadDriveTemp(remote: DriveFile, prefix: string): Promise<string | null> {
   const dest = new File(inboxDirectory(), safeTempFileName(prefix, remote.id, remote.name));
   try {
-    await downloadDriveFile(remote.id, dest.uri);
+    await downloadDriveFile(remote.id, dest.uri, reportDriveFraction);
     return dest.uri;
   } catch {
     if (dest.exists) {
@@ -652,6 +671,7 @@ async function applyTrackCover(
   }
   const temp = await downloadDriveTemp(cover, 'art');
   if (!temp) {
+    finishDriveItem();
     return;
   }
   try {
@@ -663,6 +683,7 @@ async function applyTrackCover(
     if (file.exists) {
       file.delete();
     }
+    finishDriveItem();
   }
 }
 
@@ -673,6 +694,7 @@ async function applyAlbumCoverFromFiles(albumId: string, children: DriveFile[]):
   }
   const temp = await downloadDriveTemp(cover, 'cover');
   if (!temp) {
+    finishDriveItem();
     return;
   }
   try {
@@ -683,6 +705,7 @@ async function applyAlbumCoverFromFiles(albumId: string, children: DriveFile[]):
     if (file.exists) {
       file.delete();
     }
+    finishDriveItem();
   }
 }
 
@@ -716,10 +739,12 @@ async function applyPdfsFromFiles(
       if (existing && existing.folderPath !== folderPath) {
         useLibraryStore.getState().upsertAlbumDocument(albumId, { ...existing, folderPath });
       }
+      finishDriveItem();
       continue;
     }
     const temp = await downloadDriveTemp(pdf, 'pdf');
     if (!temp) {
+      finishDriveItem();
       continue;
     }
     try {
@@ -738,6 +763,7 @@ async function applyPdfsFromFiles(
       if (file.exists) {
         file.delete();
       }
+      finishDriveItem();
     }
   }
 }
@@ -792,11 +818,13 @@ async function importAudiosInFolder(
         store.addTrackToFolder(existing.id, appFolderId);
       }
       store.addTracksToAlbum(albumId, [existing.id]);
+      finishDriveItem();
       continue;
     }
 
     const id = createId('track');
-    const inboxUri = await saveAudio(remote, id, false);
+    const fileUri = await saveAudio(remote, id, false);
+    finishDriveItem();
     let markers: Marker[] = [];
     const sidecar = sidecars.find(
       (file) => audioBasename(file.name).toLowerCase() === audioBasename(remote.name).toLowerCase(),
@@ -826,9 +854,10 @@ async function importAudiosInFolder(
             title: titleFromFileName(remote.name),
             artist: album?.name ?? 'Drive',
             durationMs: 0,
-            inboxUri,
+            fileUri,
             sourceFileName: remote.name,
-            downloaded: false,
+            downloaded: true,
+            downloadedAt: Date.now(),
             ...metaFrom(remote),
           },
           markers,
@@ -870,27 +899,32 @@ export async function importDriveFolder(
     recursive ? 8 : 0,
     sharedDriveId ? { sharedDriveId } : undefined,
   );
-  const driveToApp = new Map<string, string | null>();
-  const rootAppId = recursive ? store.createFolder(folderName, null, { driveFolderId: folderId }) : null;
-  driveToApp.set(folderId, rootAppId);
+  const progress = useDownloadProgressStore.getState();
+  progress.begin(countDriveImportJobs(tree));
+  try {
+    const driveToApp = new Map<string, string | null>();
+    const rootAppId = recursive ? store.createFolder(folderName, null, { driveFolderId: folderId }) : null;
+    driveToApp.set(folderId, rootAppId);
 
-  for (const node of tree) {
-    if (recursive) {
-      for (const child of node.children.filter(isDriveFolder)) {
-        if (driveToApp.has(child.id)) {
-          continue;
+    for (const node of tree) {
+      if (recursive) {
+        for (const child of node.children.filter(isDriveFolder)) {
+          if (driveToApp.has(child.id)) {
+            continue;
+          }
+          const parentApp = driveToApp.get(node.id) ?? rootAppId;
+          driveToApp.set(
+            child.id,
+            store.createFolder(child.name, parentApp, { driveFolderId: child.id }),
+          );
         }
-        const parentApp = driveToApp.get(node.id) ?? rootAppId;
-        driveToApp.set(
-          child.id,
-          store.createFolder(child.name, parentApp, { driveFolderId: child.id }),
-        );
       }
+      await importAudiosInFolder(albumId, driveToApp.get(node.id) ?? null, node.children);
     }
-    await importAudiosInFolder(albumId, driveToApp.get(node.id) ?? null, node.children);
+
+    await applyDriveMediaTree(albumId, tree);
+    return albumId;
+  } finally {
+    progress.end();
   }
-
-  await applyDriveMediaTree(albumId, tree);
-
-  return albumId;
 }
