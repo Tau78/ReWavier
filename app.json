@@ -20,11 +20,7 @@
     ],
     "ios": {
       "bundleIdentifier": "app.rewavier",
-<<<<<<< HEAD
-      "buildNumber": "62",
-=======
-      "buildNumber": "60",
->>>>>>> cursor/download-percent-pdf-preview-cfd6
+      "buildNumber": "63",
       "usesIcloudStorage": true,
       "entitlements": {
         "com.apple.developer.icloud-container-identifiers": [
