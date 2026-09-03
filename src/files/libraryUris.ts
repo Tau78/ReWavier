@@ -1,5 +1,6 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
+import { safeDisplayFileName } from './fileNames';
 import { audioRelativePrefix } from './libraryOwner';
 import { audioDirectory, downloadsDirectory, inboxDirectory, libraryDirectory } from './libraryPaths';
 
@@ -125,13 +126,24 @@ export function recoverAudioRelative(track: {
     return { inboxUri };
   }
 
-  const wanted = track.sourceFileName?.replace(/[/\\?%*:|"<>]/g, '-');
+  const wanted = track.sourceFileName
+    ? safeDisplayFileName(track.sourceFileName)
+    : undefined;
   const prefix = `${track.id}-`;
   const audio = listNames(audioDirectory());
   const downloads = listNames(downloadsDirectory());
   const inbox = listNames(inboxDirectory());
   const match = (names: string[]) =>
-    names.find((name) => name.startsWith(prefix) || (wanted ? name === wanted || name.endsWith(wanted) : false));
+    names.find((name) => {
+      if (name.startsWith(prefix)) {
+        return true;
+      }
+      if (!wanted) {
+        return false;
+      }
+      const safe = safeDisplayFileName(name);
+      return name === wanted || safe === wanted || name.endsWith(wanted) || safe.endsWith(wanted);
+    });
   const audioHit = match(audio);
   if (audioHit) {
     return { fileUri: `${audioRelativePrefix()}/${audioHit}` };

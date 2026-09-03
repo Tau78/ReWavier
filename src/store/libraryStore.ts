@@ -804,6 +804,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           ),
         };
       });
+      await flushLibraryPersist();
       progress.advance();
     } catch (error) {
       set((state) => {

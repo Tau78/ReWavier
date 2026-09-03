@@ -6,15 +6,14 @@ import { isAudioName } from '../../domain/audioFormats';
 import { isSidecarName } from '../../domain/sidecar';
 import { scanAudioFolder } from '../../files/audioFolder';
 import {
-  loadLibrarySnapshot,
   saveLibrarySnapshot,
   sanitizeSnapshot,
   type LibrarySnapshot,
 } from '../../files/libraryPersist';
 import { audioDirectory } from '../../files/libraryPaths';
-import { useLibraryStore } from '../../store/libraryStore';
+import { flushLibraryPersist, useLibraryStore } from '../../store/libraryStore';
 import { useSessionStore } from '../../store/sessionStore';
-import { mergeLibrarySnapshots } from './mergeLibrary';
+import { keepLocalMedia, mergeLibrarySnapshots } from './mergeLibrary';
 import { shouldSyncBagFile } from './syncSkip';
 
 export type LocalBagFile = {
@@ -82,18 +81,24 @@ export async function applyRemoteSnapshot(remote: LibrarySnapshot): Promise<void
   if (shouldSkipCloudSync(useSessionStore.getState().user)) {
     return;
   }
-  const local = (await loadLibrarySnapshot()) ?? snapshotFromStore();
-  const merged = sanitizeSnapshot(mergeLibrarySnapshots(local, remote));
-  useLibraryStore.setState({
-    tracks: merged.tracks,
-    folders: merged.folders,
-    albums: merged.albums,
-    playlists: merged.playlists,
-    smartPlaylists: merged.smartPlaylists,
-    markersByTrackId: merged.markersByTrackId,
-    keptAudioNames: merged.keptAudioNames ?? [],
+  await flushLibraryPersist();
+  const local = snapshotFromStore();
+  const merged = mergeLibrarySnapshots(local, remote);
+  const cleaned = sanitizeSnapshot({
+    ...merged,
+    tracks: keepLocalMedia(local.tracks, merged.tracks),
   });
-  await saveLibrarySnapshot(merged);
+  const tracks = keepLocalMedia(local.tracks, cleaned.tracks);
+  useLibraryStore.setState({
+    tracks,
+    folders: cleaned.folders,
+    albums: cleaned.albums,
+    playlists: cleaned.playlists,
+    smartPlaylists: cleaned.smartPlaylists,
+    markersByTrackId: cleaned.markersByTrackId,
+    keptAudioNames: cleaned.keptAudioNames ?? [],
+  });
+  await saveLibrarySnapshot({ ...cleaned, tracks });
   await importLooseAudioFiles();
 }
 

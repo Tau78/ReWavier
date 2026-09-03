@@ -34,7 +34,7 @@ function mergeTracks(local: Track[], remote: Track[]): { tracks: Track[]; idRema
       ...existing,
       title: existing.title || incoming.title,
       artist: existing.artist || incoming.artist,
-      durationMs: existing.durationMs || incoming.durationMs,
+      durationMs: Math.max(existing.durationMs ?? 0, incoming.durationMs ?? 0),
       startMs: existing.startMs ?? incoming.startMs,
       endMs: existing.endMs ?? incoming.endMs,
       exerciseOpenId: existing.exerciseOpenId ?? incoming.exerciseOpenId,
@@ -43,6 +43,10 @@ function mergeTracks(local: Track[], remote: Track[]): { tracks: Track[]; idRema
       sourceFileName: existing.sourceFileName || incoming.sourceFileName,
       driveFileId: existing.driveFileId || incoming.driveFileId,
       artworkUri: existing.artworkUri || incoming.artworkUri,
+      fileUri: existing.fileUri || incoming.fileUri,
+      inboxUri: existing.inboxUri || incoming.inboxUri,
+      downloaded: Boolean(existing.fileUri || existing.downloaded),
+      downloadedAt: existing.downloadedAt || incoming.downloadedAt,
     });
   }
   return { tracks: [...byId.values()], idRemap };
@@ -180,6 +184,27 @@ function mergeAllMarkers(
     out[id] = mergeMarkers(local[id] ?? [], remappedRemote[id] ?? []);
   }
   return out;
+}
+
+/** Keep files and duration already on this phone when a suitcase overwrite arrives. */
+export function keepLocalMedia(local: Track[], merged: Track[]): Track[] {
+  const byId = new Map(local.map((track) => [track.id, track]));
+  return merged.map((track) => {
+    const prev = byId.get(track.id);
+    if (!prev) {
+      return track;
+    }
+    const fileUri = track.fileUri || prev.fileUri;
+    const inboxUri = track.inboxUri || prev.inboxUri;
+    return {
+      ...track,
+      fileUri,
+      inboxUri,
+      downloaded: Boolean(fileUri) || track.downloaded || prev.downloaded,
+      downloadedAt: track.downloadedAt || prev.downloadedAt,
+      durationMs: Math.max(track.durationMs ?? 0, prev.durationMs ?? 0),
+    };
+  });
 }
 
 export function mergeLibrarySnapshots(local: LibrarySnapshot, remote: LibrarySnapshot): LibrarySnapshot {
