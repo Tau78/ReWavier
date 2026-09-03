@@ -318,19 +318,12 @@ export function CollectionScreen() {
         }
       >
         {album ? (
-          <>
-            <AlbumHero
-              album={album}
-              trackCount={tracks.length}
-              isPlayingThisAlbum={isPlayingThisAlbum}
-              onPlay={playAlbum}
-            />
-            <AlbumNotes albumId={album.id} notes={album.notes} />
-            <AlbumDocuments documents={album.documents ?? []} />
-          </>
-        ) : null}
-        {kind === 'album' || kind === 'folder' ? (
-          <CollectionMarkers tracks={tracks} markersByTrackId={markersByTrackId} />
+          <AlbumHero
+            album={album}
+            trackCount={tracks.length}
+            isPlayingThisAlbum={isPlayingThisAlbum}
+            onPlay={playAlbum}
+          />
         ) : null}
         {downloadActive && (kind === 'album' || kind === 'folder') ? (
           <View style={styles.downloadBox}>
@@ -442,6 +435,15 @@ export function CollectionScreen() {
             />
           )}
         </View>
+        {album ? (
+          <>
+            <AlbumNotes albumId={album.id} notes={album.notes} />
+            <AlbumDocuments documents={album.documents ?? []} />
+          </>
+        ) : null}
+        {kind === 'album' || kind === 'folder' ? (
+          <CollectionMarkers tracks={tracks} markersByTrackId={markersByTrackId} />
+        ) : null}
       </ScrollView>
       {kind === 'album' || kind === 'folder' ? <CollectionPlayer trackIds={trackIds} /> : null}
       {actions.modals}
