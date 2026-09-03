@@ -8,6 +8,16 @@ import {
 
 import type { PlaybackListener } from './mockEngine';
 
+/** Playback session: keep going when the app is not in the foreground. */
+export async function applyPlaybackAudioMode(): Promise<void> {
+  await setAudioModeAsync({
+    playsInSilentMode: true,
+    shouldPlayInBackground: true,
+    allowsRecording: false,
+    interruptionMode: 'doNotMix',
+  });
+}
+
 export class FileAudioEngine {
   private player: AudioPlayer | null = null;
   private statusSub: { remove: () => void } | null = null;
@@ -35,14 +45,10 @@ export class FileAudioEngine {
   async load(uri: string, metadata?: AudioMetadata): Promise<number> {
     await this.unload();
     this.metadata = metadata;
-    await setAudioModeAsync({
-      playsInSilentMode: true,
-      shouldPlayInBackground: false,
-      interruptionMode: 'doNotMix',
-    });
+    await applyPlaybackAudioMode();
     const player = createAudioPlayer(
       { uri },
-      { updateInterval: 50, keepAudioSessionActive: false },
+      { updateInterval: 50, keepAudioSessionActive: true },
     );
     this.player = player;
     this.statusSub = player.addListener('playbackStatusUpdate', (status) => this.onStatus(status));
@@ -128,13 +134,14 @@ export class FileAudioEngine {
   }
 
   private publishLockScreen() {
-    // Lock-screen / background playback removed for App Store 2.5.4:
-    // the app does not keep audible content running on the Home Screen.
     if (!this.player) {
       return;
     }
     try {
-      this.player.clearLockScreenControls();
+      this.player.setActiveForLockScreen(true, this.metadata, {
+        showSeekForward: true,
+        showSeekBackward: true,
+      });
     } catch {
       // Expo Go or binary without lock-screen controls
     }
