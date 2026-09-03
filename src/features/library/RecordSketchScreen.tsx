@@ -23,6 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { isScreenCaptured, shouldExplainScreenMicConflict } from '../../../modules/screen-captured';
 import { ensurePeaks } from '../../audio/extractPeaks';
+import { applyPlaybackAudioMode } from '../../audio/fileEngine';
 import { pushTrackToSharedAlbum } from '../../cloud/syncEngine';
 import { createId } from '../../domain/library';
 import { stampNewMarker } from '../../domain/markers';
@@ -140,11 +141,7 @@ export function RecordSketchScreen() {
       } catch {
         // Already released after navigation — do not throw into the error boundary.
       }
-      void setAudioModeAsync({
-        allowsRecording: false,
-        playsInSilentMode: true,
-        shouldPlayInBackground: false,
-      }).catch(() => undefined);
+      void applyPlaybackAudioMode().catch(() => undefined);
     };
     // recorder identity is stable for the screen lifetime
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -255,11 +252,7 @@ export function RecordSketchScreen() {
         setElapsedMs(next.durationMillis);
       }
     } finally {
-      await setAudioModeAsync({
-        allowsRecording: false,
-        playsInSilentMode: true,
-        shouldPlayInBackground: false,
-      }).catch(() => undefined);
+      await applyPlaybackAudioMode().catch(() => undefined);
     }
   };
 
