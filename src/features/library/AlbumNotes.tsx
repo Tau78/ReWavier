@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
-import { useLibraryStore } from '../../store/libraryStore';
+import { flushLibraryPersist, useLibraryStore } from '../../store/libraryStore';
 import { colors } from '../../theme/colors';
 
 function notesPreview(notes?: string): string {
@@ -13,8 +13,32 @@ function notesPreview(notes?: string): string {
   return firstLine.length > 42 ? `${firstLine.slice(0, 41)}…` : firstLine;
 }
 
+function pushNotes(albumId: string) {
+  void import('../../cloud/syncEngine')
+    .then((mod) => mod.pushAlbumNotes(albumId))
+    .catch(() => undefined);
+}
+
 export function AlbumNotes({ albumId, notes }: { albumId: string; notes?: string }) {
   const [open, setOpen] = useState(false);
+  const draftRef = useRef(notes ?? '');
+
+  useEffect(() => {
+    draftRef.current = notes ?? '';
+  }, [notes]);
+
+  useEffect(() => {
+    return () => {
+      const text = draftRef.current;
+      const stored = useLibraryStore.getState().albums.find((album) => album.id === albumId)?.notes ?? '';
+      if (text !== stored) {
+        useLibraryStore.getState().setAlbumNotes(albumId, text);
+      } else {
+        void flushLibraryPersist();
+      }
+      pushNotes(albumId);
+    };
+  }, [albumId]);
 
   return (
     <View style={styles.card}>
@@ -35,7 +59,14 @@ export function AlbumNotes({ albumId, notes }: { albumId: string; notes?: string
         <TextInput
           style={styles.input}
           value={notes ?? ''}
-          onChangeText={(text) => useLibraryStore.getState().setAlbumNotes(albumId, text)}
+          onChangeText={(text) => {
+            draftRef.current = text;
+            useLibraryStore.getState().setAlbumNotes(albumId, text);
+          }}
+          onBlur={() => {
+            void flushLibraryPersist();
+            pushNotes(albumId);
+          }}
           placeholder="Scrivi un appunto sull’album: idee, accordi, cose da ricordare."
           placeholderTextColor={colors.textMuted}
           multiline

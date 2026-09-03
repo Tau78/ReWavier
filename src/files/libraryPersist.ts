@@ -134,6 +134,7 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
         separators: separators.length > 0 ? separators : undefined,
         artworkUri: persistAndKeep(album.artworkUri),
         notes: album.notes?.trim() ? album.notes : undefined,
+        notesUpdatedAt: album.notes?.trim() ? album.notesUpdatedAt : undefined,
         versionFolders: nextAlbum.versionFolders,
         documents: (album.documents ?? [])
           .map((document) => {

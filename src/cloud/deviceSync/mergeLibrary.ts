@@ -122,6 +122,7 @@ function mergeAlbums(local: Album[], remote: Album[], idRemap: Map<string, strin
       ...existing,
       trackIds,
       notes: existing.notes || incoming.notes,
+      notesUpdatedAt: Math.max(existing.notesUpdatedAt ?? 0, incoming.notesUpdatedAt ?? 0) || undefined,
       artworkUri: existing.artworkUri || incoming.artworkUri,
       documents: mergeDocuments(existing.documents, incoming.documents),
       driveFolderId: existing.driveFolderId || incoming.driveFolderId,

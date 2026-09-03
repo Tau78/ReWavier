@@ -5,7 +5,7 @@ import { ClipExtractorHost } from '../audio/ClipExtractorHost';
 import { WaveformDecoderHost } from '../audio/WaveformDecoderHost';
 import { runCloudSync } from '../cloud/syncEngine';
 import { AppStack } from '../navigation/AppStack';
-import { waitForLibraryHydrated } from '../store/libraryStore';
+import { flushLibraryPersist, waitForLibraryHydrated } from '../store/libraryStore';
 
 export function AuthenticatedApp() {
   useEffect(() => {
@@ -17,12 +17,14 @@ export function AuthenticatedApp() {
       }
     })();
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        void (async () => {
-          await waitForLibraryHydrated();
-          void runCloudSync();
-        })();
+      if (state !== 'active') {
+        void flushLibraryPersist();
+        return;
       }
+      void (async () => {
+        await waitForLibraryHydrated();
+        void runCloudSync();
+      })();
     });
     return () => {
       cancelled = true;

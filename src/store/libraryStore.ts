@@ -110,7 +110,7 @@ export type LibraryActions = {
   setAlbumArtwork: (id: string, artworkUri?: string) => void;
   upsertAlbumDocument: (albumId: string, document: AlbumDocument) => void;
   deleteAlbumDocument: (albumId: string, documentId: string) => void;
-  setAlbumNotes: (id: string, notes: string) => void;
+  setAlbumNotes: (id: string, notes: string, extras?: { updatedAt?: number; fromCloud?: boolean }) => void;
   addAlbumSeparator: (albumId: string, name: string) => string;
   renameAlbumSeparator: (albumId: string, separatorId: string, name: string) => void;
   deleteAlbumSeparator: (albumId: string, separatorId: string) => void;
@@ -452,12 +452,16 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     }));
   },
 
-  setAlbumNotes(id, notes) {
+  setAlbumNotes(id, notes, extras = {}) {
+    const updatedAt = extras.updatedAt ?? Date.now();
     set((state) => ({
       albums: state.albums.map((album) =>
-        album.id === id ? { ...album, notes } : album,
+        album.id === id ? { ...album, notes, notesUpdatedAt: updatedAt } : album,
       ),
     }));
+    if (!extras.fromCloud) {
+      void flushLibraryPersist();
+    }
   },
 
   addAlbumSeparator(albumId, name) {

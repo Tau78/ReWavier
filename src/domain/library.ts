@@ -52,6 +52,7 @@ export type Album = {
   shared?: boolean;
   artworkUri?: string;
   notes?: string;
+  notesUpdatedAt?: number;
   separators?: AlbumSeparator[];
   versionFolders?: AlbumVersionFolder[];
   documents?: AlbumDocument[];

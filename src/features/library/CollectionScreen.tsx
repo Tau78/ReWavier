@@ -14,7 +14,7 @@ import { isSeparatorId, isVersionFolderId } from '../../domain/library';
 import type { Track } from '../../domain/models';
 import type { RootStackParamList } from '../../navigation/types';
 import { useDownloadProgressStore } from '../../store/downloadProgressStore';
-import { useLibraryStore } from '../../store/libraryStore';
+import { flushLibraryPersist, useLibraryStore } from '../../store/libraryStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { useSyncStore } from '../../store/syncStore';
 import { colors, layout } from '../../theme/colors';
@@ -123,6 +123,7 @@ export function CollectionScreen() {
       return;
     }
     try {
+      await flushLibraryPersist();
       await runCloudSync();
     } catch (error) {
       Alert.alert(
