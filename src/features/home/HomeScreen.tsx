@@ -408,8 +408,8 @@ export function HomeScreen() {
                     imageUri={resolveLibraryUri(album.artworkUri) ?? ''}
                     meta={
                       album.origin === 'drive'
-                        ? `Drive · ${albumTrackCount(album.trackIds)} tracce`
-                        : album.artist || `${albumTrackCount(album.trackIds)} tracce`
+                        ? `Drive · ${albumTrackCount(album.trackIds, album.versionFolders)} tracce`
+                        : album.artist || `${albumTrackCount(album.trackIds, album.versionFolders)} tracce`
                     }
                     onPress={() => openCollection('album', album.id)}
                     onLongPress={() => actions.openAlbumMenu(album.id)}

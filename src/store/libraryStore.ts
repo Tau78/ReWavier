@@ -18,6 +18,20 @@ import {
   type Playlist,
   type SmartPlaylist,
 } from '../domain/library';
+import {
+  albumHasCustomOrder,
+  orderedAlbumItemIds,
+  sortTracksAlphabetically,
+} from '../domain/albumOrder';
+import {
+  applyAlbumVersionDrop,
+  flattenAlbumTrackIds,
+  removeTrackFromVersionFolders,
+  renameVersionFolder,
+  setVersionFolderChosen,
+  unpackVersionFolder,
+  withNamedVersionFolder,
+} from '../domain/albumVersions';
 import { type Marker, type Track } from '../domain/models';
 import { withPractice, type PracticeIds } from '../domain/practice';
 import { isDemoUser } from '../auth/demoAccount';
@@ -97,10 +111,14 @@ export type LibraryActions = {
   setAlbumArtwork: (id: string, artworkUri?: string) => void;
   upsertAlbumDocument: (albumId: string, document: AlbumDocument) => void;
   deleteAlbumDocument: (albumId: string, documentId: string) => void;
-  setAlbumNotes: (id: string, notes: string) => void;
+  setAlbumNotes: (id: string, notes: string, extras?: { updatedAt?: number; fromCloud?: boolean }) => void;
   addAlbumSeparator: (albumId: string, name: string) => string;
   renameAlbumSeparator: (albumId: string, separatorId: string, name: string) => void;
   deleteAlbumSeparator: (albumId: string, separatorId: string) => void;
+  dropAlbumVersion: (albumId: string, sourceId: string, targetId: string) => boolean;
+  unpackAlbumVersionFolder: (albumId: string, folderId: string) => void;
+  renameAlbumVersionFolder: (albumId: string, folderId: string, name: string) => void;
+  chooseAlbumVersion: (albumId: string, folderId: string, trackId: string) => void;
   deleteAlbum: (id: string) => void;
   renamePlaylist: (id: string, name: string) => void;
   deletePlaylist: (id: string) => void;
@@ -487,12 +505,16 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     }));
   },
 
-  setAlbumNotes(id, notes) {
+  setAlbumNotes(id, notes, extras = {}) {
+    const updatedAt = extras.updatedAt ?? Date.now();
     set((state) => ({
       albums: state.albums.map((album) =>
-        album.id === id ? { ...album, notes } : album,
+        album.id === id ? { ...album, notes, notesUpdatedAt: updatedAt } : album,
       ),
     }));
+    if (!extras.fromCloud) {
+      void flushLibraryPersist();
+    }
   },
 
   addAlbumSeparator(albumId, name) {
@@ -544,6 +566,61 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
             }
           : album,
       ),
+    }));
+  },
+
+  dropAlbumVersion(albumId, sourceId, targetId) {
+    let changed = false;
+    set((state) => ({
+      albums: state.albums.map((album) => {
+        if (album.id !== albumId) {
+          return album;
+        }
+        const next = applyAlbumVersionDrop(album, sourceId, targetId, state.tracks);
+        if (!next) {
+          return album;
+        }
+        const named = (next.versionFolders ?? []).reduce(
+          (current, folder) => withNamedVersionFolder(current, folder.id, state.tracks),
+          next,
+        );
+        changed = true;
+        return named;
+      }),
+    }));
+    return changed;
+  },
+
+  unpackAlbumVersionFolder(albumId, folderId) {
+    set((state) => ({
+      albums: state.albums.map((album) => {
+        if (album.id !== albumId) {
+          return album;
+        }
+        return unpackVersionFolder(album, folderId) ?? album;
+      }),
+    }));
+  },
+
+  renameAlbumVersionFolder(albumId, folderId, name) {
+    set((state) => ({
+      albums: state.albums.map((album) => {
+        if (album.id !== albumId) {
+          return album;
+        }
+        return renameVersionFolder(album, folderId, name) ?? album;
+      }),
+    }));
+  },
+
+  chooseAlbumVersion(albumId, folderId, trackId) {
+    set((state) => ({
+      albums: state.albums.map((album) => {
+        if (album.id !== albumId) {
+          return album;
+        }
+        return setVersionFolderChosen(album, folderId, trackId) ?? album;
+      }),
     }));
   },
 
@@ -681,10 +758,15 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           ...folder,
           trackIds: folder.trackIds.filter((trackId) => trackId !== id),
         })),
-        albums: state.albums.map((album) => ({
-          ...album,
-          trackIds: album.trackIds.filter((trackId) => trackId !== id),
-        })),
+        albums: state.albums.map((album) =>
+          removeTrackFromVersionFolders(
+            {
+              ...album,
+              trackIds: album.trackIds.filter((trackId) => trackId !== id),
+            },
+            id,
+          ),
+        ),
         playlists: state.playlists.map((playlist) => ({
           ...playlist,
           trackIds: playlist.trackIds.filter((trackId) => trackId !== id),
@@ -781,6 +863,20 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           )
         : state.albums;
       const collapsed = collapseDuplicateTracks(tracks, albums);
+      const nextAlbums =
+        albumId == null
+          ? collapsed.albums
+          : collapsed.albums.map((album) => {
+              if (album.id !== albumId) {
+                return album;
+              }
+              return {
+                ...album,
+                trackIds: albumHasCustomOrder(album)
+                  ? album.trackIds
+                  : orderedAlbumItemIds(album, collapsed.tracks),
+              };
+            });
       return {
         tracks: collapsed.tracks,
         markersByTrackId: nextMarkers,
@@ -792,7 +888,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
                   ? { ...folder, trackIds: [...folder.trackIds, ...ids.filter((id) => !folder.trackIds.includes(id))] }
                   : folder,
               ),
-        albums: collapsed.albums,
+        albums: nextAlbums,
       };
     });
     for (const bundle of accepted) {
@@ -802,11 +898,22 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
 
   addTracksToAlbum(albumId, trackIds) {
     set((state) => ({
-      albums: state.albums.map((album) =>
-        album.id === albumId
-          ? { ...album, trackIds: [...album.trackIds, ...trackIds.filter((id) => !album.trackIds.includes(id))] }
-          : album,
-      ),
+      albums: state.albums.map((album) => {
+        if (album.id !== albumId) {
+          return album;
+        }
+        const already = new Set(flattenAlbumTrackIds(album));
+        const merged = [
+          ...album.trackIds,
+          ...trackIds.filter((id) => !already.has(id) && !album.trackIds.includes(id)),
+        ];
+        return {
+          ...album,
+          trackIds: albumHasCustomOrder(album)
+            ? merged
+            : orderedAlbumItemIds({ ...album, trackIds: merged }, state.tracks),
+        };
+      }),
     }));
   },
 
@@ -1129,9 +1236,18 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     if (!collection) {
       return [];
     }
-    return collection.trackIds
-      .map((trackId) => tracks.find((track) => track.id === trackId))
-      .filter((track): track is Track => track != null);
+    const listed =
+      kind === 'album'
+        ? flattenAlbumTrackIds(collection as Album)
+            .map((trackId) => tracks.find((track) => track.id === trackId))
+            .filter((track): track is Track => track != null)
+        : collection.trackIds
+            .map((trackId) => tracks.find((track) => track.id === trackId))
+            .filter((track): track is Track => track != null);
+    if (kind === 'album' && !albumHasCustomOrder(collection as Album)) {
+      return sortTracksAlphabetically(listed);
+    }
+    return listed;
   },
 
   foldersIn(parentId) {

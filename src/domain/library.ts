@@ -17,6 +17,14 @@ export type AlbumSeparator = {
   name: string;
 };
 
+/** More files of the same song. v2 will add choosing the best bits (comping). */
+export type AlbumVersionFolder = {
+  id: string;
+  name: string;
+  trackIds: string[];
+  chosenId: string;
+};
+
 export type AlbumDocument = {
   id: string;
   name: string;
@@ -44,7 +52,9 @@ export type Album = {
   shared?: boolean;
   artworkUri?: string;
   notes?: string;
+  notesUpdatedAt?: number;
   separators?: AlbumSeparator[];
+  versionFolders?: AlbumVersionFolder[];
   documents?: AlbumDocument[];
 };
 
@@ -52,15 +62,37 @@ export function isSeparatorId(id: string): boolean {
   return id.startsWith('sep-');
 }
 
-export function albumTrackCount(trackIds: string[]): number {
-  return trackIds.filter((id) => !isSeparatorId(id)).length;
+export function isVersionFolderId(id: string): boolean {
+  return id.startsWith('ver-');
+}
+
+export function albumTrackCount(
+  trackIds: string[],
+  versionFolders: AlbumVersionFolder[] = [],
+): number {
+  const folders = new Map(versionFolders.map((folder) => [folder.id, folder]));
+  let count = 0;
+  for (const id of trackIds) {
+    if (isSeparatorId(id)) {
+      continue;
+    }
+    const folder = folders.get(id);
+    if (folder) {
+      count += folder.trackIds.length;
+      continue;
+    }
+    if (!isVersionFolderId(id)) {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 export function mergeAlbumOrderFromCloud(previousIds: string[], incomingTrackIds: string[]): string[] {
-  const next = incomingTrackIds.filter((id) => !isSeparatorId(id));
+  const next = incomingTrackIds.filter((id) => !isSeparatorId(id) && !isVersionFolderId(id));
   let lastIncomingIndex = -1;
   for (const id of previousIds) {
-    if (isSeparatorId(id)) {
+    if (isSeparatorId(id) || isVersionFolderId(id)) {
       const at = lastIncomingIndex + 1;
       next.splice(at, 0, id);
       lastIncomingIndex = at;

@@ -3,7 +3,7 @@ import { Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
-import type { CollectionKind, Folder } from '../../domain/library';
+import type { AlbumVersionFolder, CollectionKind, Folder } from '../../domain/library';
 import type { Track } from '../../domain/models';
 import { userHasUsage } from '../../domain/session';
 import { ensurePeaks } from '../../audio/extractPeaks';
@@ -30,6 +30,7 @@ type Menu =
   | { type: 'album'; albumId: string }
   | { type: 'playlist'; playlistId: string }
   | { type: 'separator'; albumId: string; separatorId: string; name: string }
+  | { type: 'versions'; albumId: string; folder: AlbumVersionFolder }
   | null;
 
 type Prompt =
@@ -43,6 +44,7 @@ type Prompt =
   | { type: 'drive-album' }
   | { type: 'new-playlist' }
   | { type: 'new-separator'; albumId: string }
+  | { type: 'rename-versions'; albumId: string; id: string; value: string }
   | null;
 
 type Mover =
@@ -378,6 +380,30 @@ export function useLibraryActions(
     },
   ];
 
+  const versionFolderActions = (albumId: string, folder: AlbumVersionFolder): ActionItem[] => [
+    {
+      label: 'Rinomina',
+      onPress: () =>
+        setPrompt({ type: 'rename-versions', albumId, id: folder.id, value: folder.name }),
+    },
+    {
+      label: 'Togli la cartella',
+      onPress: () => {
+        Alert.alert(
+          'Togliere la cartella?',
+          'I brani restano nell’album, ognuno per conto suo.',
+          [
+            { text: 'Annulla', style: 'cancel' },
+            {
+              text: 'Togli',
+              onPress: () => useLibraryStore.getState().unpackAlbumVersionFolder(albumId, folder.id),
+            },
+          ],
+        );
+      },
+    },
+  ];
+
   const separatorActions = (albumId: string, separatorId: string, name: string): ActionItem[] => [
     {
       label: 'Rinomina',
@@ -516,7 +542,9 @@ export function useLibraryActions(
                     ? playlists.find((item) => item.id === menu.playlistId)?.name ?? 'Playlist'
                     : menu?.type === 'separator'
                       ? menu.name
-                      : ''
+                      : menu?.type === 'versions'
+                        ? menu.folder.name
+                        : ''
         }
         actions={
           menu?.type === 'track'
@@ -535,7 +563,9 @@ export function useLibraryActions(
                       ? playlistActions(menu.playlistId)
                       : menu?.type === 'separator'
                         ? separatorActions(menu.albumId, menu.separatorId, menu.name)
-                        : []
+                        : menu?.type === 'versions'
+                          ? versionFolderActions(menu.albumId, menu.folder)
+                          : []
         }
         onClose={() => setMenu(null)}
       />
@@ -560,7 +590,9 @@ export function useLibraryActions(
                     ? 'Nome del separatore'
                     : prompt?.type === 'rename-separator'
                       ? 'Rinomina separatore'
-                      : 'Nuova cartella'
+                      : prompt?.type === 'rename-versions'
+                        ? 'Nome della cartella'
+                        : 'Nuova cartella'
         }
         placeholder={prompt?.type === 'new-separator' ? 'Bozze' : 'Nome'}
         confirmLabel={
@@ -578,7 +610,8 @@ export function useLibraryActions(
           prompt?.type === 'rename-folder' ||
           prompt?.type === 'rename-album' ||
           prompt?.type === 'rename-playlist' ||
-          prompt?.type === 'rename-separator'
+          prompt?.type === 'rename-separator' ||
+          prompt?.type === 'rename-versions'
             ? prompt.value
             : ''
         }
@@ -621,6 +654,8 @@ export function useLibraryActions(
             store.addAlbumSeparator(prompt.albumId, value);
           } else if (prompt?.type === 'rename-separator') {
             store.renameAlbumSeparator(prompt.albumId, prompt.id, value);
+          } else if (prompt?.type === 'rename-versions') {
+            store.renameAlbumVersionFolder(prompt.albumId, prompt.id, value);
           }
           setPrompt(null);
         }}
@@ -680,6 +715,8 @@ export function useLibraryActions(
     openPlaylistMenu: (playlistId: string) => setMenu({ type: 'playlist', playlistId }),
     openSeparatorMenu: (albumId: string, separatorId: string, name: string) =>
       setMenu({ type: 'separator', albumId, separatorId, name }),
+    openVersionFolderMenu: (albumId: string, folder: AlbumVersionFolder) =>
+      setMenu({ type: 'versions', albumId, folder }),
     newFolder: (parentId: string | null = currentFolderId) =>
       setPrompt({ type: 'new-folder', parentId }),
     newPlaylist: () => setPrompt({ type: 'new-playlist' }),

@@ -1,3 +1,5 @@
+import type { Album } from './library';
+import { isSeparatorId } from './library';
 import { audioBasename } from './sidecar';
 import type { Track } from './models';
 
@@ -43,6 +45,48 @@ export function buildAlbumOrder(tracks: Track[], updatedAt: number): AlbumOrderF
   };
 }
 
+export function albumTrackSortKey(track: Track): string {
+  return (track.sourceFileName ?? `${track.title}.m4a`).trim();
+}
+
+export function compareAlbumTrackNames(left: Track, right: Track): number {
+  return albumTrackSortKey(left).localeCompare(albumTrackSortKey(right), 'it', {
+    numeric: true,
+    sensitivity: 'base',
+  });
+}
+
+export function albumHasCustomOrder(album: Pick<Album, 'orderUpdatedAt'>): boolean {
+  return (album.orderUpdatedAt ?? 0) > 0;
+}
+
+export function sortTracksAlphabetically(tracks: Track[]): Track[] {
+  return [...tracks].sort(compareAlbumTrackNames);
+}
+
+/** Default album order is A→Z by file name. A drag (or Drive order file) locks a custom order. */
+export function orderedAlbumItemIds(album: Album, tracks: Track[]): string[] {
+  if (albumHasCustomOrder(album)) {
+    return album.trackIds;
+  }
+  const byId = new Map(tracks.map((track) => [track.id, track]));
+  const folders = new Map((album.versionFolders ?? []).map((folder) => [folder.id, folder]));
+  const itemIds = album.trackIds.filter((id) => byId.has(id) || folders.has(id));
+  const separators = album.trackIds.filter((id) => isSeparatorId(id));
+  const nameOf = (id: string) => {
+    const folder = folders.get(id);
+    if (folder) {
+      return folder.name;
+    }
+    const track = byId.get(id);
+    return track ? albumTrackSortKey(track) : id;
+  };
+  const sorted = [...itemIds].sort((left, right) =>
+    nameOf(left).localeCompare(nameOf(right), 'it', { numeric: true, sensitivity: 'base' }),
+  );
+  return separators.length ? [...sorted, ...separators] : sorted;
+}
+
 export function sortTracksByOrder(tracks: Track[], files: string[]): Track[] {
   const rank = new Map(
     files.map((name, index) => [audioBasename(name).toLowerCase(), index]),
@@ -51,7 +95,7 @@ export function sortTracksByOrder(tracks: Track[], files: string[]): Track[] {
     const a = rank.get(audioBasename(left.sourceFileName ?? left.title).toLowerCase());
     const b = rank.get(audioBasename(right.sourceFileName ?? right.title).toLowerCase());
     if (a == null && b == null) {
-      return 0;
+      return compareAlbumTrackNames(left, right);
     }
     if (a == null) {
       return 1;

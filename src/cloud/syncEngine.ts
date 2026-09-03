@@ -8,6 +8,11 @@ import {
   parseAlbumOrder,
   sortTracksByOrder,
 } from '../domain/albumOrder';
+import {
+  ALBUM_NOTES_FILE_NAME,
+  albumNotesFromRemote,
+  isAlbumNotesFileName,
+} from '../domain/albumNotes';
 import { isAudioName, playableUri } from '../domain/audioFormats';
 import {
   findAlbumCoverFile,
@@ -31,7 +36,7 @@ import { copyToDownloads, inboxDirectory } from '../files/downloads';
 import { safeTempFileName } from '../files/fileNames';
 import { writeSidecarToLibrary } from '../files/libraryFiles';
 import { useDownloadProgressStore } from '../store/downloadProgressStore';
-import { useLibraryStore } from '../store/libraryStore';
+import { flushLibraryPersist, useLibraryStore } from '../store/libraryStore';
 import { refreshPlayingArtwork, usePlayerStore } from '../store/playerStore';
 import { useSessionStore } from '../store/sessionStore';
 import { isSyncInFlight, SYNC_STALE_MS, useSyncStore } from '../store/syncStore';
@@ -188,6 +193,7 @@ export function runCloudSync(): Promise<void> {
 }
 
 async function runCloudSyncBody(): Promise<void> {
+  await flushLibraryPersist();
   const sync = useSyncStore.getState();
   if (isSyncInFlight(sync)) {
     return;
@@ -458,6 +464,8 @@ async function runCloudSyncBody(): Promise<void> {
         await pushAlbumOrder(album.id);
       }
 
+      await syncAlbumNotes(album.id, children);
+
       store.touchAlbumSync(album.id);
     }
 
@@ -569,6 +577,75 @@ export async function pushTrackToSharedAlbum(trackId: string, albumId?: string):
       });
   useLibraryStore.getState().updateTrackRemote(trackId, metaFrom(remote));
   return true;
+}
+
+async function syncAlbumNotes(
+  albumId: string,
+  children: { id: string; name: string; modifiedTime?: string }[],
+): Promise<void> {
+  const album = useLibraryStore.getState().albums.find((item) => item.id === albumId);
+  if (!album) {
+    return;
+  }
+  const remote = children.find((file) => isAlbumNotesFileName(file.name));
+  if (remote) {
+    const dest = new File(inboxDirectory(), `sync-notes-${albumId}.txt`);
+    await downloadDriveFile(remote.id, dest.uri);
+    const remoteNotes = dest.exists ? await dest.text() : '';
+    if (dest.exists) {
+      dest.delete();
+    }
+    const remoteUpdatedAt = remote.modifiedTime ? Date.parse(remote.modifiedTime) || 0 : 0;
+    const next = albumNotesFromRemote(
+      album.notes,
+      album.notesUpdatedAt ?? 0,
+      remoteNotes,
+      remoteUpdatedAt,
+    );
+    if (next) {
+      useLibraryStore.getState().setAlbumNotes(albumId, next.notes, {
+        updatedAt: next.updatedAt,
+        fromCloud: true,
+      });
+      return;
+    }
+    if ((album.notes ?? '').trim() && (album.notesUpdatedAt ?? 0) >= remoteUpdatedAt) {
+      await pushAlbumNotes(albumId);
+    }
+    return;
+  }
+  if ((album.notes ?? '').trim()) {
+    await pushAlbumNotes(albumId);
+  }
+}
+
+export async function pushAlbumNotes(albumId: string): Promise<void> {
+  const album = sharedDriveAlbum(albumId);
+  if (!album?.driveFolderId) {
+    return;
+  }
+  const text = album.notes ?? '';
+  if (!text.trim()) {
+    return;
+  }
+  if (!(await hasDriveToken())) {
+    return;
+  }
+  const dest = new File(inboxDirectory(), `notes-${albumId}.txt`);
+  dest.write(text);
+  const existing =
+    (await findChildByName(album.driveFolderId, ALBUM_NOTES_FILE_NAME)) ??
+    (await findChildByName(album.driveFolderId, 'rewavier.notes.txt'));
+  if (existing) {
+    await updateDriveFileMedia(existing.id, dest.uri, 'text/plain');
+    return;
+  }
+  await uploadDriveFile({
+    name: ALBUM_NOTES_FILE_NAME,
+    folderId: album.driveFolderId,
+    fileUri: dest.uri,
+    mimeType: 'text/plain',
+  });
 }
 
 export async function pushAlbumOrder(albumId: string): Promise<void> {
@@ -858,7 +935,13 @@ async function importAudiosInFolder(
   appFolderId: string | null,
   children: DriveFile[],
 ): Promise<void> {
-  const audios = uniqueRemotes(children.filter((file) => isAudioName(file.name)));
+  const audios = uniqueRemotes(
+    children
+      .filter((file) => isAudioName(file.name))
+      .sort((left, right) =>
+        left.name.localeCompare(right.name, 'it', { numeric: true, sensitivity: 'base' }),
+      ),
+  );
   const sidecars = children.filter((file) => isSidecarName(file.name));
   const importedRemotes = createRemoteClaimSet();
 

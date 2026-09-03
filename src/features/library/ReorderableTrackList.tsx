@@ -17,27 +17,33 @@ export function ReorderableTrackList<T extends ReorderableItem>({
   enabled,
   onDraggingChange,
   onReorder,
+  onDropOn,
   renderItem,
 }: {
   items: T[];
   enabled: boolean;
   onDraggingChange?: (dragging: boolean) => void;
   onReorder: (ids: string[]) => void;
+  onDropOn?: (sourceId: string, targetId: string) => boolean;
   renderItem: (item: T, dragging: boolean) => React.ReactNode;
 }) {
   const [ids, setIds] = useState(items.map((item) => item.id));
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [dropOnId, setDropOnId] = useState<string | null>(null);
   const [shiftY, setShiftY] = useState(0);
   const idsRef = useRef(ids);
   const originIds = useRef(ids);
   const originIndex = useRef(0);
   const draggingRef = useRef(false);
+  const dropOnIdRef = useRef<string | null>(null);
   const heightsRef = useRef<Record<string, number>>({});
   const fallbackRef = useRef<Record<string, number>>({});
   const onReorderRef = useRef(onReorder);
+  const onDropOnRef = useRef(onDropOn);
   const onDraggingChangeRef = useRef(onDraggingChange);
   idsRef.current = ids;
   onReorderRef.current = onReorder;
+  onDropOnRef.current = onDropOn;
   onDraggingChangeRef.current = onDraggingChange;
   fallbackRef.current = Object.fromEntries(items.map((item) => [item.id, item.rowHeight ?? DEFAULT_ROW]));
 
@@ -57,6 +63,7 @@ export function ReorderableTrackList<T extends ReorderableItem>({
     originIndex.current = idsRef.current.indexOf(id);
     draggingRef.current = true;
     setActiveId(id);
+    setDropOnId(null);
     setShiftY(0);
     onDraggingChangeRef.current?.(true);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -75,13 +82,27 @@ export function ReorderableTrackList<T extends ReorderableItem>({
       const pointer = originMid + translationY;
       let acc = 0;
       let to = current.length - 1;
+      let hoverId: string | null = null;
+      let foundTo = false;
       for (let index = 0; index < current.length; index += 1) {
-        const next = acc + heightOf(current[index]);
-        if (pointer < (acc + next) / 2) {
+        const id = current[index];
+        const height = heightOf(id);
+        const next = acc + height;
+        const inset = Math.min(18, height * 0.28);
+        if (id !== _id && pointer >= acc + inset && pointer <= next - inset) {
+          hoverId = id;
+        }
+        if (!foundTo && pointer < (acc + next) / 2) {
           to = index;
-          break;
+          foundTo = true;
         }
         acc = next;
+      }
+      dropOnIdRef.current = hoverId;
+      setDropOnId(hoverId);
+      if (hoverId) {
+        setIds((existing) => (sameIds(existing, current) ? existing : current));
+        return;
       }
       const nextIds = [...current];
       const [moved] = nextIds.splice(from, 1);
@@ -99,9 +120,17 @@ export function ReorderableTrackList<T extends ReorderableItem>({
       return;
     }
     draggingRef.current = false;
+    const sourceId = originIds.current[originIndex.current];
+    const targetId = dropOnIdRef.current;
+    dropOnIdRef.current = null;
     setActiveId(null);
+    setDropOnId(null);
     setShiftY(0);
     onDraggingChangeRef.current?.(false);
+    if (sourceId && targetId && onDropOnRef.current?.(sourceId, targetId)) {
+      setIds(originIds.current);
+      return;
+    }
     onReorderRef.current(idsRef.current);
   }, []);
 
@@ -129,6 +158,7 @@ export function ReorderableTrackList<T extends ReorderableItem>({
             key={id}
             id={id}
             dragging={activeId === id}
+            dropTarget={dropOnId === id}
             shiftY={activeId === id ? shiftY : 0}
             onDragStart={onDragStart}
             onDragMove={onDragMove}
@@ -146,6 +176,7 @@ export function ReorderableTrackList<T extends ReorderableItem>({
 function DraggableRow({
   id,
   dragging,
+  dropTarget,
   shiftY,
   onDragStart,
   onDragMove,
@@ -155,6 +186,7 @@ function DraggableRow({
 }: {
   id: string;
   dragging: boolean;
+  dropTarget: boolean;
   shiftY: number;
   onDragStart: (id: string) => void;
   onDragMove: (id: string, translationY: number) => void;
@@ -177,7 +209,11 @@ function DraggableRow({
     <GestureDetector gesture={gesture}>
       <View
         onLayout={(event) => onRowLayout(id, event.nativeEvent.layout.height)}
-        style={[dragging && styles.dragging, dragging && { transform: [{ translateY: shiftY }] }]}
+        style={[
+          dragging && styles.dragging,
+          dropTarget && styles.dropTarget,
+          dragging && { transform: [{ translateY: shiftY }] },
+        ]}
       >
         {children}
       </View>
@@ -198,5 +234,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
+  },
+  dropTarget: {
+    backgroundColor: 'rgba(255, 107, 53, 0.16)',
+    borderRadius: 12,
   },
 });
