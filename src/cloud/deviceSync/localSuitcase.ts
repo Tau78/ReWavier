@@ -13,7 +13,7 @@ import {
 import { audioDirectory } from '../../files/libraryPaths';
 import { flushLibraryPersist, useLibraryStore } from '../../store/libraryStore';
 import { useSessionStore } from '../../store/sessionStore';
-import { keepLocalMedia, mergeLibrarySnapshots } from './mergeLibrary';
+import { keepLocalMedia, mergeLibrarySnapshots, withoutPhoneFiles } from './mergeLibrary';
 import { shouldSyncBagFile } from './syncSkip';
 
 export type LocalBagFile = {
@@ -83,7 +83,11 @@ export async function applyRemoteSnapshot(remote: LibrarySnapshot): Promise<void
   }
   await flushLibraryPersist();
   const local = snapshotFromStore();
-  const merged = mergeLibrarySnapshots(local, remote);
+  const incoming = {
+    ...remote,
+    tracks: remote.tracks.map(withoutPhoneFiles),
+  };
+  const merged = mergeLibrarySnapshots(local, incoming);
   const cleaned = sanitizeSnapshot({
     ...merged,
     tracks: keepLocalMedia(local.tracks, merged.tracks),

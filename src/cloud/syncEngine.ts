@@ -18,7 +18,7 @@ import { createId } from '../domain/library';
 import type { Marker, Track } from '../domain/models';
 import { userHasUsage } from '../domain/session';
 import {
-  audioBasename,
+  audioMatchKey,
   isSidecarName,
   parseSidecar,
   sidecarAuthorSlug,
@@ -52,9 +52,13 @@ import {
 } from './driveApi';
 import { mergeMarkers } from './mergeNotes';
 import {
+  claimRemote,
+  createRemoteClaimSet,
+  findBestLocalForRemote,
   remoteAudioChanged,
-  trackMatchesRemote,
-  trackPresentRemotely,
+  remoteIsClaimed,
+  surplusLocalTracks,
+  uniqueRemotes,
 } from './remoteAudioChange';
 
 function syncAlbumMessage(input: {
@@ -107,6 +111,34 @@ function reportDriveFraction(fraction: number) {
 
 function finishDriveItem() {
   useDownloadProgressStore.getState().advance();
+}
+
+function uniqueTracksById(tracks: Track[]): Track[] {
+  const seen = new Set<string>();
+  const out: Track[] = [];
+  for (const track of tracks) {
+    if (seen.has(track.id)) {
+      continue;
+    }
+    seen.add(track.id);
+    out.push(track);
+  }
+  return out;
+}
+
+/** Album rows plus tracks that only live in Drive version folders. */
+function albumLocalTracks(albumId: string, treeFolderIds?: ReadonlySet<string>): Track[] {
+  const store = useLibraryStore.getState();
+  const out = [...store.tracksIn('album', albumId)];
+  if (!treeFolderIds || treeFolderIds.size === 0) {
+    return uniqueTracksById(out);
+  }
+  for (const folder of store.folders) {
+    if (folder.driveFolderId && treeFolderIds.has(folder.driveFolderId)) {
+      out.push(...store.tracksIn('folder', folder.id));
+    }
+  }
+  return uniqueTracksById(out);
 }
 
 function countDriveImportJobs(
@@ -244,17 +276,34 @@ async function runCloudSyncBody(): Promise<void> {
         album.driveSharedDriveId ? { sharedDriveId: album.driveSharedDriveId } : undefined,
       );
       const children = tree[0]?.children ?? [];
-      const audios = tree.flatMap((node) => node.children.filter((file) => isAudioName(file.name)));
+      const treeFolderIds = new Set(tree.map((node) => node.id));
+      const audios = uniqueRemotes(
+        tree.flatMap((node) => node.children.filter((file) => isAudioName(file.name))),
+      );
       const sidecars = tree.flatMap((node) => node.children.filter((file) => isSidecarName(file.name)));
+      const importedRemotes = createRemoteClaimSet();
 
       for (const remote of audios) {
-        const existing = store
-          .tracksIn('album', album.id)
-          .find((track) => trackMatchesRemote(track, remote));
+        if (remoteIsClaimed(importedRemotes, remote)) {
+          continue;
+        }
+        const locals = albumLocalTracks(album.id, treeFolderIds);
+        const existing = findBestLocalForRemote(locals, remote);
+        const onAlbum = new Set(
+          useLibraryStore.getState().tracksIn('album', album.id).map((track) => track.id),
+        );
 
         if (!existing) {
           const id = createId('track');
           const fileUri = await saveAudio(remote, id, false);
+          const appeared = findBestLocalForRemote(albumLocalTracks(album.id, treeFolderIds), remote);
+          if (appeared) {
+            if (!onAlbum.has(appeared.id)) {
+              store.addTracksToAlbum(album.id, [appeared.id]);
+            }
+            claimRemote(importedRemotes, remote);
+            continue;
+          }
           store.importBundles(
             [
               {
@@ -275,6 +324,17 @@ async function runCloudSyncBody(): Promise<void> {
             { albumId: album.id },
           );
           added += 1;
+          claimRemote(importedRemotes, remote);
+          continue;
+        }
+
+        if (!onAlbum.has(existing.id)) {
+          store.addTracksToAlbum(album.id, [existing.id]);
+        }
+        claimRemote(importedRemotes, remote);
+
+        // Same name in a version folder: keep the local row, do not import another.
+        if (existing.driveFileId && existing.driveFileId !== remote.id) {
           continue;
         }
 
@@ -295,11 +355,9 @@ async function runCloudSyncBody(): Promise<void> {
         notesArchived += visibleBefore;
       }
 
-      const localTracks = useLibraryStore.getState().tracksIn('album', album.id);
-      for (const track of localTracks) {
-        if (trackPresentRemotely(track, audios)) {
-          continue;
-        }
+      const localTracks = albumLocalTracks(album.id, treeFolderIds);
+      const extras = surplusLocalTracks(localTracks, audios);
+      for (const track of extras) {
         await useLibraryStore.getState().deleteTrack(track.id, { deleteFromDevice: true });
         removed += 1;
       }
@@ -318,13 +376,11 @@ async function runCloudSyncBody(): Promise<void> {
         if (!parsed) {
           continue;
         }
-        const track = store
-          .tracksIn('album', album.id)
-          .find(
-            (item) =>
-              audioBasename(item.sourceFileName ?? item.title).toLowerCase() ===
-              audioBasename(parsed.audioFileName || remote.name).toLowerCase(),
-          );
+        const track = albumLocalTracks(album.id, treeFolderIds).find(
+          (item) =>
+            audioMatchKey(item.sourceFileName ?? item.title) ===
+            audioMatchKey(parsed.audioFileName || remote.name),
+        );
         if (!track) {
           continue;
         }
@@ -557,7 +613,7 @@ export async function followTrackRenameOnDrive(
   const album = sharedDriveAlbum(undefined, trackId);
   let folderId = album?.driveFolderId;
   const newAudioName = track.sourceFileName ?? `${track.title}.m4a`;
-  if (audioBasename(oldSourceFileName).toLowerCase() === audioBasename(newAudioName).toLowerCase()) {
+  if (audioMatchKey(oldSourceFileName) === audioMatchKey(newAudioName)) {
     return;
   }
 
@@ -576,7 +632,7 @@ export async function followTrackRenameOnDrive(
       (file) =>
         isAudioName(file.name) &&
         (file.name.toLowerCase() === oldSourceFileName.toLowerCase() ||
-          audioBasename(file.name).toLowerCase() === audioBasename(oldSourceFileName).toLowerCase()),
+          audioMatchKey(file.name) === audioMatchKey(oldSourceFileName)),
     );
     audioId = match?.id;
   }
@@ -593,7 +649,7 @@ export async function followTrackRenameOnDrive(
     const sidecars = children.filter(
       (file) =>
         isSidecarName(file.name) &&
-        audioBasename(file.name).toLowerCase() === audioBasename(oldSourceFileName).toLowerCase(),
+        audioMatchKey(file.name) === audioMatchKey(oldSourceFileName),
     );
     for (const remote of sidecars) {
       const nextName = sidecarNameForAudio(newAudioName, sidecarAuthorSlug(remote.name));
@@ -802,22 +858,23 @@ async function importAudiosInFolder(
   appFolderId: string | null,
   children: DriveFile[],
 ): Promise<void> {
-  const store = useLibraryStore.getState();
-  const audios = children.filter((file) => isAudioName(file.name));
+  const audios = uniqueRemotes(children.filter((file) => isAudioName(file.name)));
   const sidecars = children.filter((file) => isSidecarName(file.name));
+  const importedRemotes = createRemoteClaimSet();
 
   for (const remote of audios) {
-    const existing = store.tracks.find(
-      (track) =>
-        track.driveFileId === remote.id ||
-        (track.sourceFileName &&
-          audioBasename(track.sourceFileName).toLowerCase() === audioBasename(remote.name).toLowerCase()),
-    );
+    if (remoteIsClaimed(importedRemotes, remote)) {
+      finishDriveItem();
+      continue;
+    }
+    const store = useLibraryStore.getState();
+    const existing = findBestLocalForRemote(store.tracks, remote);
     if (existing) {
       if (appFolderId) {
         store.addTrackToFolder(existing.id, appFolderId);
       }
       store.addTracksToAlbum(albumId, [existing.id]);
+      claimRemote(importedRemotes, remote);
       finishDriveItem();
       continue;
     }
@@ -825,9 +882,19 @@ async function importAudiosInFolder(
     const id = createId('track');
     const fileUri = await saveAudio(remote, id, false);
     finishDriveItem();
+    const afterDownload = useLibraryStore.getState();
+    const appeared = findBestLocalForRemote(afterDownload.tracks, remote);
+    if (appeared) {
+      if (appFolderId) {
+        afterDownload.addTrackToFolder(appeared.id, appFolderId);
+      }
+      afterDownload.addTracksToAlbum(albumId, [appeared.id]);
+      claimRemote(importedRemotes, remote);
+      continue;
+    }
     let markers: Marker[] = [];
     const sidecar = sidecars.find(
-      (file) => audioBasename(file.name).toLowerCase() === audioBasename(remote.name).toLowerCase(),
+      (file) => audioMatchKey(file.name) === audioMatchKey(remote.name),
     );
     if (sidecar) {
       const dest = new File(inboxDirectory(), `import-${sidecar.id}.json`);
@@ -845,8 +912,8 @@ async function importAudiosInFolder(
       }
     }
 
-    const album = store.albums.find((item) => item.id === albumId);
-    store.importBundles(
+    const album = afterDownload.albums.find((item) => item.id === albumId);
+    afterDownload.importBundles(
       [
         {
           track: {
@@ -865,6 +932,7 @@ async function importAudiosInFolder(
       ],
       { albumId, folderId: appFolderId ?? undefined },
     );
+    claimRemote(importedRemotes, remote);
   }
 }
 

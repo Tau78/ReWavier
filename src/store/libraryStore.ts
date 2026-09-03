@@ -29,16 +29,17 @@ import {
   type LibrarySnapshot,
 } from '../files/libraryPersist';
 import { setActiveLibraryOwner } from '../files/libraryOwner';
-import { playableUri, trackCanFetchRemote } from '../domain/audioFormats';
+import { isDownloaded, playableUri, trackCanFetchRemote } from '../domain/audioFormats';
 import { downloadDriveFile } from '../cloud/driveApi';
 import { safeTempFileName } from '../files/fileNames';
 import { audioFileNamesForTrack, migrateTracksToAudioFolder, scanAudioFolder } from '../files/audioFolder';
 import {
   copyToDownloads,
   inboxDirectory,
+  reconcileTrack,
   removeUri,
 } from '../files/downloads';
-import { sourceFileNameFromTitle } from '../domain/sidecar';
+import { audioMatchKey, sourceFileNameFromTitle } from '../domain/sidecar';
 import { writeSidecarToLibrary, removeSidecarFromLibrary, type ImportedBundle } from '../files/libraryFiles';
 import { userHasUsage } from '../domain/session';
 import { useDownloadProgressStore } from './downloadProgressStore';
@@ -131,6 +132,7 @@ export type LibraryActions = {
     trackIds: string[],
     extras?: { updatedAt?: number; fromCloud?: boolean },
   ) => void;
+  reattachLocalAudio: () => void;
   hydrate: () => Promise<void>;
   unload: () => void;
   getTrack: (id: string) => Track | undefined;
@@ -198,6 +200,57 @@ export async function flushLibraryPersist(): Promise<void> {
     return;
   }
   await saveLibrarySnapshot(snapshotFrom(useLibraryStore.getState()));
+}
+
+function importNameKey(track: { sourceFileName?: string; title: string }): string {
+  const raw = track.sourceFileName || track.title || '';
+  return raw ? audioMatchKey(raw) : '';
+}
+
+function tracksAreSameImport(
+  left: { id: string; driveFileId?: string; sourceFileName?: string; title: string },
+  right: { id: string; driveFileId?: string; sourceFileName?: string; title: string },
+): boolean {
+  if (left.id === right.id) {
+    return true;
+  }
+  if (left.driveFileId && left.driveFileId === right.driveFileId) {
+    return true;
+  }
+  const leftName = importNameKey(left);
+  const rightName = importNameKey(right);
+  return Boolean(leftName && leftName === rightName);
+}
+
+function trackQuality(track: Track): number {
+  return (track.fileUri ? 4 : 0) + (track.downloaded ? 2 : 0) + (track.durationMs > 0 ? 1 : 0);
+}
+
+function findImportedTrack(tracks: Track[], incoming: Track): Track | undefined {
+  return tracks.find((track) => tracksAreSameImport(track, incoming));
+}
+
+function collapseDuplicateTracks(tracks: Track[], albums: Album[]): { tracks: Track[]; albums: Album[] } {
+  const groups: Track[][] = [];
+  for (const track of tracks) {
+    const group = groups.find((items) => items.some((item) => tracksAreSameImport(item, track)));
+    if (group) {
+      group.push(track);
+    } else {
+      groups.push([track]);
+    }
+  }
+  const winners = groups.map((group) =>
+    group.reduce((best, track) => (trackQuality(track) > trackQuality(best) ? track : best)),
+  );
+  const keep = new Set(winners.map((track) => track.id));
+  return {
+    tracks: tracks.filter((track) => keep.has(track.id)),
+    albums: albums.map((album) => ({
+      ...album,
+      trackIds: album.trackIds.filter((id, index) => keep.has(id) && album.trackIds.indexOf(id) === index),
+    })),
+  };
 }
 
 function schedulePersist() {
@@ -306,7 +359,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
               ...track,
               inboxUri,
               downloaded: false,
-              durationMs: 0,
+              durationMs: track.durationMs > 0 ? track.durationMs : 0,
               startMs: undefined,
               endMs: undefined,
             }
@@ -683,31 +736,66 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     }
     const folderId = dest.folderId ?? null;
     const albumId = dest.albumId;
-    const ids = bundles.map((bundle) => bundle.track.id);
+    const accepted: ImportedBundle[] = [];
+    const upgrades: Track[] = [];
+    let known = [...get().tracks];
+    for (const bundle of bundles) {
+      const existing = findImportedTrack(known, bundle.track);
+      if (existing) {
+        if (trackQuality(bundle.track) > trackQuality(existing)) {
+          const upgraded = {
+            ...existing,
+            fileUri: bundle.track.fileUri || existing.fileUri,
+            downloaded: Boolean(bundle.track.fileUri || existing.fileUri || existing.downloaded),
+            downloadedAt: bundle.track.downloadedAt ?? existing.downloadedAt,
+            durationMs: Math.max(existing.durationMs ?? 0, bundle.track.durationMs ?? 0),
+            driveFileId: existing.driveFileId || bundle.track.driveFileId,
+            sourceFileName: existing.sourceFileName || bundle.track.sourceFileName,
+          };
+          upgrades.push(upgraded);
+          known = known.map((track) => (track.id === existing.id ? upgraded : track));
+        }
+        continue;
+      }
+      accepted.push(bundle);
+      known = [...known, bundle.track];
+    }
+    const ids = accepted.map((bundle) => bundle.track.id);
     set((state) => {
       const nextMarkers = { ...state.markersByTrackId };
-      for (const bundle of bundles) {
+      for (const bundle of accepted) {
         nextMarkers[bundle.track.id] = bundle.markers;
       }
+      const tracks = [
+        ...state.tracks.map((track) => upgrades.find((item) => item.id === track.id) ?? track),
+        ...accepted.map((bundle) => bundle.track),
+      ];
+      const albums = albumId
+        ? state.albums.map((album) =>
+            album.id === albumId
+              ? {
+                  ...album,
+                  trackIds: [...album.trackIds, ...ids.filter((id) => !album.trackIds.includes(id))],
+                }
+              : album,
+          )
+        : state.albums;
+      const collapsed = collapseDuplicateTracks(tracks, albums);
       return {
-        tracks: [...state.tracks, ...bundles.map((bundle) => bundle.track)],
+        tracks: collapsed.tracks,
         markersByTrackId: nextMarkers,
         folders:
-          folderId == null
+          folderId == null || ids.length === 0
             ? state.folders
             : state.folders.map((folder) =>
                 folder.id === folderId
-                  ? { ...folder, trackIds: [...folder.trackIds, ...ids] }
+                  ? { ...folder, trackIds: [...folder.trackIds, ...ids.filter((id) => !folder.trackIds.includes(id))] }
                   : folder,
               ),
-        albums: albumId
-          ? state.albums.map((album) =>
-              album.id === albumId ? { ...album, trackIds: [...album.trackIds, ...ids] } : album,
-            )
-          : state.albums,
+        albums: collapsed.albums,
       };
     });
-    for (const bundle of bundles) {
+    for (const bundle of accepted) {
       persistSidecar(bundle.track, bundle.markers);
     }
   },
@@ -738,7 +826,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
                 fileUri,
                 downloaded: true,
                 downloadedAt: Date.now(),
-                durationMs: 0,
+                durationMs: track.durationMs > 0 ? track.durationMs : 0,
                 startMs: undefined,
                 endMs: undefined,
               }
@@ -758,7 +846,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     if (!track || get().downloadingIds[trackId] != null) {
       return;
     }
-    if (track.downloaded && track.fileUri && playableUri(track)) {
+    if (isDownloaded(track)) {
       return;
     }
     const progress = useDownloadProgressStore.getState();
@@ -850,9 +938,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
 
   async downloadCollection(kind, id) {
     const tracks = get().tracksIn(kind, id);
-    const pending = tracks.filter(
-      (track) => !playableUri(track) || !track.downloaded || !track.fileUri,
-    );
+    const pending = tracks.filter((track) => !isDownloaded(track));
     const fetchable = pending.filter((track) => playableUri(track) || trackCanFetchRemote(track));
     if (fetchable.length === 0) {
       throw new Error(
@@ -879,9 +965,12 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   updateTrackDuration(id, durationMs) {
+    if (durationMs <= 0) {
+      return;
+    }
     set((state) => ({
       tracks: state.tracks.map((track) =>
-        track.id === id ? { ...track, durationMs } : track,
+        track.id === id && track.durationMs !== durationMs ? { ...track, durationMs } : track,
       ),
     }));
   },
@@ -974,6 +1063,12 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       peaksByTrackId: {},
       downloadingIds: {},
     });
+  },
+
+  reattachLocalAudio() {
+    set((state) => ({
+      tracks: state.tracks.map(reconcileTrack),
+    }));
   },
 
   async hydrate() {
@@ -1080,8 +1175,13 @@ async function finishLibraryHydrate(hadSnapshot: boolean) {
     for (const bundle of extras) {
       markersByTrackId[bundle.track.id] = bundle.markers;
     }
+    const collapsed = collapseDuplicateTracks(
+      [...migrated, ...extras.map((bundle) => bundle.track)],
+      useLibraryStore.getState().albums,
+    );
     useLibraryStore.setState({
-      tracks: [...migrated, ...extras.map((bundle) => bundle.track)],
+      tracks: collapsed.tracks,
+      albums: collapsed.albums,
       markersByTrackId,
     });
     if (extras.length > 0 || hadSnapshot) {

@@ -11,20 +11,34 @@ function remapTrackId(id: string, idRemap: Map<string, string>): string {
   return idRemap.get(id) ?? id;
 }
 
+function finiteMs(value?: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function longerDuration(localMs?: number, incomingMs?: number): number {
+  return Math.max(finiteMs(localMs), finiteMs(incomingMs));
+}
+
+/** Suitcase paths belong to another phone — never treat them as files on this one. */
+export function withoutPhoneFiles(track: Track): Track {
+  return {
+    ...track,
+    fileUri: undefined,
+    inboxUri: undefined,
+    downloaded: false,
+    downloadedAt: undefined,
+  };
+}
+
 function mergeTracks(local: Track[], remote: Track[]): { tracks: Track[]; idRemap: Map<string, string> } {
   const idRemap = new Map<string, string>();
   const byId = new Map(local.map((track) => [track.id, track]));
   const byKey = new Map(local.map((track) => [trackKey(track), track]));
-  for (const incoming of remote) {
+  for (const raw of remote) {
+    const incoming = withoutPhoneFiles(raw);
     const existing = byId.get(incoming.id) ?? byKey.get(trackKey(incoming));
     if (!existing) {
-      byId.set(incoming.id, {
-        ...incoming,
-        fileUri: undefined,
-        inboxUri: undefined,
-        downloaded: false,
-        downloadedAt: undefined,
-      });
+      byId.set(incoming.id, incoming);
       continue;
     }
     if (incoming.id !== existing.id) {
@@ -34,7 +48,7 @@ function mergeTracks(local: Track[], remote: Track[]): { tracks: Track[]; idRema
       ...existing,
       title: existing.title || incoming.title,
       artist: existing.artist || incoming.artist,
-      durationMs: Math.max(existing.durationMs ?? 0, incoming.durationMs ?? 0),
+      durationMs: longerDuration(existing.durationMs, incoming.durationMs),
       startMs: existing.startMs ?? incoming.startMs,
       endMs: existing.endMs ?? incoming.endMs,
       exerciseOpenId: existing.exerciseOpenId ?? incoming.exerciseOpenId,
@@ -43,9 +57,9 @@ function mergeTracks(local: Track[], remote: Track[]): { tracks: Track[]; idRema
       sourceFileName: existing.sourceFileName || incoming.sourceFileName,
       driveFileId: existing.driveFileId || incoming.driveFileId,
       artworkUri: existing.artworkUri || incoming.artworkUri,
-      fileUri: existing.fileUri || incoming.fileUri,
-      inboxUri: existing.inboxUri || incoming.inboxUri,
-      downloaded: Boolean(existing.fileUri || existing.downloaded),
+      fileUri: existing.fileUri,
+      inboxUri: existing.inboxUri,
+      downloaded: Boolean(existing.fileUri || existing.inboxUri || existing.downloaded),
       downloadedAt: existing.downloadedAt || incoming.downloadedAt,
     });
   }
@@ -189,26 +203,28 @@ function mergeAllMarkers(
 /** Keep files and duration already on this phone when a suitcase overwrite arrives. */
 export function keepLocalMedia(local: Track[], merged: Track[]): Track[] {
   const byId = new Map(local.map((track) => [track.id, track]));
+  const byKey = new Map(local.map((track) => [trackKey(track), track]));
   return merged.map((track) => {
-    const prev = byId.get(track.id);
+    const prev = byId.get(track.id) ?? byKey.get(trackKey(track));
     if (!prev) {
-      return track;
+      return withoutPhoneFiles(track);
     }
-    const fileUri = track.fileUri || prev.fileUri;
-    const inboxUri = track.inboxUri || prev.inboxUri;
+    const fileUri = prev.fileUri || track.fileUri;
+    const inboxUri = prev.inboxUri || track.inboxUri;
     return {
       ...track,
       fileUri,
       inboxUri,
-      downloaded: Boolean(fileUri) || track.downloaded || prev.downloaded,
-      downloadedAt: track.downloadedAt || prev.downloadedAt,
-      durationMs: Math.max(track.durationMs ?? 0, prev.durationMs ?? 0),
+      artworkUri: prev.artworkUri || track.artworkUri,
+      downloaded: Boolean(fileUri || inboxUri || prev.downloaded),
+      downloadedAt: prev.downloadedAt || track.downloadedAt,
+      durationMs: longerDuration(prev.durationMs, track.durationMs),
     };
   });
 }
 
 export function mergeLibrarySnapshots(local: LibrarySnapshot, remote: LibrarySnapshot): LibrarySnapshot {
-  const { tracks, idRemap } = mergeTracks(local.tracks, remote.tracks);
+  const { tracks, idRemap } = mergeTracks(local.tracks, remote.tracks.map(withoutPhoneFiles));
   return {
     version: Math.max(local.version, remote.version),
     ownerKey: local.ownerKey,

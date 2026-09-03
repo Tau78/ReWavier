@@ -33,6 +33,35 @@ export function audioBasename(fileName: string): string {
   return dot > 0 ? fileName.slice(0, dot) : fileName;
 }
 
+/** Drive / iOS may percent-encode the same name more than once. NFC so é matches é. */
+export function decodeFileNameForMatch(fileName: string): string {
+  let current = fileName.trim();
+  for (let i = 0; i < 5; i += 1) {
+    try {
+      const next = decodeURIComponent(current.replace(/\+/g, ' '));
+      if (next === current) {
+        break;
+      }
+      current = next;
+    } catch {
+      break;
+    }
+  }
+  try {
+    return current.normalize('NFC');
+  } catch {
+    return current;
+  }
+}
+
+/** Compare local ↔ remote audio names (encoding and unicode must not create a second row). */
+export function audioMatchKey(fileName: string): string {
+  const decoded = decodeFileNameForMatch(fileName);
+  const lower = decoded.toLowerCase();
+  const hasAudioExt = isAudioFileName(decoded) || lower.endsWith(SIDECAR_SUFFIX) || lower.endsWith('.json');
+  return (hasAudioExt ? audioBasename(decoded) : decoded).toLowerCase();
+}
+
 export function isSidecarName(fileName: string): boolean {
   const lower = fileName.toLowerCase();
   if (lower === 'rewavier.order.json') {

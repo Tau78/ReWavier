@@ -3,6 +3,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { isDownloaded } from '../../domain/audioFormats';
 import { formatTimecode, type Track } from '../../domain/models';
 import { resolveLibraryUri } from '../../files/libraryUris';
+import { usePlayerStore } from '../../store/playerStore';
 import { colors } from '../../theme/colors';
 
 export function TrackRow({
@@ -27,6 +28,10 @@ export function TrackRow({
   onArtwork?: () => void;
 }) {
   const downloaded = isDownloaded(track);
+  const playerDurationMs = usePlayerStore((state) =>
+    state.track.id === track.id ? state.track.durationMs : 0,
+  );
+  const durationMs = track.durationMs > 0 ? track.durationMs : playerDurationMs;
   const letter = (track.title.trim()[0] || '?').toUpperCase();
   const artworkUri = resolveLibraryUri(track.artworkUri);
 
@@ -69,7 +74,7 @@ export function TrackRow({
         </Text>
       </View>
       <View style={styles.aside}>
-        <Text style={styles.time}>{formatTimecode(track.durationMs)}</Text>
+        <Text style={styles.time}>{formatTimecode(durationMs)}</Text>
         <Text style={styles.notes}>
           {noteCount === 0 ? 'Nessun appunto' : `${noteCount} appunti`}
         </Text>

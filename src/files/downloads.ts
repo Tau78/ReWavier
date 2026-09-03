@@ -1,7 +1,7 @@
 import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
-import { isDownloaded } from '../domain/audioFormats';
+import { isDownloaded, isRemoteHttpUri } from '../domain/audioFormats';
 import type { Track } from '../domain/models';
 import { safeDisplayFileName } from './fileNames';
 import { audioRelativePrefix } from './libraryOwner';
@@ -81,10 +81,23 @@ export async function removeUri(uri?: string): Promise<void> {
   }
 }
 
+function keepLocalUri(uri?: string): string | undefined {
+  if (!uri || isRemoteHttpUri(uri)) {
+    return undefined;
+  }
+  const persisted = persistLibraryUri(uri);
+  return persisted && !isRemoteHttpUri(persisted) && fileExists(persisted) ? persisted : undefined;
+}
+
 export function reconcileTrack(track: Track): Track {
-  const recovered = recoverAudioRelative(track);
-  const fileUri = recovered.fileUri;
-  const inboxUri = recovered.inboxUri;
+  const recovered = recoverAudioRelative({
+    ...track,
+    fileUri: isRemoteHttpUri(track.fileUri) ? undefined : track.fileUri,
+    inboxUri: isRemoteHttpUri(track.inboxUri) ? undefined : track.inboxUri,
+  });
+  const fileUri = keepLocalUri(recovered.fileUri) ?? keepLocalUri(track.fileUri);
+  const inboxUri = keepLocalUri(recovered.inboxUri) ?? keepLocalUri(track.inboxUri);
+  const onDevice = Boolean(fileUri || inboxUri);
   const artworkUri = persistLibraryUri(track.artworkUri);
   const remoteUri = track.remoteUri?.startsWith('http') ? track.remoteUri : undefined;
   return {
@@ -92,8 +105,8 @@ export function reconcileTrack(track: Track): Track {
     fileUri,
     inboxUri,
     remoteUri,
-    downloaded: Boolean(fileUri),
-    downloadedAt: fileUri ? track.downloadedAt : undefined,
+    downloaded: onDevice,
+    downloadedAt: onDevice ? track.downloadedAt : undefined,
     artworkUri: artworkUri && fileExists(artworkUri) ? artworkUri : undefined,
   };
 }

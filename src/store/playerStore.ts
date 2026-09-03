@@ -726,8 +726,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
             fileEngine.seekTo(seekMs);
             set({ positionMs: seekMs });
           }
+          persistKnownDuration(track.id, durationMs);
           if (durationMs > 0 && durationMs !== get().track.durationMs) {
-            useLibraryStore.getState().updateTrackDuration(track.id, durationMs);
             set((state) => ({
               track: boundsForDuration(state.track, durationMs),
             }));
@@ -765,9 +765,35 @@ function boundsForDuration(track: Track, durationMs: number): Track {
   return { ...track, durationMs, startMs, endMs };
 }
 
+function libraryDurationOf(trackId: string): number | undefined {
+  return useLibraryStore.getState().getTrack(trackId)?.durationMs;
+}
+
+/** Write engine duration onto the library row so the album list is not stuck at 00:00.000. */
+function persistKnownDuration(trackId: string, durationMs: number) {
+  if (!(durationMs > 0) || !trackId) {
+    return;
+  }
+  const storedMs = libraryDurationOf(trackId) ?? 0;
+  if (storedMs !== durationMs) {
+    useLibraryStore.getState().updateTrackDuration(trackId, durationMs);
+  }
+}
+
 function onEngineFrame(positionMs: number, playing: boolean) {
   const state = usePlayerStore.getState();
-  const { track, markers } = state;
+  const { markers } = state;
+  let { track } = state;
+  if (usingFile) {
+    const engineDuration = fileEngine.getDurationMs();
+    if (engineDuration > 0 && (track.durationMs !== engineDuration || (libraryDurationOf(track.id) ?? 0) === 0)) {
+      persistKnownDuration(track.id, engineDuration);
+      if (track.durationMs !== engineDuration) {
+        track = boundsForDuration(track, engineDuration);
+        usePlayerStore.setState({ track });
+      }
+    }
+  }
   const fileRange = resolveTrackRange(track);
   const playRange = activePlayRange(track, markers);
   const exercise = resolveExerciseRange(track, markers);

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -9,11 +9,12 @@ import { isDownloaded } from '../../domain/audioFormats';
 import { formatDownloadPercent } from '../../domain/downloadProgress';
 import type { Album, CollectionKind } from '../../domain/library';
 import type { Track } from '../../domain/models';
+import { recoverAudioRelative } from '../../files/libraryUris';
 import type { RootStackParamList } from '../../navigation/types';
 import { useDownloadProgressStore } from '../../store/downloadProgressStore';
 import { flushLibraryPersist, useLibraryStore } from '../../store/libraryStore';
 import { usePlayerStore } from '../../store/playerStore';
-import { useSyncStore } from '../../store/syncStore';
+import { isSyncInFlight, useSyncStore } from '../../store/syncStore';
 import { colors, layout } from '../../theme/colors';
 import { EmptyGraphic, KindRow } from '../../theme/graphics';
 import { CollectionMarkers } from './CollectionMarkers';
@@ -97,20 +98,29 @@ export function CollectionScreen() {
   const syncStatus = useSyncStore((s) => s.status);
   const syncMessage = useSyncStore((s) => s.message);
   const [pulling, setPulling] = useState(false);
+  const driveSyncRef = useRef(false);
+  const heldFileUriRef = useRef<Map<string, string>>(new Map());
   const downloadActive = useDownloadProgressStore((s) => s.active);
   const downloadPercent = useDownloadProgressStore((s) => s.percent);
   const refreshFromDrive = useCallback(async () => {
-    if (!isDriveAlbum) {
+    if (!isDriveAlbum || driveSyncRef.current || isSyncInFlight(useSyncStore.getState())) {
       return;
     }
+    driveSyncRef.current = true;
     try {
       await flushLibraryPersist();
+      useLibraryStore.getState().reattachLocalAudio();
+      if (isSyncInFlight(useSyncStore.getState())) {
+        return;
+      }
       await runCloudSync();
     } catch (error) {
       Alert.alert(
         'Drive',
         error instanceof Error ? error.message : 'Non riesco a ricontrollare la cartella.',
       );
+    } finally {
+      driveSyncRef.current = false;
     }
   }, [isDriveAlbum]);
   useFocusEffect(
@@ -120,12 +130,36 @@ export function CollectionScreen() {
       }
     }, [isDriveAlbum, refreshFromDrive]),
   );
+  const displayTracks = useMemo(() => {
+    const held = heldFileUriRef.current;
+    const nextHeld = syncStatus === 'syncing' ? new Map(held) : new Map<string, string>();
+    const mapped = tracks.map((track) => {
+      const recovered = recoverAudioRelative(track);
+      const fileUri =
+        recovered.fileUri || (syncStatus === 'syncing' ? held.get(track.id) : undefined);
+      if (fileUri) {
+        nextHeld.set(track.id, fileUri);
+        return {
+          ...track,
+          fileUri,
+          inboxUri: recovered.inboxUri ?? track.inboxUri,
+          downloaded: true,
+        };
+      }
+      if (isDownloaded(track) && track.fileUri) {
+        nextHeld.set(track.id, track.fileUri);
+      }
+      return track;
+    });
+    heldFileUriRef.current = nextHeld;
+    return mapped;
+  }, [tracks, syncStatus]);
   const listItems = useMemo<ListItem[]>(
     () =>
       album
-        ? albumListItems(album, tracks)
-        : tracks.map((track) => ({ id: track.id, type: 'track' as const, track })),
-    [album, tracks],
+        ? albumListItems(album, displayTracks)
+        : displayTracks.map((track) => ({ id: track.id, type: 'track' as const, track })),
+    [album, displayTracks],
   );
   const trackIds = useMemo(() => tracks.map((track) => track.id), [tracks]);
   const playerTrackId = usePlayerStore((s) => s.track.id);
@@ -142,11 +176,11 @@ export function CollectionScreen() {
         : `${tracks.length} tracce`;
 
   const startCollectionDownload = () => {
-    if (tracks.length === 0) {
+    if (displayTracks.length === 0) {
       Alert.alert('Download', 'Non c’è nessun brano da scaricare.');
       return;
     }
-    if (tracks.length > 0 && tracks.every((track) => isDownloaded(track))) {
+    if (displayTracks.length > 0 && displayTracks.every((track) => isDownloaded(track))) {
       Alert.alert(
         'Sul telefono',
         kind === 'folder'
@@ -162,11 +196,13 @@ export function CollectionScreen() {
         Alert.alert('Download', error instanceof Error ? error.message : 'Download non riuscito');
       });
   };
+  const allOnPhone =
+    displayTracks.length > 0 && displayTracks.every((track) => isDownloaded(track));
   const downloadGlyph = downloadActive
     ? formatDownloadPercent(downloadPercent)
-    : tracks.some((track) => downloadingIds[track.id] != null)
+    : displayTracks.some((track) => downloadingIds[track.id] != null)
       ? '…'
-      : tracks.length > 0 && tracks.every((track) => isDownloaded(track))
+      : allOnPhone
         ? '✓'
         : '↓';
 
@@ -228,7 +264,7 @@ export function CollectionScreen() {
               accessibilityLabel={
                 downloadActive
                   ? `Download ${formatDownloadPercent(downloadPercent)}`
-                  : tracks.length > 0 && tracks.every((track) => isDownloaded(track))
+                  : allOnPhone
                     ? 'Album già sul telefono'
                     : 'Scarica album'
               }
@@ -237,7 +273,7 @@ export function CollectionScreen() {
                 style={[
                   styles.plusGlyph,
                   downloadActive && styles.percentGlyph,
-                  tracks.every((track) => isDownloaded(track)) && styles.downloadDone,
+                  allOnPhone && styles.downloadDone,
                 ]}
               >
                 {downloadGlyph}
@@ -261,7 +297,7 @@ export function CollectionScreen() {
               accessibilityLabel={
                 downloadActive
                   ? `Download ${formatDownloadPercent(downloadPercent)}`
-                  : tracks.length > 0 && tracks.every((track) => isDownloaded(track))
+                  : allOnPhone
                     ? 'Cartella già sul telefono'
                     : 'Scarica cartella'
               }
@@ -270,7 +306,7 @@ export function CollectionScreen() {
                 style={[
                   styles.plusGlyph,
                   downloadActive && styles.percentGlyph,
-                  tracks.every((track) => isDownloaded(track)) && styles.downloadDone,
+                  allOnPhone && styles.downloadDone,
                 ]}
               >
                 {downloadGlyph}

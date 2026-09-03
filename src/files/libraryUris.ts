@@ -1,33 +1,46 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
-import { safeDisplayFileName } from './fileNames';
+import { decodePathSegment, pickRecoveredAudioName, storedBasename } from './fileNames';
 import { audioRelativePrefix } from './libraryOwner';
-import { audioDirectory, downloadsDirectory, inboxDirectory, libraryDirectory } from './libraryPaths';
+import {
+  audioDirectory,
+  downloadsDirectory,
+  inboxDirectory,
+  libraryDirectory,
+  sharedAudioDirectory,
+} from './libraryPaths';
 
 const LEGACY_MARKER = '/rewavier/';
 const DOCUMENTS_MARKER = '/Documents/';
 
 function basename(uri: string): string {
-  const clean = uri.split('?')[0] ?? uri;
-  const parts = clean.replace(/\/$/, '').split('/');
-  return decodeURIComponent(parts[parts.length - 1] ?? '');
+  return storedBasename(uri);
+}
+
+function persistRelative(relative: string): string {
+  return relative.split('/').filter(Boolean).map(decodePathSegment).join('/');
 }
 
 function documentsRelative(uri: string): string | undefined {
   const docs = Paths.document.uri.replace(/\/$/, '');
   const clean = uri.split('?')[0] ?? uri;
+  let raw: string | undefined;
   if (clean.startsWith(`${docs}/`)) {
-    return decodeURIComponent(clean.slice(docs.length + 1));
+    raw = clean.slice(docs.length + 1);
+  } else {
+    const marker = clean.lastIndexOf(DOCUMENTS_MARKER);
+    if (marker >= 0) {
+      raw = clean.slice(marker + DOCUMENTS_MARKER.length);
+    }
   }
-  const marker = clean.lastIndexOf(DOCUMENTS_MARKER);
-  if (marker >= 0) {
-    return decodeURIComponent(clean.slice(marker + DOCUMENTS_MARKER.length));
+  if (!raw) {
+    return undefined;
   }
-  return undefined;
+  return persistRelative(raw);
 }
 
 function fileFromRelative(relative: string): File {
-  const parts = relative.split('/').filter(Boolean);
+  const parts = persistRelative(relative).split('/').filter(Boolean);
   if (parts[0] === 'Audio') {
     return new File(Paths.document, ...parts);
   }
@@ -53,10 +66,10 @@ export function persistLibraryUri(uri?: string): string | undefined {
   }
   const marker = uri.lastIndexOf(LEGACY_MARKER);
   if (marker >= 0) {
-    return uri.slice(marker + LEGACY_MARKER.length);
+    return persistRelative(uri.slice(marker + LEGACY_MARKER.length));
   }
   if (!uri.includes('://') && !uri.startsWith('/')) {
-    return uri;
+    return persistRelative(uri);
   }
   return uri;
 }
@@ -126,33 +139,33 @@ export function recoverAudioRelative(track: {
     return { inboxUri };
   }
 
-  const wanted = track.sourceFileName
-    ? safeDisplayFileName(track.sourceFileName)
-    : undefined;
-  const prefix = `${track.id}-`;
-  const audio = listNames(audioDirectory());
-  const downloads = listNames(downloadsDirectory());
-  const inbox = listNames(inboxDirectory());
-  const match = (names: string[]) =>
-    names.find((name) => {
-      if (name.startsWith(prefix)) {
-        return true;
-      }
-      if (!wanted) {
-        return false;
-      }
-      const safe = safeDisplayFileName(name);
-      return name === wanted || safe === wanted || name.endsWith(wanted) || safe.endsWith(wanted);
-    });
-  const audioHit = match(audio);
-  if (audioHit) {
-    return { fileUri: `${audioRelativePrefix()}/${audioHit}` };
+  const query = {
+    id: track.id,
+    sourceFileName: track.sourceFileName,
+    fileUri: track.fileUri || fileUri,
+    inboxUri: track.inboxUri || inboxUri,
+  };
+
+  const ownerAudio = listNames(audioDirectory());
+  const ownerHit = pickRecoveredAudioName(ownerAudio, query);
+  if (ownerHit) {
+    return { fileUri: `${audioRelativePrefix()}/${ownerHit}` };
   }
-  const downloadHit = match(downloads);
+
+  const ownerUri = audioDirectory().uri;
+  const sharedDir = sharedAudioDirectory();
+  if (sharedDir.uri !== ownerUri) {
+    const sharedHit = pickRecoveredAudioName(listNames(sharedDir), query);
+    if (sharedHit) {
+      return { fileUri: `Audio/${sharedHit}` };
+    }
+  }
+
+  const downloadHit = pickRecoveredAudioName(listNames(downloadsDirectory()), query);
   if (downloadHit) {
     return { fileUri: `downloads/${downloadHit}` };
   }
-  const inboxHit = match(inbox);
+  const inboxHit = pickRecoveredAudioName(listNames(inboxDirectory()), query);
   if (inboxHit) {
     return { inboxUri: `inbox/${inboxHit}` };
   }
