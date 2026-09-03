@@ -11,10 +11,9 @@ assert.match(engine, /keepAudioSessionActive:\s*true/);
 assert.match(engine, /setActiveForLockScreen\(\s*true/);
 assert.doesNotMatch(engine, /shouldPlayInBackground:\s*false/);
 assert.match(engine, /player\.clearLockScreenControls\(\)/);
-assert.ok(
-  !/publishLockScreen[\s\S]*clearLockScreenControls/.test(engine),
-  'lock screen must stay published while a track is loaded',
-);
+const publishBody = engine.match(/private publishLockScreen\(\) \{[\s\S]*?\n  \}/)?.[0] ?? '';
+assert.match(publishBody, /setActiveForLockScreen/);
+assert.doesNotMatch(publishBody, /clearLockScreenControls/);
 
 const app = JSON.parse(readFileSync(join(root, 'app.json'), 'utf8'));
 assert.deepEqual(app.expo.ios.infoPlist.UIBackgroundModes, ['audio']);
