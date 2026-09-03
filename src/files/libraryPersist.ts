@@ -99,11 +99,33 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
     })),
     albums: snapshot.albums.map((album) => {
       const names = new Map((album.separators ?? []).map((item) => [item.id, item.name]));
-      const trackIds = album.trackIds.filter((id) => keep.has(id) || names.has(id) || isSeparatorId(id));
+      const versionFolders = (album.versionFolders ?? [])
+        .map((folder) => {
+          const folderTracks = folder.trackIds.filter((id) => keep.has(id));
+          const chosenId = folderTracks.includes(folder.chosenId)
+            ? folder.chosenId
+            : (folderTracks[0] ?? folder.chosenId);
+          return {
+            ...folder,
+            name: folder.name.trim() || 'Versioni',
+            trackIds: folderTracks,
+            chosenId,
+          };
+        })
+        .filter((folder) => folder.trackIds.length >= 2);
+      const folderIds = new Set(versionFolders.map((folder) => folder.id));
+      const trackIds = album.trackIds.filter(
+        (id) => keep.has(id) || names.has(id) || isSeparatorId(id) || folderIds.has(id),
+      );
       const separators = trackIds
         .filter((id) => names.has(id) || isSeparatorId(id))
         .map((id) => ({ id, name: names.get(id)?.trim() || 'Separatore' }));
-      const nextAlbum = { ...album, trackIds, separators: separators.length > 0 ? separators : undefined };
+      const nextAlbum = {
+        ...album,
+        trackIds,
+        separators: separators.length > 0 ? separators : undefined,
+        versionFolders: versionFolders.length > 0 ? versionFolders : undefined,
+      };
       return {
         ...nextAlbum,
         trackIds: albumHasCustomOrder(nextAlbum)
@@ -112,6 +134,7 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
         separators: separators.length > 0 ? separators : undefined,
         artworkUri: persistAndKeep(album.artworkUri),
         notes: album.notes?.trim() ? album.notes : undefined,
+        versionFolders: nextAlbum.versionFolders,
         documents: (album.documents ?? [])
           .map((document) => {
             const fileUri = persistAndKeep(document.fileUri);

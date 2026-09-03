@@ -6,9 +6,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { runCloudSync } from '../../cloud/syncEngine';
 import { orderedAlbumItemIds } from '../../domain/albumOrder';
+import { playableAlbumTrackIds, versionFolderById } from '../../domain/albumVersions';
 import { isDownloaded } from '../../domain/audioFormats';
 import { formatDownloadPercent } from '../../domain/downloadProgress';
-import type { Album, CollectionKind } from '../../domain/library';
+import type { Album, AlbumVersionFolder, CollectionKind } from '../../domain/library';
+import { isSeparatorId, isVersionFolderId } from '../../domain/library';
 import type { Track } from '../../domain/models';
 import type { RootStackParamList } from '../../navigation/types';
 import { useDownloadProgressStore } from '../../store/downloadProgressStore';
@@ -26,11 +28,13 @@ import { CollectionPlayer } from './CollectionPlayer';
 import { ensurePlayableAndOpen, openTrack, playQueue } from './openTrack';
 import { ReorderableTrackList } from './ReorderableTrackList';
 import { TrackRow } from './TrackRow';
+import { VersionFolderRow } from './VersionFolderRow';
 import { useLibraryActions } from './useLibraryActions';
 
 type ListItem =
   | { id: string; type: 'track'; track: Track; rowHeight?: number }
-  | { id: string; type: 'separator'; name: string; rowHeight: number };
+  | { id: string; type: 'separator'; name: string; rowHeight: number }
+  | { id: string; type: 'versions'; folder: AlbumVersionFolder };
 
 function albumListItems(album: Album, tracks: Track[]): ListItem[] {
   const byId = new Map(tracks.map((track) => [track.id, track]));
@@ -38,8 +42,21 @@ function albumListItems(album: Album, tracks: Track[]): ListItem[] {
   const items: ListItem[] = [];
   for (const itemId of orderedAlbumItemIds(album, tracks)) {
     const name = names.get(itemId);
-    if (name != null) {
-      items.push({ id: itemId, type: 'separator', name, rowHeight: SEPARATOR_ROW_HEIGHT });
+    if (name != null || isSeparatorId(itemId)) {
+      items.push({
+        id: itemId,
+        type: 'separator',
+        name: name ?? 'Separatore',
+        rowHeight: SEPARATOR_ROW_HEIGHT,
+      });
+      continue;
+    }
+    const folder = versionFolderById(album, itemId);
+    if (folder) {
+      items.push({ id: itemId, type: 'versions', folder });
+      continue;
+    }
+    if (isVersionFolderId(itemId)) {
       continue;
     }
     const track = byId.get(itemId);
@@ -92,6 +109,7 @@ export function CollectionScreen() {
           : smartPlaylists.find((item) => item.id === id)?.name;
 
   const [dragging, setDragging] = useState(false);
+  const [openVersionIds, setOpenVersionIds] = useState<Record<string, boolean>>({});
   const canReorder = kind !== 'smart';
   const album = kind === 'album' ? albums.find((item) => item.id === id) : undefined;
   const isDriveAlbum = album?.origin === 'drive';
@@ -127,7 +145,10 @@ export function CollectionScreen() {
         : tracks.map((track) => ({ id: track.id, type: 'track' as const, track })),
     [album, tracks],
   );
-  const trackIds = useMemo(() => tracks.map((track) => track.id), [tracks]);
+  const trackIds = useMemo(
+    () => (album ? playableAlbumTrackIds(album) : tracks.map((track) => track.id)),
+    [album, tracks],
+  );
   const playerTrackId = usePlayerStore((s) => s.track.id);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const isPlayingThisAlbum =
@@ -179,7 +200,7 @@ export function CollectionScreen() {
       usePlayerStore.getState().play();
       return;
     }
-    if (playQueue(tracks.map((track) => track.id))) {
+    if (playQueue(trackIds)) {
       return;
     }
     Alert.alert(
@@ -349,7 +370,7 @@ export function CollectionScreen() {
         {canReorder && listItems.length > 1 ? (
           <Text style={[styles.hint, album && styles.hintInScroll]}>
             {album
-              ? 'Tieni premuto e trascina. Il separatore divide, per esempio, le tracce finite dalle bozze.'
+              ? 'Tieni premuto e trascina per riordinare. Porta un brano sopra un altro per metterli nella stessa cartella di versioni.'
               : 'Tieni premuto una traccia e trascinala per riordinare.'}
           </Text>
         ) : null}
@@ -387,11 +408,54 @@ export function CollectionScreen() {
               onReorder={(itemIds) => {
                 useLibraryStore.getState().setCollectionOrder(kind, id, itemIds);
               }}
+              onDropOn={
+                album
+                  ? (sourceId, targetId) =>
+                      useLibraryStore.getState().dropAlbumVersion(album.id, sourceId, targetId)
+                  : undefined
+              }
               renderItem={(item) =>
                 item.type === 'separator' ? (
                   <AlbumSeparatorRow
                     name={item.name}
                     onPress={() => actions.openSeparatorMenu(id, item.id, item.name)}
+                  />
+                ) : item.type === 'versions' ? (
+                  <VersionFolderRow
+                    folder={item.folder}
+                    tracks={item.folder.trackIds
+                      .map((trackId) => tracks.find((track) => track.id === trackId))
+                      .filter((track): track is Track => track != null)}
+                    open={openVersionIds[item.folder.id] === true}
+                    playerTrackId={playerTrackId}
+                    noteCountOf={(trackId) =>
+                      (markersByTrackId[trackId] ?? []).filter((marker) => marker.hidden !== true).length
+                    }
+                    downloadingOf={(trackId) => downloadingIds[trackId] != null}
+                    onToggle={() =>
+                      setOpenVersionIds((current) => ({
+                        ...current,
+                        [item.folder.id]: !current[item.folder.id],
+                      }))
+                    }
+                    onPlayChosen={() => {
+                      const chosenId = item.folder.chosenId;
+                      void ensurePlayableAndOpen(chosenId, trackIds, { autoPlay: true }).then((opened) => {
+                        if (!opened) {
+                          Alert.alert('Ascolto', 'Questo brano non è ancora arrivato. Riprova tra un attimo.');
+                        }
+                      });
+                    }}
+                    onPlayVersion={(track) => {
+                      useLibraryStore.getState().chooseAlbumVersion(id, item.folder.id, track.id);
+                      void ensurePlayableAndOpen(track.id, trackIds, { autoPlay: true }).then((opened) => {
+                        if (!opened) {
+                          Alert.alert('Ascolto', 'Questo brano non è ancora arrivato. Riprova tra un attimo.');
+                        }
+                      });
+                    }}
+                    onMenu={() => actions.openVersionFolderMenu(id, item.folder)}
+                    onVersionMenu={(track) => actions.openTrackMenu(track)}
                   />
                 ) : (
                   <TrackRow

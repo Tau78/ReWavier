@@ -70,10 +70,19 @@ export function orderedAlbumItemIds(album: Album, tracks: Track[]): string[] {
     return album.trackIds;
   }
   const byId = new Map(tracks.map((track) => [track.id, track]));
-  const trackIds = album.trackIds.filter((id) => byId.has(id));
+  const folders = new Map((album.versionFolders ?? []).map((folder) => [folder.id, folder]));
+  const itemIds = album.trackIds.filter((id) => byId.has(id) || folders.has(id));
   const separators = album.trackIds.filter((id) => isSeparatorId(id));
-  const sorted = [...trackIds].sort((left, right) =>
-    compareAlbumTrackNames(byId.get(left) as Track, byId.get(right) as Track),
+  const nameOf = (id: string) => {
+    const folder = folders.get(id);
+    if (folder) {
+      return folder.name;
+    }
+    const track = byId.get(id);
+    return track ? albumTrackSortKey(track) : id;
+  };
+  const sorted = [...itemIds].sort((left, right) =>
+    nameOf(left).localeCompare(nameOf(right), 'it', { numeric: true, sensitivity: 'base' }),
   );
   return separators.length ? [...sorted, ...separators] : sorted;
 }
