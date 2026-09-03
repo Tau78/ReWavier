@@ -1,5 +1,6 @@
 import * as LegacyFS from 'expo-file-system/legacy';
 
+import { albumHasCustomOrder, orderedAlbumItemIds } from '../domain/albumOrder';
 import {
   isSeparatorId,
   SEEDED_SMART_IDS,
@@ -102,9 +103,12 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
       const separators = trackIds
         .filter((id) => names.has(id) || isSeparatorId(id))
         .map((id) => ({ id, name: names.get(id)?.trim() || 'Separatore' }));
+      const nextAlbum = { ...album, trackIds, separators: separators.length > 0 ? separators : undefined };
       return {
-        ...album,
-        trackIds,
+        ...nextAlbum,
+        trackIds: albumHasCustomOrder(nextAlbum)
+          ? trackIds
+          : orderedAlbumItemIds(nextAlbum, tracks),
         separators: separators.length > 0 ? separators : undefined,
         artworkUri: persistAndKeep(album.artworkUri),
         notes: album.notes?.trim() ? album.notes : undefined,

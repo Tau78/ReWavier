@@ -5,6 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { runCloudSync } from '../../cloud/syncEngine';
+import { orderedAlbumItemIds } from '../../domain/albumOrder';
 import { isDownloaded } from '../../domain/audioFormats';
 import { formatDownloadPercent } from '../../domain/downloadProgress';
 import type { Album, CollectionKind } from '../../domain/library';
@@ -35,7 +36,7 @@ function albumListItems(album: Album, tracks: Track[]): ListItem[] {
   const byId = new Map(tracks.map((track) => [track.id, track]));
   const names = new Map((album.separators ?? []).map((item) => [item.id, item.name]));
   const items: ListItem[] = [];
-  for (const itemId of album.trackIds) {
+  for (const itemId of orderedAlbumItemIds(album, tracks)) {
     const name = names.get(itemId);
     if (name != null) {
       items.push({ id: itemId, type: 'separator', name, rowHeight: SEPARATOR_ROW_HEIGHT });

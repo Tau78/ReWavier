@@ -803,7 +803,11 @@ async function importAudiosInFolder(
   children: DriveFile[],
 ): Promise<void> {
   const store = useLibraryStore.getState();
-  const audios = children.filter((file) => isAudioName(file.name));
+  const audios = children
+    .filter((file) => isAudioName(file.name))
+    .sort((left, right) =>
+      left.name.localeCompare(right.name, 'it', { numeric: true, sensitivity: 'base' }),
+    );
   const sidecars = children.filter((file) => isSidecarName(file.name));
 
   for (const remote of audios) {

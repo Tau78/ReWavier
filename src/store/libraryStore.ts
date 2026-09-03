@@ -18,6 +18,11 @@ import {
   type Playlist,
   type SmartPlaylist,
 } from '../domain/library';
+import {
+  albumHasCustomOrder,
+  orderedAlbumItemIds,
+  sortTracksAlphabetically,
+} from '../domain/albumOrder';
 import { type Marker, type Track } from '../domain/models';
 import { withPractice, type PracticeIds } from '../domain/practice';
 import { isDemoUser } from '../auth/demoAccount';
@@ -701,9 +706,19 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
                   : folder,
               ),
         albums: albumId
-          ? state.albums.map((album) =>
-              album.id === albumId ? { ...album, trackIds: [...album.trackIds, ...ids] } : album,
-            )
+          ? state.albums.map((album) => {
+              if (album.id !== albumId) {
+                return album;
+              }
+              const nextTracks = [...state.tracks, ...bundles.map((bundle) => bundle.track)];
+              const merged = [...album.trackIds, ...ids.filter((id) => !album.trackIds.includes(id))];
+              return {
+                ...album,
+                trackIds: albumHasCustomOrder(album)
+                  ? merged
+                  : orderedAlbumItemIds({ ...album, trackIds: merged }, nextTracks),
+              };
+            })
           : state.albums,
       };
     });
@@ -714,11 +729,21 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
 
   addTracksToAlbum(albumId, trackIds) {
     set((state) => ({
-      albums: state.albums.map((album) =>
-        album.id === albumId
-          ? { ...album, trackIds: [...album.trackIds, ...trackIds.filter((id) => !album.trackIds.includes(id))] }
-          : album,
-      ),
+      albums: state.albums.map((album) => {
+        if (album.id !== albumId) {
+          return album;
+        }
+        const merged = [
+          ...album.trackIds,
+          ...trackIds.filter((id) => !album.trackIds.includes(id)),
+        ];
+        return {
+          ...album,
+          trackIds: albumHasCustomOrder(album)
+            ? merged
+            : orderedAlbumItemIds({ ...album, trackIds: merged }, state.tracks),
+        };
+      }),
     }));
   },
 
@@ -1033,9 +1058,13 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     if (!collection) {
       return [];
     }
-    return collection.trackIds
+    const listed = collection.trackIds
       .map((trackId) => tracks.find((track) => track.id === trackId))
       .filter((track): track is Track => track != null);
+    if (kind === 'album' && !albumHasCustomOrder(collection as Album)) {
+      return sortTracksAlphabetically(listed);
+    }
+    return listed;
   },
 
   foldersIn(parentId) {
