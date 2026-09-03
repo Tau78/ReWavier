@@ -12,11 +12,13 @@ export function VersionFolderRow({
   playerTrackId,
   noteCountOf,
   downloadingOf,
+  embedChildren = true,
   onToggle,
   onPlayChosen,
   onPlayVersion,
   onMenu,
   onVersionMenu,
+  onSwipeDelete,
 }: {
   folder: AlbumVersionFolder;
   tracks: Track[];
@@ -24,11 +26,14 @@ export function VersionFolderRow({
   playerTrackId?: string;
   noteCountOf: (trackId: string) => number;
   downloadingOf: (trackId: string) => boolean;
+  /** When false, children are separate reorderable rows in the parent list. */
+  embedChildren?: boolean;
   onToggle: () => void;
   onPlayChosen: () => void;
   onPlayVersion: (track: Track) => void;
   onMenu: () => void;
   onVersionMenu: (track: Track) => void;
+  onSwipeDelete?: (track: Track) => void;
 }) {
   const count = folder.trackIds.length;
   const chosen = tracks.find((track) => track.id === folder.chosenId) ?? tracks[0];
@@ -76,7 +81,7 @@ export function VersionFolderRow({
         </Pressable>
         <Text style={styles.chevron}>{open ? '˄' : '˅'}</Text>
       </Pressable>
-      {open
+      {embedChildren && open
         ? tracks.map((track) => (
             <View key={track.id} style={styles.child}>
               <TrackRow
@@ -86,6 +91,9 @@ export function VersionFolderRow({
                 downloading={downloadingOf(track.id)}
                 onPress={() => onPlayVersion(track)}
                 onMenu={() => onVersionMenu(track)}
+                onSwipeDelete={
+                  onSwipeDelete ? () => onSwipeDelete(track) : undefined
+                }
               />
             </View>
           ))

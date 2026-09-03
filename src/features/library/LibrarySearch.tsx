@@ -2,7 +2,7 @@ import { StyleSheet, TextInput } from 'react-native';
 
 import { colors } from '../../theme/colors';
 
-export const LIBRARY_SEARCH_PLACEHOLDER = 'Cerca cartelle, album o brani…';
+export const LIBRARY_SEARCH_PLACEHOLDER = 'Cerca playlist, album o brani…';
 
 export function matchesLibrarySearch(
   query: string,

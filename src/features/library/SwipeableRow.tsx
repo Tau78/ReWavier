@@ -44,6 +44,9 @@ export function SwipeableRow({
       friction={2}
       rightThreshold={40}
       leftThreshold={40}
+      // Prefer horizontal swipe over vertical scroll / long-press reorder pan.
+      activeOffsetX={[-12, 12]}
+      failOffsetY={[-16, 16]}
       renderRightActions={
         onDelete
           ? () => (

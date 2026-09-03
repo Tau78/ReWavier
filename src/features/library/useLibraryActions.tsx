@@ -189,7 +189,7 @@ export function useLibraryActions(
       onPress: () => setPrompt({ type: 'rename-track', id: track.id, value: track.title }),
     },
     {
-      label: 'Sposta in cartella',
+      label: 'Sposta in playlist',
       onPress: () => setMover({ type: 'track', id: track.id }),
     },
     {
@@ -251,12 +251,8 @@ export function useLibraryActions(
       },
     },
     {
-      label: 'Nuova cartella',
-      onPress: () => setPrompt({ type: 'new-folder', parentId: currentFolderId }),
-    },
-    {
       label: 'Nuova playlist',
-      onPress: () => setPrompt({ type: 'new-playlist' }),
+      onPress: () => setPrompt({ type: 'new-folder', parentId: currentFolderId }),
     },
   ];
 
@@ -467,7 +463,7 @@ export function useLibraryActions(
         }),
     },
     {
-      label: 'Crea cartella',
+      label: 'Crea playlist',
       onPress: () => setPrompt({ type: 'new-folder', parentId: currentFolderId }),
     },
   ];
@@ -482,7 +478,7 @@ export function useLibraryActions(
       onPress: () => setMover({ type: 'folder', id: folder.id }),
     },
     {
-      label: 'Nuova sottocartella',
+      label: 'Nuova playlist dentro',
       onPress: () => setPrompt({ type: 'new-folder', parentId: folder.id }),
     },
     {
@@ -500,10 +496,10 @@ export function useLibraryActions(
       onPress: () => navigation.navigate('LessonRecap', { kind: 'folder', id: folder.id }),
     },
     {
-      label: 'Elimina cartella',
+      label: 'Elimina playlist',
       danger: true,
       onPress: () => {
-        Alert.alert('Eliminare la cartella?', 'Le tracce restano in libreria.', [
+        Alert.alert('Eliminare la playlist?', 'Le tracce restano in libreria.', [
           { text: 'Annulla', style: 'cancel' },
           {
             text: 'Elimina',
@@ -575,7 +571,7 @@ export function useLibraryActions(
           prompt?.type === 'rename-track'
             ? 'Rinomina traccia'
             : prompt?.type === 'rename-folder'
-              ? 'Rinomina cartella'
+              ? 'Rinomina playlist'
               : prompt?.type === 'rename-album'
                 ? 'Rinomina album'
                 : prompt?.type === 'rename-playlist'
@@ -592,7 +588,7 @@ export function useLibraryActions(
                       ? 'Rinomina separatore'
                       : prompt?.type === 'rename-versions'
                         ? 'Nome della cartella'
-                        : 'Nuova cartella'
+                        : 'Nuova playlist'
         }
         placeholder={prompt?.type === 'new-separator' ? 'Bozze' : 'Nome'}
         confirmLabel={
@@ -662,7 +658,7 @@ export function useLibraryActions(
       />
       <MovePicker
         visible={mover != null}
-        title={mover?.type === 'folder' ? 'Sposta cartella' : 'Sposta traccia'}
+        title={mover?.type === 'folder' ? 'Sposta playlist' : 'Sposta traccia'}
         folders={folders}
         excludeIds={excludeFolderIds}
         onClose={() => setMover(null)}
@@ -722,7 +718,7 @@ export function useLibraryActions(
     newPlaylist: () => setPrompt({ type: 'new-playlist' }),
     confirmDeleteTrack: (track: Track) => setPendingDelete(track),
     confirmDeleteFolder: (folder: Folder) => {
-      Alert.alert('Eliminare la cartella?', 'Le tracce restano in libreria.', [
+      Alert.alert('Eliminare la playlist?', 'Le tracce restano in libreria.', [
         { text: 'Annulla', style: 'cancel' },
         {
           text: 'Elimina',

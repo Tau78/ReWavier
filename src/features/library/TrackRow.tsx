@@ -5,6 +5,7 @@ import { formatTimecode, type Track } from '../../domain/models';
 import { resolveLibraryUri } from '../../files/libraryUris';
 import { usePlayerStore } from '../../store/playerStore';
 import { colors } from '../../theme/colors';
+import { SwipeableRow } from './SwipeableRow';
 
 export function TrackRow({
   track,
@@ -16,6 +17,7 @@ export function TrackRow({
   onDownload,
   onMenu,
   onArtwork,
+  onSwipeDelete,
 }: {
   track: Track;
   noteCount: number;
@@ -26,6 +28,8 @@ export function TrackRow({
   onDownload?: () => void;
   onMenu?: () => void;
   onArtwork?: () => void;
+  /** Swipe left → Elimina; opens the same delete confirm as the ⋯ menu. */
+  onSwipeDelete?: () => void;
 }) {
   const downloaded = isDownloaded(track);
   const playerDurationMs = usePlayerStore((state) =>
@@ -35,7 +39,7 @@ export function TrackRow({
   const letter = (track.title.trim()[0] || '?').toUpperCase();
   const artworkUri = resolveLibraryUri(track.artworkUri);
 
-  return (
+  const row = (
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
@@ -107,6 +111,11 @@ export function TrackRow({
       ) : null}
     </Pressable>
   );
+
+  if (onSwipeDelete) {
+    return <SwipeableRow onDelete={onSwipeDelete}>{row}</SwipeableRow>;
+  }
+  return row;
 }
 
 const styles = StyleSheet.create({

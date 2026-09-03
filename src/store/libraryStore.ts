@@ -24,13 +24,16 @@ import {
   sortTracksAlphabetically,
 } from '../domain/albumOrder';
 import {
+  applyAlbumListReorder,
   applyAlbumVersionDrop,
   flattenAlbumTrackIds,
   removeTrackFromVersionFolders,
   renameVersionFolder,
   setVersionFolderChosen,
   unpackVersionFolder,
+  versionFolderById,
   withNamedVersionFolder,
+  type AlbumListReorderItem,
 } from '../domain/albumVersions';
 import { type Marker, type Track } from '../domain/models';
 import { withPractice, type PracticeIds } from '../domain/practice';
@@ -116,6 +119,7 @@ export type LibraryActions = {
   renameAlbumSeparator: (albumId: string, separatorId: string, name: string) => void;
   deleteAlbumSeparator: (albumId: string, separatorId: string) => void;
   dropAlbumVersion: (albumId: string, sourceId: string, targetId: string) => boolean;
+  reorderAlbumList: (albumId: string, items: AlbumListReorderItem[]) => void;
   unpackAlbumVersionFolder: (albumId: string, folderId: string) => void;
   renameAlbumVersionFolder: (albumId: string, folderId: string, name: string) => void;
   chooseAlbumVersion: (albumId: string, folderId: string, trackId: string) => void;
@@ -150,6 +154,7 @@ export type LibraryActions = {
     trackIds: string[],
     extras?: { updatedAt?: number; fromCloud?: boolean },
   ) => void;
+  sortCollectionAlphabetically: (kind: CollectionKind, id: string) => void;
   reattachLocalAudio: () => void;
   hydrate: () => Promise<void>;
   unload: () => void;
@@ -304,7 +309,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
 
   createFolder(name, parentId = null, extras) {
     const id = createId('folder');
-    const trimmed = name.trim() || 'Nuova cartella';
+    const trimmed = name.trim() || 'Nuova playlist';
     set((state) => ({
       folders: [
         ...state.folders,
@@ -589,6 +594,17 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       }),
     }));
     return changed;
+  },
+
+  reorderAlbumList(albumId, items) {
+    set((state) => ({
+      albums: state.albums.map((album) => {
+        if (album.id !== albumId) {
+          return album;
+        }
+        return applyAlbumListReorder(album, items);
+      }),
+    }));
   },
 
   unpackAlbumVersionFolder(albumId, folderId) {
@@ -1096,6 +1112,63 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         item.id === playlist.id ? playlist : item,
       ),
     }));
+  },
+
+  sortCollectionAlphabetically(kind, id) {
+    if (kind === 'smart') {
+      return;
+    }
+    const state = get();
+    const titleOf = (trackId: string) => state.tracks.find((track) => track.id === trackId)?.title ?? trackId;
+    const byName = (a: string, b: string) =>
+      a.localeCompare(b, 'it', { sensitivity: 'base', numeric: true });
+
+    if (kind === 'folder' || kind === 'playlist') {
+      const collection =
+        kind === 'folder'
+          ? state.folders.find((folder) => folder.id === id)
+          : state.playlists.find((playlist) => playlist.id === id);
+      if (!collection || collection.trackIds.length < 2) {
+        return;
+      }
+      const sorted = [...collection.trackIds].sort((left, right) => byName(titleOf(left), titleOf(right)));
+      get().setCollectionOrder(kind, id, sorted);
+      return;
+    }
+
+    const album = state.albums.find((item) => item.id === id);
+    if (!album || album.trackIds.length < 2) {
+      return;
+    }
+    const labelOf = (itemId: string) => {
+      const folder = versionFolderById(album, itemId);
+      if (folder) {
+        return folder.name;
+      }
+      const separator = (album.separators ?? []).find((item) => item.id === itemId);
+      if (separator) {
+        return separator.name;
+      }
+      return titleOf(itemId);
+    };
+    const sortedTop = [...album.trackIds].sort((left, right) => byName(labelOf(left), labelOf(right)));
+    const versionFolders = (album.versionFolders ?? []).map((folder) => ({
+      ...folder,
+      trackIds: [...folder.trackIds].sort((left, right) => byName(titleOf(left), titleOf(right))),
+    }));
+    set({
+      albums: state.albums.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              trackIds: sortedTop,
+              versionFolders: versionFolders.length ? versionFolders : undefined,
+              orderUpdatedAt: Date.now(),
+            }
+          : item,
+      ),
+    });
+    void import('../cloud/syncEngine').then((mod) => mod.pushAlbumOrder(id)).catch(() => undefined);
   },
 
   setCollectionOrder(kind, id, trackIds, extras = {}) {

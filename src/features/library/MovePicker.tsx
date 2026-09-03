@@ -58,7 +58,7 @@ export function MovePicker({
               onPress={() => setNaming(true)}
               style={({ pressed }) => [styles.row, pressed && styles.pressed]}
             >
-              <Text style={styles.create}>＋ Nuova cartella</Text>
+              <Text style={styles.create}>＋ Nuova playlist</Text>
               <Text style={styles.meta}>Crea e sposta qui</Text>
             </Pressable>
           ) : null}
@@ -70,7 +70,7 @@ export function MovePicker({
             style={({ pressed }) => [styles.row, pressed && styles.pressed]}
           >
             <Text style={styles.name}>Libreria</Text>
-            <Text style={styles.meta}>Nessuna cartella</Text>
+            <Text style={styles.meta}>Nessuna playlist</Text>
           </Pressable>
           {options.map((folder) => (
             <Pressable
@@ -91,8 +91,8 @@ export function MovePicker({
       </View>
       <PromptModal
         visible={naming}
-        title="Nuova cartella"
-        placeholder="Nome cartella"
+        title="Nuova playlist"
+        placeholder="Nome playlist"
         confirmLabel="Crea e sposta"
         onCancel={() => setNaming(false)}
         onSubmit={(name) => {

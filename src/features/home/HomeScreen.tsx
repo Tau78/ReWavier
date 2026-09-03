@@ -270,7 +270,7 @@ export function HomeScreen() {
           <BrandMark size="sm" />
           <View>
             <Text style={styles.title}>Home</Text>
-            <Text style={styles.subtitle}>Cartelle e album</Text>
+            <Text style={styles.subtitle}>Playlist e album</Text>
           </View>
         </View>
         <View style={styles.headerActions}>
@@ -351,34 +351,50 @@ export function HomeScreen() {
             <Text style={styles.emptyHint}>Nessun risultato. Prova un altro nome.</Text>
           ) : (
             <>
-          {!q || visibleFolders.length > 0 ? (
-          <Section title="Cartelle" icon={<FolderMark />} actionLabel="Nuova" onAction={() => actions.newFolder(null)}>
-            {visibleFolders.length === 0 ? (
-              <Text style={styles.emptyHint}>Nessuna cartella. Tocca Nuova per crearne una.</Text>
+          {!q || visibleFolders.length > 0 || visiblePlaylists.length > 0 ? (
+          <Section
+            title="Playlist"
+            icon={<FolderMark />}
+            actionLabel="Nuova"
+            onAction={() => actions.newFolder(null)}
+          >
+            {visibleFolders.length === 0 && visiblePlaylists.length === 0 ? (
+              <Text style={styles.emptyHint}>Nessuna playlist. Tocca Nuova per crearne una.</Text>
             ) : (
-              visibleFolders.map((folder) => {
-                const childCount = foldersIn(folder.id).length;
-                return (
-                  <HomeDropTargetBox
-                    key={folder.id}
-                    dropKey={`folder:${folder.id}`}
-                    highlighted={hoverKey === `folder:${folder.id}`}
-                    rects={dropRects}
-                    nodes={dropNodes}
-                  >
-                    <CollectionRow
-                      name={folder.name}
-                      meta={
-                        childCount > 0
-                          ? `${childCount} cartelle · ${folder.trackIds.length} tracce`
-                          : `${folder.trackIds.length} tracce`
-                      }
-                      onPress={() => openCollection('folder', folder.id)}
-                      onLongPress={() => actions.openFolderMenu(folder)}
-                    />
-                  </HomeDropTargetBox>
-                );
-              })
+              <>
+                {visibleFolders.map((folder) => {
+                  const childCount = foldersIn(folder.id).length;
+                  return (
+                    <HomeDropTargetBox
+                      key={folder.id}
+                      dropKey={`folder:${folder.id}`}
+                      highlighted={hoverKey === `folder:${folder.id}`}
+                      rects={dropRects}
+                      nodes={dropNodes}
+                    >
+                      <CollectionRow
+                        name={folder.name}
+                        meta={
+                          childCount > 0
+                            ? `${childCount} playlist · ${folder.trackIds.length} tracce`
+                            : `${folder.trackIds.length} tracce`
+                        }
+                        onPress={() => openCollection('folder', folder.id)}
+                        onLongPress={() => actions.openFolderMenu(folder)}
+                      />
+                    </HomeDropTargetBox>
+                  );
+                })}
+                {visiblePlaylists.map((playlist) => (
+                  <CollectionRow
+                    key={playlist.id}
+                    name={playlist.name}
+                    meta={`${playlist.trackIds.length} tracce`}
+                    onPress={() => openCollection('playlist', playlist.id)}
+                    onLongPress={() => actions.openPlaylistMenu(playlist.id)}
+                  />
+                ))}
+              </>
             )}
           </Section>
           ) : null}
@@ -420,20 +436,6 @@ export function HomeScreen() {
           </Section>
           ) : null}
 
-          {visiblePlaylists.length > 0 || (!q && playlists.length > 0) ? (
-            <Section title="Playlist" actionLabel="Nuova" onAction={() => actions.newPlaylist()}>
-              {visiblePlaylists.map((playlist) => (
-                <CollectionRow
-                  key={playlist.id}
-                  name={playlist.name}
-                  meta={`${playlist.trackIds.length} tracce`}
-                  onPress={() => openCollection('playlist', playlist.id)}
-                  onLongPress={() => actions.openPlaylistMenu(playlist.id)}
-                />
-              ))}
-            </Section>
-          ) : null}
-
           {!q ? (
             <GlassCard style={styles.card}>
               <Pressable
@@ -457,7 +459,7 @@ export function HomeScreen() {
             <Section title="Brani">
               {matchingTracks.length > 0 && dropTargets.length > 0 ? (
                 <Text style={styles.dragHint}>
-                  Tieni premuto una traccia e trascinala in una cartella o in un album.
+                  Tieni premuto una traccia e trascinala in una playlist o in un album.
                 </Text>
               ) : null}
               {matchingTracks.map((track) => (
@@ -478,6 +480,7 @@ export function HomeScreen() {
                     onPress={() => play(track.id)}
                     onArtwork={() => actions.pickTrackArtwork(track)}
                     onMenu={() => actions.openTrackMenu(track)}
+                    onSwipeDelete={() => actions.confirmDeleteTrack(track)}
                     onDownload={() => {
                       void useLibraryStore.getState().downloadTrack(track.id).catch((error) => {
                         Alert.alert(
@@ -502,7 +505,7 @@ export function HomeScreen() {
               {tracks.find((track) => track.id === dragId)?.title ?? 'Traccia'}
             </Text>
             <Text style={styles.ghostHint}>
-              {hoverKey ? 'Rilascia per aggiungere' : 'Portala su una cartella o un album'}
+              {hoverKey ? 'Rilascia per aggiungere' : 'Portala su una playlist o un album'}
             </Text>
           </View>
         </View>

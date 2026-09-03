@@ -92,6 +92,7 @@ export function LibraryScreen() {
                 onPress={() => play(track.id)}
                 onArtwork={() => actions.pickTrackArtwork(track)}
                 onMenu={() => actions.openTrackMenu(track)}
+                onSwipeDelete={() => actions.confirmDeleteTrack(track)}
                 onDownload={() => {
                   void useLibraryStore.getState().downloadTrack(track.id).catch((error) => {
                     Alert.alert(

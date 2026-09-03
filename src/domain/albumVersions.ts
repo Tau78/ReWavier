@@ -137,10 +137,20 @@ export function applyAlbumVersionDrop(
     return null;
   }
 
-  const sourceFolder = versionFolderById(album, sourceId);
-  const targetFolder = versionFolderById(album, targetId);
-  const top = [...album.trackIds];
-  const folders = [...(album.versionFolders ?? [])];
+  const sourceOwner = (album.versionFolders ?? []).find((folder) => folder.trackIds.includes(sourceId));
+  const targetOwner = (album.versionFolders ?? []).find((folder) => folder.trackIds.includes(targetId));
+  if (sourceOwner && targetOwner && sourceOwner.id === targetOwner.id) {
+    return null;
+  }
+  if (targetOwner && !versionFolderById(album, targetId)) {
+    return applyAlbumVersionDrop(album, sourceId, targetOwner.id, tracks);
+  }
+
+  let working = peelTrackToTopLevel(album, sourceId);
+  const sourceFolder = versionFolderById(working, sourceId);
+  const targetFolder = versionFolderById(working, targetId);
+  const top = [...working.trackIds];
+  const folders = [...(working.versionFolders ?? [])];
 
   const removeFromTop = (id: string) => {
     const index = top.indexOf(id);
@@ -157,7 +167,7 @@ export function applyAlbumVersionDrop(
       .map((folder) => (folder.id === targetFolder.id ? nextTarget : folder));
     removeFromTop(sourceId);
     return dissolveTinyFolders({
-      ...album,
+      ...working,
       trackIds: top,
       versionFolders: pruneFolders(nextFolders, top),
     });
@@ -174,7 +184,7 @@ export function applyAlbumVersionDrop(
     removeFromTop(targetId);
     const nextFolders = folders.map((folder) => (folder.id === sourceFolder.id ? nextSource : folder));
     return dissolveTinyFolders({
-      ...album,
+      ...working,
       trackIds: top,
       versionFolders: pruneFolders(nextFolders, top),
     });
@@ -191,7 +201,7 @@ export function applyAlbumVersionDrop(
     removeFromTop(sourceId);
     const nextFolders = folders.map((folder) => (folder.id === targetFolder.id ? nextTarget : folder));
     return dissolveTinyFolders({
-      ...album,
+      ...working,
       trackIds: top,
       versionFolders: pruneFolders(nextFolders, top),
     });
@@ -216,7 +226,7 @@ export function applyAlbumVersionDrop(
   const insertAt = Math.min(targetIndex, top.length);
   top.splice(insertAt, 0, folderId);
   return {
-    ...album,
+    ...working,
     trackIds: top,
     versionFolders: [...folders, folder],
     orderUpdatedAt: Date.now(),
@@ -261,6 +271,116 @@ export function removeTrackFromVersionFolders(album: Album, trackId: string): Al
     };
   });
   return dissolveTinyFolders({ ...album, versionFolders });
+}
+
+/** Peel a track out of any version folder and insert it at a top-level index. Dissolves folders with <2 tracks. */
+export function extractTrackFromVersionFolder(
+  album: Album,
+  trackId: string,
+  insertAt: number,
+): Album {
+  const owner = (album.versionFolders ?? []).find((folder) => folder.trackIds.includes(trackId));
+  if (!owner) {
+    return album;
+  }
+  const without = removeTrackFromVersionFolders(album, trackId);
+  const trackIds = without.trackIds.filter((id) => id !== trackId);
+  const at = Math.max(0, Math.min(insertAt, trackIds.length));
+  trackIds.splice(at, 0, trackId);
+  return {
+    ...without,
+    trackIds,
+    orderUpdatedAt: Date.now(),
+  };
+}
+
+export type AlbumListReorderItem =
+  | { id: string; kind: 'top' }
+  | { id: string; kind: 'version-track'; folderId: string };
+
+/** Flat-list reorder: version-tracks that leave their folder block become top-level; tiny folders dissolve. */
+export function applyAlbumListReorder(album: Album, items: AlbumListReorderItem[]): Album {
+  const newTopIds: string[] = [];
+  const folderChildOrders = new Map<string, string[]>();
+  const foldersWithExpandedChildren = new Set<string>();
+  let currentFolder: string | null = null;
+
+  for (const item of items) {
+    if (item.kind === 'version-track') {
+      if (currentFolder === item.folderId) {
+        const list = folderChildOrders.get(currentFolder) ?? [];
+        list.push(item.id);
+        folderChildOrders.set(currentFolder, list);
+        foldersWithExpandedChildren.add(currentFolder);
+      } else {
+        currentFolder = null;
+        newTopIds.push(item.id);
+      }
+      continue;
+    }
+    if (versionFolderById(album, item.id) || isVersionFolderId(item.id)) {
+      currentFolder = item.id;
+      newTopIds.push(item.id);
+      if (!folderChildOrders.has(item.id)) {
+        folderChildOrders.set(item.id, []);
+      }
+      continue;
+    }
+    currentFolder = null;
+    newTopIds.push(item.id);
+  }
+
+  const extractedTop = new Set(
+    newTopIds.filter((id) => !isSeparatorId(id) && !isVersionFolderId(id) && !versionFolderById(album, id)),
+  );
+
+  const versionFolders = (album.versionFolders ?? []).map((folder) => {
+    if (foldersWithExpandedChildren.has(folder.id)) {
+      const trackIds = uniqueTrackIds(folderChildOrders.get(folder.id) ?? []);
+      return {
+        ...folder,
+        trackIds,
+        chosenId: trackIds.includes(folder.chosenId) ? folder.chosenId : (trackIds[0] ?? folder.chosenId),
+      };
+    }
+    const trackIds = folder.trackIds.filter((id) => !extractedTop.has(id));
+    return {
+      ...folder,
+      trackIds,
+      chosenId: trackIds.includes(folder.chosenId) ? folder.chosenId : (trackIds[0] ?? folder.chosenId),
+    };
+  });
+
+  return dissolveTinyFolders({
+    ...album,
+    trackIds: newTopIds,
+    versionFolders,
+    orderUpdatedAt: Date.now(),
+  });
+}
+
+function peelTrackToTopLevel(album: Album, trackId: string): Album {
+  if (
+    isSeparatorId(trackId) ||
+    isVersionFolderId(trackId) ||
+    versionFolderById(album, trackId) ||
+    !(album.versionFolders ?? []).some((folder) => folder.trackIds.includes(trackId))
+  ) {
+    return album;
+  }
+  const versionFolders = (album.versionFolders ?? []).map((folder) => {
+    if (!folder.trackIds.includes(trackId)) {
+      return folder;
+    }
+    const trackIds = folder.trackIds.filter((id) => id !== trackId);
+    return {
+      ...folder,
+      trackIds,
+      chosenId: trackIds.includes(folder.chosenId) ? folder.chosenId : (trackIds[0] ?? folder.chosenId),
+    };
+  });
+  const trackIds = album.trackIds.includes(trackId) ? album.trackIds : [...album.trackIds, trackId];
+  return dissolveTinyFolders({ ...album, trackIds, versionFolders });
 }
 
 export function setVersionFolderChosen(album: Album, folderId: string, trackId: string): Album | null {

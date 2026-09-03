@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { runCloudSync } from '../../cloud/syncEngine';
 import { orderedAlbumItemIds } from '../../domain/albumOrder';
-import { playableAlbumTrackIds, versionFolderById } from '../../domain/albumVersions';
+import { playableAlbumTrackIds, versionFolderById, type AlbumListReorderItem } from '../../domain/albumVersions';
 import { isDownloaded } from '../../domain/audioFormats';
 import { formatDownloadPercent } from '../../domain/downloadProgress';
 import type { Album, AlbumVersionFolder, CollectionKind } from '../../domain/library';
@@ -33,11 +33,31 @@ import { VersionFolderRow } from './VersionFolderRow';
 import { useLibraryActions } from './useLibraryActions';
 
 type ListItem =
-  | { id: string; type: 'track'; track: Track; rowHeight?: number }
-  | { id: string; type: 'separator'; name: string; rowHeight: number }
-  | { id: string; type: 'versions'; folder: AlbumVersionFolder };
+  | { id: string; type: 'track'; track: Track; rowHeight?: number; draggable?: boolean }
+  | { id: string; type: 'separator'; name: string; rowHeight: number; draggable?: boolean }
+  | {
+      id: string;
+      type: 'versions';
+      folder: AlbumVersionFolder;
+      rowHeight?: number;
+      draggable?: boolean;
+    }
+  | {
+      id: string;
+      type: 'version-track';
+      track: Track;
+      folderId: string;
+      rowHeight?: number;
+      draggable?: boolean;
+    };
 
-function albumListItems(album: Album, tracks: Track[]): ListItem[] {
+const VERSION_HEADER_ROW = 60;
+
+function albumListItems(
+  album: Album,
+  tracks: Track[],
+  openVersionIds: Record<string, boolean>,
+): ListItem[] {
   const byId = new Map(tracks.map((track) => [track.id, track]));
   const names = new Map((album.separators ?? []).map((item) => [item.id, item.name]));
   const items: ListItem[] = [];
@@ -54,7 +74,28 @@ function albumListItems(album: Album, tracks: Track[]): ListItem[] {
     }
     const folder = versionFolderById(album, itemId);
     if (folder) {
-      items.push({ id: itemId, type: 'versions', folder });
+      const open = openVersionIds[folder.id] === true;
+      items.push({
+        id: itemId,
+        type: 'versions',
+        folder,
+        rowHeight: VERSION_HEADER_ROW,
+        // Open headers stay put so children are not orphaned; close the cartella to move the pack.
+        draggable: !open,
+      });
+      if (open) {
+        for (const trackId of folder.trackIds) {
+          const track = byId.get(trackId);
+          if (track) {
+            items.push({
+              id: track.id,
+              type: 'version-track',
+              track,
+              folderId: folder.id,
+            });
+          }
+        }
+      }
       continue;
     }
     if (isVersionFolderId(itemId)) {
@@ -72,7 +113,7 @@ type Nav = NativeStackNavigationProp<RootStackParamList, 'Collection'>;
 type Route = RouteProp<RootStackParamList, 'Collection'>;
 
 const KIND_LABEL: Record<CollectionKind, string> = {
-  folder: 'Cartella',
+  folder: 'Playlist',
   album: 'Album',
   playlist: 'Playlist',
   smart: 'Condizioni',
@@ -176,10 +217,12 @@ export function CollectionScreen() {
   const listItems = useMemo<ListItem[]>(
     () =>
       album
-        ? albumListItems(album, displayTracks)
+        ? albumListItems(album, displayTracks, openVersionIds)
         : displayTracks.map((track) => ({ id: track.id, type: 'track' as const, track })),
-    [album, displayTracks],
+    [album, displayTracks, openVersionIds],
   );
+  const listItemsRef = useRef(listItems);
+  listItemsRef.current = listItems;
   const trackIds = useMemo(
     () => (album ? playableAlbumTrackIds(album) : tracks.map((track) => track.id)),
     [album, tracks],
@@ -206,7 +249,7 @@ export function CollectionScreen() {
       Alert.alert(
         'Sul telefono',
         kind === 'folder'
-          ? 'Tutti i brani di questa cartella sono già qui.'
+          ? 'Tutti i brani di questa playlist sono già qui.'
           : 'Tutti i brani di questo album sono già qui.',
       );
       return;
@@ -320,8 +363,8 @@ export function CollectionScreen() {
                 downloadActive
                   ? `Download ${formatDownloadPercent(downloadPercent)}`
                   : allOnPhone
-                    ? 'Cartella già sul telefono'
-                    : 'Scarica cartella'
+                    ? 'Playlist già sul telefono'
+                    : 'Scarica playlist'
               }
             >
               <Text
@@ -407,9 +450,20 @@ export function CollectionScreen() {
         {canReorder && listItems.length > 1 ? (
           <Text style={[styles.hint, album && styles.hintInScroll]}>
             {album
-              ? 'Tieni premuto e trascina per riordinare. Porta un brano sopra un altro per metterli nella stessa cartella di versioni.'
+              ? 'Tieni premuto e trascina per riordinare. Porta un brano fuori dalla cartella di versioni per staccarlo. Porta un brano sopra un altro per metterli insieme.'
               : 'Tieni premuto una traccia e trascinala per riordinare.'}
           </Text>
+        ) : null}
+        {canReorder && listItems.length > 1 ? (
+          <Pressable
+            onPress={() => useLibraryStore.getState().sortCollectionAlphabetically(kind, id)}
+            style={({ pressed }) => [styles.sortBtn, pressed && styles.sortBtnPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Riordina in ordine alfabetico"
+          >
+            <Text style={styles.sortGlyph}>A→Z</Text>
+            <Text style={styles.sortLabel}>Ordina per nome</Text>
+          </Pressable>
         ) : null}
         {childFolders.length > 0 ? (
           <View style={[styles.card, styles.cardGap]}>
@@ -443,7 +497,19 @@ export function CollectionScreen() {
               enabled={canReorder}
               onDraggingChange={setDragging}
               onReorder={(itemIds) => {
-                useLibraryStore.getState().setCollectionOrder(kind, id, itemIds);
+                if (!album) {
+                  useLibraryStore.getState().setCollectionOrder(kind, id, itemIds);
+                  return;
+                }
+                const meta = new Map(listItemsRef.current.map((item) => [item.id, item]));
+                const reorderItems: AlbumListReorderItem[] = itemIds.map((itemId) => {
+                  const item = meta.get(itemId);
+                  if (item?.type === 'version-track') {
+                    return { id: itemId, kind: 'version-track', folderId: item.folderId };
+                  }
+                  return { id: itemId, kind: 'top' };
+                });
+                useLibraryStore.getState().reorderAlbumList(id, reorderItems);
               }}
               onDropOn={
                 album
@@ -464,6 +530,7 @@ export function CollectionScreen() {
                       .map((trackId) => tracks.find((track) => track.id === trackId))
                       .filter((track): track is Track => track != null)}
                     open={openVersionIds[item.folder.id] === true}
+                    embedChildren={false}
                     playerTrackId={playerTrackId}
                     noteCountOf={(trackId) =>
                       (markersByTrackId[trackId] ?? []).filter((marker) => marker.hidden !== true).length
@@ -493,7 +560,47 @@ export function CollectionScreen() {
                     }}
                     onMenu={() => actions.openVersionFolderMenu(id, item.folder)}
                     onVersionMenu={(track) => actions.openTrackMenu(track)}
+                    onSwipeDelete={(track) => actions.confirmDeleteTrack(track)}
                   />
+                ) : item.type === 'version-track' ? (
+                  <View style={styles.versionChild}>
+                    <TrackRow
+                      track={item.track}
+                      active={
+                        item.track.id === playerTrackId ||
+                        versionFolderById(album!, item.folderId)?.chosenId === item.track.id
+                      }
+                      noteCount={
+                        (markersByTrackId[item.track.id] ?? []).filter((marker) => marker.hidden !== true)
+                          .length
+                      }
+                      downloading={downloadingIds[item.track.id] != null}
+                      onPress={() => {
+                        useLibraryStore.getState().chooseAlbumVersion(id, item.folderId, item.track.id);
+                        void ensurePlayableAndOpen(item.track.id, trackIds, { autoPlay: true }).then(
+                          (opened) => {
+                            if (!opened) {
+                              Alert.alert(
+                                'Ascolto',
+                                'Questo brano non è ancora arrivato. Riprova tra un attimo.',
+                              );
+                            }
+                          },
+                        );
+                      }}
+                      onArtwork={() => actions.pickTrackArtwork(item.track)}
+                      onMenu={() => actions.openTrackMenu(item.track)}
+                      onSwipeDelete={() => actions.confirmDeleteTrack(item.track)}
+                      onDownload={() => {
+                        void useLibraryStore.getState().downloadTrack(item.track.id).catch((error) => {
+                          Alert.alert(
+                            'Download',
+                            error instanceof Error ? error.message : 'Download non riuscito',
+                          );
+                        });
+                      }}
+                    />
+                  </View>
                 ) : (
                   <TrackRow
                     track={item.track}
@@ -523,6 +630,7 @@ export function CollectionScreen() {
                     }}
                     onArtwork={() => actions.pickTrackArtwork(item.track)}
                     onMenu={() => actions.openTrackMenu(item.track)}
+                    onSwipeDelete={() => actions.confirmDeleteTrack(item.track)}
                     onDownload={() => {
                       void useLibraryStore.getState().downloadTrack(item.track.id).catch((error) => {
                         Alert.alert(
@@ -660,6 +768,32 @@ const styles = StyleSheet.create({
   hintInScroll: {
     paddingHorizontal: 4,
   },
+  sortBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 8,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  sortBtnPressed: {
+    opacity: 0.7,
+  },
+  sortGlyph: {
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  sortLabel: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '600',
+  },
   sectionLabel: {
     paddingHorizontal: 4,
     paddingBottom: 8,
@@ -709,5 +843,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  versionChild: {
+    paddingLeft: 18,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
   },
 });
