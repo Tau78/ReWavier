@@ -27,15 +27,16 @@ import {
   type PracticeIds,
 } from '../domain/practice';
 
+import { isTrackDownloadBlocked } from './downloadProgressStore';
+import { useLibraryStore } from './libraryStore';
+import { useSessionStore } from './sessionStore';
+
 const EMPTY_TRACK: Track = {
   id: '',
   title: '',
   artist: '',
   durationMs: 0,
 };
-import { isTrackDownloadBlocked } from './downloadProgressStore';
-import { useLibraryStore } from './libraryStore';
-import { useSessionStore } from './sessionStore';
 
 const HIDDEN_BUBBLE: NoteBubbleState = {
   visible: false,

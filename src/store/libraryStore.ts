@@ -60,7 +60,7 @@ import {
 import { audioMatchKey, sourceFileNameFromTitle } from '../domain/sidecar';
 import { writeSidecarToLibrary, removeSidecarFromLibrary, type ImportedBundle } from '../files/libraryFiles';
 import { userHasUsage } from '../domain/session';
-import { useDownloadProgressStore } from './downloadProgressStore';
+import { throwIfDownloadPaused, useDownloadProgressStore } from './downloadProgressStore';
 import { useSessionStore } from './sessionStore';
 import { useSyncStore } from './syncStore';
 
@@ -147,7 +147,11 @@ export type LibraryActions = {
   downloadTrack: (trackId: string, options?: { replace?: boolean }) => Promise<void>;
   removeDownload: (trackId: string) => Promise<void>;
   downloadAlbum: (albumId: string) => Promise<void>;
-  downloadCollection: (kind: 'album' | 'folder', id: string) => Promise<void>;
+  downloadCollection: (
+    kind: 'album' | 'folder',
+    id: string,
+    options?: { reuseSession?: boolean },
+  ) => Promise<void>;
   updateTrackDuration: (id: string, durationMs: number) => void;
   setTrackPeaks: (id: string, peaks: number[]) => void;
   createSmartPlaylist: (playlist: Omit<SmartPlaylist, 'id'>) => string;
@@ -998,6 +1002,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     }));
     let tempUri: string | undefined;
     try {
+      throwIfDownloadPaused();
       let source = replace ? undefined : playableUri(track);
       if (!source && track.driveFileId) {
         const dest = new File(inboxDirectory(), safeTempFileName('dl', track.id, track.sourceFileName));
@@ -1095,9 +1100,10 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     await get().downloadCollection('album', albumId);
   },
 
-  async downloadCollection(kind, id) {
+  async downloadCollection(kind, id, options) {
+    const reuseSession = options?.reuseSession === true;
     const progress = useDownloadProgressStore.getState();
-    if (progress.active && progress.mode === 'collection') {
+    if (progress.active && progress.mode === 'collection' && !reuseSession) {
       progress.requestPause();
       return;
     }
@@ -1105,13 +1111,18 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     const pending = tracks.filter((track) => !isDownloaded(track) || track.pendingRemoteUpdate);
     const fetchable = pending.filter((track) => trackNeedsFetch(track));
     if (fetchable.length === 0) {
+      if (reuseSession) {
+        return;
+      }
       throw new Error(
         pending.length > 0
           ? 'Questi brani non sono ancora arrivati. Riprova.'
           : 'Non c’è nessun brano da scaricare.',
       );
     }
-    progress.beginCollection(fetchable.map((track) => track.id));
+    if (!reuseSession) {
+      progress.beginCollection(fetchable.map((track) => track.id));
+    }
     try {
       const { releaseTrackFromPlayer, usePlayerStore } = await import('./playerStore');
       const playingId = usePlayerStore.getState().track.id;
@@ -1132,7 +1143,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         }
       }
     } finally {
-      progress.end();
+      if (!reuseSession) {
+        progress.end();
+      }
     }
   },
 

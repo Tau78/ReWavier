@@ -249,8 +249,8 @@ export async function listDriveFolderTree(
 }
 
 function friendlyDownloadError(error: unknown): Error {
-  if (isDownloadPausedError(error)) {
-    return error instanceof Error ? error : new Error('paused');
+  if (isDownloadPausedError(error) || useDownloadProgressStore.getState().pauseRequested) {
+    return error instanceof DownloadPausedError ? error : new DownloadPausedError();
   }
   const raw = error instanceof Error ? error.message : String(error ?? '');
   if (

@@ -18,4 +18,16 @@ assert.equal(collectionDownloadVisual({ active: false, missingLocal: true, drive
 assert.equal(collectionDownloadVisual({ active: false, missingLocal: false, driveHasNews: true }), 'update');
 assert.equal(collectionDownloadVisual({ active: false, missingLocal: false, driveHasNews: false }), 'done');
 
+function collectionDownloadGlyph(visual) {
+  if (visual === 'pause') return '❚❚';
+  if (visual === 'update') return '↻';
+  if (visual === 'done') return '✓';
+  return '↓';
+}
+
+assert.equal(collectionDownloadGlyph('pause'), '❚❚');
+assert.equal(collectionDownloadGlyph('update'), '↻');
+assert.equal(collectionDownloadGlyph('done'), '✓');
+assert.equal(collectionDownloadGlyph('download'), '↓');
+
 console.log('ok collection download visual');

@@ -14,6 +14,7 @@ export type DownloadProgressState = {
   percent: number;
   queueIds: string[];
   pauseRequested: boolean;
+  driveNewsById: Record<string, number>;
 };
 
 type DownloadProgressActions = {
@@ -23,6 +24,7 @@ type DownloadProgressActions = {
   advance: () => void;
   requestPause: () => void;
   setCurrentCancel: (cancel: (() => void) | null) => void;
+  setDriveNews: (albumId: string, count: number) => void;
   end: () => void;
 };
 
@@ -56,6 +58,7 @@ export const useDownloadProgressStore = create<DownloadProgressState & DownloadP
     percent: 0,
     queueIds: [],
     pauseRequested: false,
+    driveNewsById: {},
 
     begin(total) {
       currentCancel = null;
@@ -107,6 +110,12 @@ export const useDownloadProgressStore = create<DownloadProgressState & DownloadP
 
     setCurrentCancel(cancel) {
       currentCancel = cancel;
+    },
+
+    setDriveNews(albumId, count) {
+      set((state) => ({
+        driveNewsById: { ...state.driveNewsById, [albumId]: Math.max(0, count) },
+      }));
     },
 
     end() {

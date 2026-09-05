@@ -22,7 +22,7 @@ export function collectionDownloadVisual(input: {
 
 export function collectionDownloadGlyph(visual: CollectionDownloadVisual): string {
   if (visual === 'pause') {
-    return '⏸';
+    return '❚❚';
   }
   if (visual === 'update') {
     return '↻';

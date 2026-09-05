@@ -46,6 +46,7 @@ export function TrackRow({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={280}
+      disabled={blocked}
       style={({ pressed }) => [
         styles.row,
         active && styles.active,

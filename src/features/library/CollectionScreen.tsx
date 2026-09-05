@@ -1,10 +1,10 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { runCloudSync } from '../../cloud/syncEngine';
+import { peekDriveAlbum, runCloudSync, type DriveAlbumPeek } from '../../cloud/syncEngine';
 import { orderedAlbumItemIds } from '../../domain/albumOrder';
 import { playableAlbumTrackIds, versionFolderById, type AlbumListReorderItem } from '../../domain/albumVersions';
 import { isDownloaded } from '../../domain/audioFormats';
@@ -12,15 +12,16 @@ import {
   collectionDownloadGlyph,
   collectionDownloadLabel,
   collectionDownloadVisual,
+  isDownloadPausedError,
 } from '../../domain/collectionDownloadVisual';
 import type { Album, AlbumVersionFolder, CollectionKind } from '../../domain/library';
 import { isSeparatorId, isVersionFolderId } from '../../domain/library';
 import type { Track } from '../../domain/models';
 import { recoverAudioRelative } from '../../files/libraryUris';
 import type { RootStackParamList } from '../../navigation/types';
-import { useDownloadProgressStore } from '../../store/downloadProgressStore';
+import { isCollectionDownloadBusy, useDownloadProgressStore } from '../../store/downloadProgressStore';
 import { flushLibraryPersist, useLibraryStore } from '../../store/libraryStore';
-import { usePlayerStore } from '../../store/playerStore';
+import { releaseTrackFromPlayer, usePlayerStore } from '../../store/playerStore';
 import { isSyncInFlight, useSyncStore } from '../../store/syncStore';
 import { colors, layout } from '../../theme/colors';
 import { EmptyGraphic, KindRow } from '../../theme/graphics';
@@ -30,7 +31,7 @@ import { AlbumDocuments } from './AlbumDocuments';
 import { AlbumNotes } from './AlbumNotes';
 import { AlbumSeparatorRow, SEPARATOR_ROW_HEIGHT } from './AlbumSeparatorRow';
 import { CollectionPlayer } from './CollectionPlayer';
-import { ensurePlayableAndOpen, openTrack, playQueue } from './openTrack';
+import { ensurePlayableAndOpen, playQueue } from './openTrack';
 import { ReorderableTrackList } from './ReorderableTrackList';
 import { TrackRow } from './TrackRow';
 import { VersionFolderRow } from './VersionFolderRow';
@@ -162,37 +163,55 @@ export function CollectionScreen() {
   const syncStatus = useSyncStore((s) => s.status);
   const syncMessage = useSyncStore((s) => s.message);
   const [pulling, setPulling] = useState(false);
-  const driveSyncRef = useRef(false);
+  const [peeking, setPeeking] = useState(false);
+  const peekJobRef = useRef<Promise<DriveAlbumPeek> | null>(null);
   const heldFileUriRef = useRef<Map<string, string>>(new Map());
   const downloadActive = useDownloadProgressStore((s) => s.active);
   const downloadMode = useDownloadProgressStore((s) => s.mode);
   const downloadQueueIds = useDownloadProgressStore((s) => s.queueIds);
+  const driveNews = useDownloadProgressStore((s) => s.driveNewsById[id] ?? 0);
   const collectionBusy = downloadActive && downloadMode === 'collection';
   const blockedIds = useMemo(
     () => (collectionBusy ? new Set(downloadQueueIds) : new Set<string>()),
     [collectionBusy, downloadQueueIds],
   );
-  const refreshFromDrive = useCallback(async () => {
-    if (!isDriveAlbum || driveSyncRef.current || isSyncInFlight(useSyncStore.getState())) {
-      return;
+  const peekAlbum = useCallback(async (): Promise<DriveAlbumPeek> => {
+    const empty: DriveAlbumPeek = { newRemoteCount: 0, changedTrackIds: [] };
+    if (!isDriveAlbum || isCollectionDownloadBusy() || isSyncInFlight(useSyncStore.getState())) {
+      return empty;
     }
-    driveSyncRef.current = true;
-    try {
-      await flushLibraryPersist();
-      useLibraryStore.getState().reattachLocalAudio();
-      if (isSyncInFlight(useSyncStore.getState())) {
-        return;
+    if (peekJobRef.current) {
+      return peekJobRef.current;
+    }
+    const job = (async () => {
+      setPeeking(true);
+      try {
+        await flushLibraryPersist();
+        useLibraryStore.getState().reattachLocalAudio();
+        return await peekDriveAlbum(id);
+      } finally {
+        setPeeking(false);
       }
-      await runCloudSync();
+    })();
+    peekJobRef.current = job;
+    try {
+      return await job;
+    } finally {
+      if (peekJobRef.current === job) {
+        peekJobRef.current = null;
+      }
+    }
+  }, [isDriveAlbum, id]);
+  const refreshFromDrive = useCallback(async () => {
+    try {
+      await peekAlbum();
     } catch (error) {
       Alert.alert(
         'Drive',
         error instanceof Error ? error.message : 'Non riesco a ricontrollare la cartella.',
       );
-    } finally {
-      driveSyncRef.current = false;
     }
-  }, [isDriveAlbum]);
+  }, [peekAlbum]);
   useFocusEffect(
     useCallback(() => {
       if (isDriveAlbum) {
@@ -239,6 +258,11 @@ export function CollectionScreen() {
   );
   const playerTrackId = usePlayerStore((s) => s.track.id);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
+  useEffect(() => {
+    if (collectionBusy && playerTrackId && blockedIds.has(playerTrackId)) {
+      void releaseTrackFromPlayer(playerTrackId);
+    }
+  }, [blockedIds, collectionBusy, playerTrackId]);
   const isPlayingThisAlbum =
     Boolean(album) && isPlaying && tracks.some((track) => track.id === playerTrackId);
   const subtitle =
@@ -254,14 +278,79 @@ export function CollectionScreen() {
   const downloadVisual = collectionDownloadVisual({
     active: collectionBusy,
     missingLocal: displayTracks.some((track) => !isDownloaded(track)),
-    driveHasNews: displayTracks.some((track) => track.pendingRemoteUpdate === true),
+    driveHasNews: driveNews > 0 || displayTracks.some((track) => track.pendingRemoteUpdate === true),
   });
+  const alreadyHereMessage =
+    kind === 'folder'
+      ? 'Tutti i brani di questa playlist sono già qui.'
+      : 'Tutti i brani di questo album sono già qui.';
+  const reportCollectionError = (error: unknown) => {
+    if (isDownloadPausedError(error)) {
+      return;
+    }
+    Alert.alert('Download', error instanceof Error ? error.message : 'Download non riuscito');
+  };
+  const applyCollectionNews = () => {
+    const progress = useDownloadProgressStore.getState();
+    if (progress.active && progress.mode === 'collection') {
+      progress.requestPause();
+      return;
+    }
+    const pending = displayTracks.filter(
+      (track) => !isDownloaded(track) || track.pendingRemoteUpdate === true,
+    );
+    progress.beginCollection(pending.map((track) => track.id));
+    void (async () => {
+      try {
+        const playingId = usePlayerStore.getState().track.id;
+        if (playingId && pending.some((track) => track.id === playingId)) {
+          await releaseTrackFromPlayer(playingId);
+        }
+        if (isDriveAlbum) {
+          await runCloudSync();
+        }
+        if (useDownloadProgressStore.getState().pauseRequested) {
+          return;
+        }
+        await useLibraryStore.getState().downloadCollection(downloadKind, id, {
+          reuseSession: true,
+        });
+      } catch (error) {
+        reportCollectionError(error);
+      } finally {
+        progress.end();
+        if (isDriveAlbum) {
+          void peekDriveAlbum(id).catch(() => undefined);
+        }
+      }
+    })();
+  };
   const startCollectionDownload = () => {
     if (downloadVisual === 'pause') {
       useDownloadProgressStore.getState().requestPause();
       return;
     }
     if (downloadVisual === 'done') {
+      if (!isDriveAlbum) {
+        Alert.alert('Sul telefono', alreadyHereMessage);
+        return;
+      }
+      void peekAlbum()
+        .then((peek) => {
+          if (peek.newRemoteCount === 0 && peek.changedTrackIds.length === 0) {
+            Alert.alert('Sul telefono', alreadyHereMessage);
+          }
+        })
+        .catch((error) => {
+          Alert.alert(
+            'Drive',
+            error instanceof Error ? error.message : 'Non riesco a ricontrollare la cartella.',
+          );
+        });
+      return;
+    }
+    if (downloadVisual === 'update' && isDriveAlbum) {
+      applyCollectionNews();
       return;
     }
     if (displayTracks.length === 0) {
@@ -271,9 +360,7 @@ export function CollectionScreen() {
     void useLibraryStore
       .getState()
       .downloadCollection(downloadKind, id)
-      .catch((error) => {
-        Alert.alert('Download', error instanceof Error ? error.message : 'Download non riuscito');
-      });
+      .catch(reportCollectionError);
   };
   const downloadGlyph = collectionDownloadGlyph(downloadVisual);
   const downloadLabel = collectionDownloadLabel(downloadVisual, downloadKind);
@@ -428,11 +515,13 @@ export function CollectionScreen() {
         {album ? <Text style={styles.sectionLabel}>Tracce</Text> : null}
         {isDriveAlbum ? (
           <Text style={[styles.hint, styles.hintInScroll]}>
-            {syncStatus === 'syncing'
+            {syncStatus === 'syncing' || peeking
               ? 'Cerco i brani nuovi nella cartella Drive…'
-              : syncMessage?.startsWith('Album aggiornato')
-                ? syncMessage
-                : 'Trascina in basso per cercare i brani nuovi nella cartella Drive.'}
+              : downloadVisual === 'update'
+                ? 'C’è qualcosa di nuovo su Drive. Tocca Aggiorna in alto a destra.'
+                : syncMessage?.startsWith('Album aggiornato')
+                  ? syncMessage
+                  : 'Trascina in basso per cercare i brani nuovi nella cartella Drive.'}
           </Text>
         ) : null}
         {canReorder && listItems.length > 1 ? (
