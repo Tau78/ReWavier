@@ -58,14 +58,19 @@ if [[ ! -d "$ROOT/ios/ReWavier.xcworkspace" && ! -d "$ROOT/ios/ReWavier.xcodepro
 fi
 echo "→ Prebuild saltato (ios/ presente, Xcode nativo)"
 
+BUILD_NUM="$(node -p "require('./app.json').expo.ios.buildNumber")"
+VERSION="$(node -p "require('./app.json').expo.version")"
+# Keep native Info.plist in sync (app.json bump alone does not change the binary).
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$ROOT/ios/ReWavier/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$ROOT/ios/ReWavier/Info.plist" 2>/dev/null || true
+echo "→ Version $VERSION ($BUILD_NUM) scritta in ios/ReWavier/Info.plist"
+
 echo "→ CocoaPods"
 (cd ios && pod install)
 
 ARCHIVE="$ROOT/ios/build/ReWavier.xcarchive"
 IPA_DIR="$ROOT/ios/build/ipa"
 EXPORT_PLIST="$ROOT/ios/ExportOptions.plist"
-BUILD_NUM="$(node -p "require('./app.json').expo.ios.buildNumber")"
-VERSION="$(node -p "require('./app.json').expo.version")"
 
 mkdir -p "$ROOT/ios/build" "$IPA_DIR"
 
