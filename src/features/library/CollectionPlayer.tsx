@@ -10,7 +10,8 @@ import { colors, layout } from '../../theme/colors';
 import { NoteBubble } from '../notes/NoteBubble';
 import { AddNoteButton } from '../player/AddNoteButton';
 import { PlaybackControls } from '../player/PlaybackControls';
-import { TrackOverviewWaveform } from './TrackOverviewWaveform';
+import { PracticeBar } from '../player/PracticeBar';
+import { TrackScoreTabs } from './TrackScoreTabs';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -51,9 +52,8 @@ export function CollectionPlayer({ trackIds }: { trackIds?: string[] }) {
         </Text>
       </Pressable>
 
-      <View style={styles.wave}>
-        <TrackOverviewWaveform />
-      </View>
+      <PracticeBar />
+      <TrackScoreTabs trackId={track.id} />
 
       <PlaybackControls />
       <AddNoteButton />
@@ -104,9 +104,5 @@ const styles = StyleSheet.create({
   },
   timecodeSep: {
     color: colors.textMuted,
-  },
-  wave: {
-    paddingHorizontal: 16,
-    paddingBottom: 4,
   },
 });

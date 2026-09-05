@@ -208,6 +208,8 @@ export async function scanAudioFolder(
     let exerciseOpenId: string | undefined;
     let exerciseCloseId: string | undefined;
     let practiceHoleId: string | undefined;
+    let lyrics: string | undefined;
+    let chords: string | undefined;
     const sidecarFile = new File(dir, sidecarNameForAudio(name));
     if (sidecarFile.exists) {
       try {
@@ -222,6 +224,8 @@ export async function scanAudioFolder(
           exerciseOpenId = parsed.exerciseOpenId;
           exerciseCloseId = parsed.exerciseCloseId;
           practiceHoleId = parsed.practiceHoleId;
+          lyrics = parsed.lyrics;
+          chords = parsed.chords;
         }
       } catch {
         // sidecar unreadable
@@ -240,6 +244,8 @@ export async function scanAudioFolder(
         exerciseOpenId,
         exerciseCloseId,
         practiceHoleId,
+        lyrics,
+        chords,
         downloaded: true,
         downloadedAt: Date.now(),
       },

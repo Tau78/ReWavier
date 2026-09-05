@@ -120,6 +120,8 @@ export async function pickAndImportAudio(): Promise<ImportedBundle[]> {
         exerciseOpenId: sidecar?.exerciseOpenId,
         exerciseCloseId: sidecar?.exerciseCloseId,
         practiceHoleId: sidecar?.practiceHoleId,
+        lyrics: sidecar?.lyrics,
+        chords: sidecar?.chords,
         downloaded: true,
         downloadedAt: Date.now(),
         remoteSize: asset.size,
@@ -149,6 +151,8 @@ export async function pickAndImportAudio(): Promise<ImportedBundle[]> {
           exerciseOpenId: sidecar.exerciseOpenId,
           exerciseCloseId: sidecar.exerciseCloseId,
           practiceHoleId: sidecar.practiceHoleId,
+          lyrics: sidecar.lyrics,
+          chords: sidecar.chords,
         },
         markers: sidecar.markers,
       });

@@ -25,6 +25,7 @@ export class FileAudioEngine {
   private positionMs = 0;
   private playing = false;
   private durationMs = 0;
+  private rate = 1;
   private readonly listeners = new Set<PlaybackListener>();
 
   getPositionMs(): number {
@@ -56,6 +57,7 @@ export class FileAudioEngine {
     this.durationMs = durationMs;
     this.positionMs = Math.round(player.currentTime * 1000);
     this.playing = player.playing;
+    this.applyRate();
     this.publishLockScreen();
     this.emit();
     return this.durationMs;
@@ -102,6 +104,7 @@ export class FileAudioEngine {
   }
 
   play(): void {
+    this.applyRate();
     this.player?.play();
     this.publishLockScreen();
   }
@@ -125,12 +128,38 @@ export class FileAudioEngine {
     void this.player?.seekTo(clamped / 1000);
   }
 
+  getPlaybackRate(): number {
+    return this.rate;
+  }
+
+  setPlaybackRate(rate: number): void {
+    this.rate = rate;
+    this.applyRate();
+  }
+
   subscribe(listener: PlaybackListener): () => void {
     this.listeners.add(listener);
     listener(this.positionMs, this.playing);
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  private applyRate(): void {
+    const player = this.player;
+    if (!player) {
+      return;
+    }
+    try {
+      player.shouldCorrectPitch = true;
+      player.setPlaybackRate(this.rate, 'high');
+    } catch {
+      try {
+        player.setPlaybackRate(this.rate);
+      } catch {
+        // Expo Go or binary without rate control
+      }
+    }
   }
 
   private publishLockScreen() {

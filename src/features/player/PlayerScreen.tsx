@@ -10,6 +10,7 @@ import { isPausePromptSuppressed, usePlayerStore } from '../../store/playerStore
 import { colors, layout } from '../../theme/colors';
 import { AddNoteButton } from './AddNoteButton';
 import { PlaybackControls } from './PlaybackControls';
+import { PracticeBar } from './PracticeBar';
 import { Waveform } from './Waveform';
 
 function usePauseNotePrompt() {
@@ -99,6 +100,8 @@ export function PlayerScreen() {
         <Text style={styles.timecodeSep}> / </Text>
         <Text style={styles.timecodeTotal}>{formatTimecode(track.durationMs)}</Text>
       </View>
+
+      <PracticeBar />
 
       <View style={styles.wave}>
         <Waveform />

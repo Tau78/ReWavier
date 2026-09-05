@@ -1,6 +1,6 @@
 import { isAudioName as isAudioFileName } from './audioFormats';
 import { normalizeMarker } from './markers';
-import type { Marker, Track } from './models';
+import { optionalTrackText, type Marker, type Track } from './models';
 
 export const SIDECAR_SUFFIX = '.rewavier.json';
 export const SIDECAR_VERSION = 2;
@@ -18,6 +18,8 @@ export type SidecarFile = {
   exerciseOpenId?: string;
   exerciseCloseId?: string;
   practiceHoleId?: string;
+  lyrics?: string;
+  chords?: string;
 };
 
 export function audioBasename(fileName: string): string {
@@ -131,6 +133,8 @@ export function buildSidecar(track: Track, markers: Marker[]): SidecarFile {
     exerciseOpenId: track.exerciseOpenId,
     exerciseCloseId: track.exerciseCloseId,
     practiceHoleId: track.practiceHoleId,
+    lyrics: optionalTrackText(track.lyrics),
+    chords: optionalTrackText(track.chords),
   };
 }
 
@@ -152,6 +156,8 @@ export function parseSidecar(raw: string): SidecarFile | null {
       exerciseOpenId: typeof data.exerciseOpenId === 'string' ? data.exerciseOpenId : undefined,
       exerciseCloseId: typeof data.exerciseCloseId === 'string' ? data.exerciseCloseId : undefined,
       practiceHoleId: typeof data.practiceHoleId === 'string' ? data.practiceHoleId : undefined,
+      lyrics: optionalTrackText(typeof data.lyrics === 'string' ? data.lyrics : undefined),
+      chords: optionalTrackText(typeof data.chords === 'string' ? data.chords : undefined),
       markers: data.markers.map((marker) =>
         normalizeMarker({
           id: marker.id,

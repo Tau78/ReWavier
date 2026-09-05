@@ -16,6 +16,7 @@ import {
   type NoteBubbleState,
   type Track,
 } from '../domain/models';
+import { DEFAULT_PLAYBACK_RATE, snapPlaybackRate } from '../domain/playbackRate';
 import {
   activePlayRange,
   holeRangeForMarker,
@@ -58,6 +59,7 @@ export type PlayerState = {
   markers: Marker[];
   positionMs: number;
   isPlaying: boolean;
+  rate: number;
   bubble: NoteBubbleState;
   queueIds: string[];
   showHidden: boolean;
@@ -89,6 +91,10 @@ export type PlayerActions = {
   skipBy: (step: number, options?: { autoPlay?: boolean }) => boolean;
   setStartMs: (ms: number, options?: { persist?: boolean; seek?: boolean }) => void;
   setEndMs: (ms: number, options?: { persist?: boolean; seek?: boolean }) => void;
+  setRate: (rate: number) => void;
+  markLoopA: () => void;
+  markLoopB: () => void;
+  clearLoop: () => void;
   listenAround: (ms: number) => void;
   setExerciseBound: (markerId: string, role: 'open' | 'close') => void;
   setPracticeHole: (markerId: string) => void;
@@ -232,6 +238,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   markers: [],
   positionMs: mockEngine.getPositionMs(),
   isPlaying: mockEngine.isPlaying(),
+  rate: DEFAULT_PLAYBACK_RATE,
   bubble: { ...HIDDEN_BUBBLE },
   queueIds: [],
   showHidden: false,
@@ -373,6 +380,39 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       useLibraryStore.getState().setTrackBounds(track.id, current.startMs, endMs);
     }
     suppressPausePrompt(1500);
+  },
+
+  setRate(rate) {
+    const next = snapPlaybackRate(rate);
+    fileEngine.setPlaybackRate(next);
+    mockEngine.setPlaybackRate(next);
+    set({ rate: next });
+  },
+
+  markLoopA() {
+    const state = get();
+    if (!state.track.id) {
+      return;
+    }
+    const current = resolveTrackRange(state.track);
+    applyPersistedLoop(get, set, readPositionMs(state), current.endMs);
+  },
+
+  markLoopB() {
+    const state = get();
+    if (!state.track.id) {
+      return;
+    }
+    const current = resolveTrackRange(state.track);
+    applyPersistedLoop(get, set, current.startMs, readPositionMs(state));
+  },
+
+  clearLoop() {
+    const state = get();
+    if (!state.track.id) {
+      return;
+    }
+    applyPersistedLoop(get, set, 0, Math.max(state.track.durationMs, 0));
   },
 
   pressAddNote() {
@@ -671,6 +711,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
     if (!uri) {
       mockEngine.reset(track.durationMs);
+      mockEngine.setPlaybackRate(get().rate);
       mockEngine.seekTo(cueMs);
     }
 
@@ -712,6 +753,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
           }
           usingFile = true;
           lastLoadErrorTrackId = '';
+          fileEngine.setPlaybackRate(get().rate);
           set({ loadState: 'ready' });
 
           const nextRange = resolveTrackRange(get().track);
@@ -757,6 +799,55 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     }
   },
 }));
+
+function normalizeLoopBounds(
+  startMs: number,
+  endMs: number,
+  durationMs: number,
+): { startMs: number; endMs: number } {
+  const duration = Math.max(durationMs, 0);
+  if (duration <= 0) {
+    return { startMs: 0, endMs: 0 };
+  }
+  let start = clampTime(startMs, duration);
+  let end = clampTime(endMs, duration);
+  if (end < start) {
+    const swap = start;
+    start = end;
+    end = swap;
+  }
+  const minSpan = Math.min(MIN_RANGE_MS, duration);
+  if (end - start < minSpan) {
+    if (start + minSpan <= duration) {
+      end = start + minSpan;
+    } else if (end - minSpan >= 0) {
+      start = end - minSpan;
+    } else {
+      return { startMs: 0, endMs: duration };
+    }
+  }
+  return { startMs: start, endMs: end };
+}
+
+function applyPersistedLoop(
+  get: () => PlayerStore,
+  set: (partial: Partial<PlayerState>) => void,
+  startMs: number,
+  endMs: number,
+) {
+  const { track } = get();
+  const bounds = normalizeLoopBounds(startMs, endMs, track.durationMs);
+  const next = { ...track, startMs: bounds.startMs, endMs: bounds.endMs };
+  set({ track: next });
+  if (track.id) {
+    useLibraryStore.getState().setTrackBounds(track.id, bounds.startMs, bounds.endMs);
+  }
+  const positionMs = readPositionMs(get());
+  if (positionMs < bounds.startMs || positionMs > bounds.endMs) {
+    get().seekTo(Math.min(bounds.endMs, Math.max(bounds.startMs, positionMs)));
+  }
+  suppressPausePrompt(1500);
+}
 
 function boundsForDuration(track: Track, durationMs: number): Track {
   const wasFull = track.endMs == null || track.endMs <= 0 || track.endMs >= track.durationMs - 1;

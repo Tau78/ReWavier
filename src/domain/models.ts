@@ -19,7 +19,19 @@ export type Track = {
   exerciseCloseId?: string;
   practiceHoleId?: string;
   artworkUri?: string;
+  /** Song lyrics; empty or missing means none. */
+  lyrics?: string;
+  /** Chord chart; empty or missing means none. */
+  chords?: string;
 };
+
+/** Empty or whitespace-only text is stored as absent. */
+export function optionalTrackText(value?: string): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  return value.trim() ? value : undefined;
+}
 
 export const MIN_RANGE_MS = 400;
 

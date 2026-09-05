@@ -402,8 +402,11 @@ async function runCloudSyncBody(): Promise<void> {
           parsed.exerciseOpenId !== track.exerciseOpenId ||
           parsed.exerciseCloseId !== track.exerciseCloseId ||
           parsed.practiceHoleId !== track.practiceHoleId;
+        const scoreChanged =
+          (parsed.lyrics !== undefined && parsed.lyrics !== track.lyrics) ||
+          (parsed.chords !== undefined && parsed.chords !== track.chords);
 
-        if (!markersChanged && !boundsChanged && !practiceChanged) {
+        if (!markersChanged && !boundsChanged && !practiceChanged && !scoreChanged) {
           continue;
         }
 
@@ -427,6 +430,15 @@ async function runCloudSyncBody(): Promise<void> {
             exerciseCloseId: parsed.exerciseCloseId,
             practiceHoleId: parsed.practiceHoleId,
           });
+        }
+
+        if (scoreChanged) {
+          if (parsed.lyrics !== undefined && parsed.lyrics !== track.lyrics) {
+            store.setTrackLyrics(track.id, parsed.lyrics);
+          }
+          if (parsed.chords !== undefined && parsed.chords !== track.chords) {
+            store.setTrackChords(track.id, parsed.chords);
+          }
         }
 
         if (boundsChanged || practiceChanged) {
@@ -976,6 +988,8 @@ async function importAudiosInFolder(
       continue;
     }
     let markers: Marker[] = [];
+    let lyrics: string | undefined;
+    let chords: string | undefined;
     const sidecar = sidecars.find(
       (file) => audioMatchKey(file.name) === audioMatchKey(remote.name),
     );
@@ -987,6 +1001,8 @@ async function importAudiosInFolder(
         if (parsed?.markers) {
           markers = parsed.markers;
         }
+        lyrics = parsed?.lyrics;
+        chords = parsed?.chords;
       } catch {
         // audio still imports; notes can arrive on the next sync
       }
@@ -1008,6 +1024,8 @@ async function importAudiosInFolder(
             sourceFileName: remote.name,
             downloaded: true,
             downloadedAt: Date.now(),
+            lyrics,
+            chords,
             ...metaFrom(remote),
           },
           markers,

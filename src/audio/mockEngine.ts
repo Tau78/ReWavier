@@ -7,6 +7,7 @@ export class MockAudioEngine {
 
   private positionMs = 0;
   private playing = false;
+  private rate = 1;
   private lastTickAt: number | null = null;
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private readonly listeners = new Set<PlaybackListener>();
@@ -78,6 +79,15 @@ export class MockAudioEngine {
     this.emit();
   }
 
+  getPlaybackRate(): number {
+    return this.rate;
+  }
+
+  setPlaybackRate(rate: number): void {
+    this.rate = rate;
+    this.lastTickAt = Date.now();
+  }
+
   subscribe(listener: PlaybackListener): () => void {
     this.listeners.add(listener);
     listener(this.positionMs, this.playing);
@@ -114,7 +124,7 @@ export class MockAudioEngine {
     const now = Date.now();
     const elapsed = now - (this.lastTickAt ?? now);
     this.lastTickAt = now;
-    this.positionMs = this.clamp(this.positionMs + elapsed);
+    this.positionMs = this.clamp(this.positionMs + elapsed * this.rate);
     if (this.positionMs >= this.durationMs) {
       this.playing = false;
       this.stopClock();

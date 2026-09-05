@@ -35,7 +35,7 @@ import {
   withNamedVersionFolder,
   type AlbumListReorderItem,
 } from '../domain/albumVersions';
-import { type Marker, type Track } from '../domain/models';
+import { optionalTrackText, type Marker, type Track } from '../domain/models';
 import { withPractice, type PracticeIds } from '../domain/practice';
 import { isDemoUser } from '../auth/demoAccount';
 import {
@@ -129,6 +129,8 @@ export type LibraryActions = {
   renameTrack: (id: string, title: string) => void;
   setTrackArtwork: (id: string, artworkUri?: string) => void;
   setTrackBounds: (id: string, startMs: number, endMs: number) => void;
+  setTrackLyrics: (id: string, lyrics?: string) => void;
+  setTrackChords: (id: string, chords?: string) => void;
   setTrackPractice: (id: string, practice: PracticeIds) => void;
   deleteTrack: (id: string, options?: { deleteFromDevice?: boolean }) => Promise<void>;
   moveTrack: (trackId: string, folderId: string | null) => void;
@@ -735,6 +737,28 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     }));
     const track = get().getTrack(id);
     persistSidecar(track, get().markersByTrackId[id] ?? []);
+  },
+
+  setTrackLyrics(id, lyrics) {
+    const next = optionalTrackText(lyrics);
+    set((state) => ({
+      tracks: state.tracks.map((track) =>
+        track.id === id ? { ...track, lyrics: next } : track,
+      ),
+    }));
+    persistSidecar(get().getTrack(id), get().markersByTrackId[id] ?? []);
+    void flushLibraryPersist();
+  },
+
+  setTrackChords(id, chords) {
+    const next = optionalTrackText(chords);
+    set((state) => ({
+      tracks: state.tracks.map((track) =>
+        track.id === id ? { ...track, chords: next } : track,
+      ),
+    }));
+    persistSidecar(get().getTrack(id), get().markersByTrackId[id] ?? []);
+    void flushLibraryPersist();
   },
 
   setTrackPractice(id, practice) {

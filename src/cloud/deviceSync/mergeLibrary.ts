@@ -1,6 +1,6 @@
 import type { Album, AlbumDocument, Folder, Playlist, SmartPlaylist } from '../../domain/library';
 import { mergeMarkers } from '../mergeNotes';
-import type { Marker, Track } from '../../domain/models';
+import { optionalTrackText, type Marker, type Track } from '../../domain/models';
 import type { LibrarySnapshot } from '../../files/libraryPersist';
 
 function trackKey(track: Track): string {
@@ -54,6 +54,8 @@ function mergeTracks(local: Track[], remote: Track[]): { tracks: Track[]; idRema
       exerciseOpenId: existing.exerciseOpenId ?? incoming.exerciseOpenId,
       exerciseCloseId: existing.exerciseCloseId ?? incoming.exerciseCloseId,
       practiceHoleId: existing.practiceHoleId ?? incoming.practiceHoleId,
+      lyrics: optionalTrackText(existing.lyrics) ?? optionalTrackText(incoming.lyrics),
+      chords: optionalTrackText(existing.chords) ?? optionalTrackText(incoming.chords),
       sourceFileName: existing.sourceFileName || incoming.sourceFileName,
       driveFileId: existing.driveFileId || incoming.driveFileId,
       artworkUri: existing.artworkUri || incoming.artworkUri,
