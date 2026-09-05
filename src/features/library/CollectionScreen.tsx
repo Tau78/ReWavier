@@ -8,7 +8,11 @@ import { runCloudSync } from '../../cloud/syncEngine';
 import { orderedAlbumItemIds } from '../../domain/albumOrder';
 import { playableAlbumTrackIds, versionFolderById, type AlbumListReorderItem } from '../../domain/albumVersions';
 import { isDownloaded } from '../../domain/audioFormats';
-import { formatDownloadPercent } from '../../domain/downloadProgress';
+import {
+  collectionDownloadGlyph,
+  collectionDownloadLabel,
+  collectionDownloadVisual,
+} from '../../domain/collectionDownloadVisual';
 import type { Album, AlbumVersionFolder, CollectionKind } from '../../domain/library';
 import { isSeparatorId, isVersionFolderId } from '../../domain/library';
 import type { Track } from '../../domain/models';
@@ -161,7 +165,13 @@ export function CollectionScreen() {
   const driveSyncRef = useRef(false);
   const heldFileUriRef = useRef<Map<string, string>>(new Map());
   const downloadActive = useDownloadProgressStore((s) => s.active);
-  const downloadPercent = useDownloadProgressStore((s) => s.percent);
+  const downloadMode = useDownloadProgressStore((s) => s.mode);
+  const downloadQueueIds = useDownloadProgressStore((s) => s.queueIds);
+  const collectionBusy = downloadActive && downloadMode === 'collection';
+  const blockedIds = useMemo(
+    () => (collectionBusy ? new Set(downloadQueueIds) : new Set<string>()),
+    [collectionBusy, downloadQueueIds],
+  );
   const refreshFromDrive = useCallback(async () => {
     if (!isDriveAlbum || driveSyncRef.current || isSyncInFlight(useSyncStore.getState())) {
       return;
@@ -240,36 +250,36 @@ export function CollectionScreen() {
         ? `${smartPlaylists.find((item) => item.id === id)?.conditions.length ?? 0} regole`
         : `${tracks.length} tracce`;
 
+  const downloadKind = kind === 'folder' ? 'folder' : 'album';
+  const downloadVisual = collectionDownloadVisual({
+    active: collectionBusy,
+    missingLocal: displayTracks.some((track) => !isDownloaded(track)),
+    driveHasNews: displayTracks.some((track) => track.pendingRemoteUpdate === true),
+  });
   const startCollectionDownload = () => {
+    if (downloadVisual === 'pause') {
+      useDownloadProgressStore.getState().requestPause();
+      return;
+    }
+    if (downloadVisual === 'done') {
+      return;
+    }
     if (displayTracks.length === 0) {
       Alert.alert('Download', 'Non c’è nessun brano da scaricare.');
       return;
     }
-    if (displayTracks.length > 0 && displayTracks.every((track) => isDownloaded(track))) {
-      Alert.alert(
-        'Sul telefono',
-        kind === 'folder'
-          ? 'Tutti i brani di questa playlist sono già qui.'
-          : 'Tutti i brani di questo album sono già qui.',
-      );
-      return;
-    }
     void useLibraryStore
       .getState()
-      .downloadCollection(kind === 'folder' ? 'folder' : 'album', id)
+      .downloadCollection(downloadKind, id)
       .catch((error) => {
         Alert.alert('Download', error instanceof Error ? error.message : 'Download non riuscito');
       });
   };
-  const allOnPhone =
-    displayTracks.length > 0 && displayTracks.every((track) => isDownloaded(track));
-  const downloadGlyph = downloadActive
-    ? formatDownloadPercent(downloadPercent)
-    : displayTracks.some((track) => downloadingIds[track.id] != null)
-      ? '…'
-      : allOnPhone
-        ? '✓'
-        : '↓';
+  const downloadGlyph = collectionDownloadGlyph(downloadVisual);
+  const downloadLabel = collectionDownloadLabel(downloadVisual, downloadKind);
+  const warnBlocked = () => {
+    Alert.alert('Ascolto', 'Aspetta: questo brano si sta aggiornando.');
+  };
 
   const playAlbum = () => {
     if (isPlayingThisAlbum) {
@@ -326,19 +336,13 @@ export function CollectionScreen() {
               onPress={startCollectionDownload}
               style={({ pressed }) => [styles.plus, pressed && styles.plusPressed]}
               accessibilityRole="button"
-              accessibilityLabel={
-                downloadActive
-                  ? `Download ${formatDownloadPercent(downloadPercent)}`
-                  : allOnPhone
-                    ? 'Album già sul telefono'
-                    : 'Scarica album'
-              }
+              accessibilityLabel={downloadLabel}
             >
               <Text
                 style={[
                   styles.plusGlyph,
-                  downloadActive && styles.percentGlyph,
-                  allOnPhone && styles.downloadDone,
+                  downloadVisual === 'pause' && styles.pauseGlyph,
+                  downloadVisual === 'done' && styles.downloadDone,
                 ]}
               >
                 {downloadGlyph}
@@ -359,19 +363,13 @@ export function CollectionScreen() {
               onPress={startCollectionDownload}
               style={({ pressed }) => [styles.plus, pressed && styles.plusPressed]}
               accessibilityRole="button"
-              accessibilityLabel={
-                downloadActive
-                  ? `Download ${formatDownloadPercent(downloadPercent)}`
-                  : allOnPhone
-                    ? 'Playlist già sul telefono'
-                    : 'Scarica playlist'
-              }
+              accessibilityLabel={downloadLabel}
             >
               <Text
                 style={[
                   styles.plusGlyph,
-                  downloadActive && styles.percentGlyph,
-                  allOnPhone && styles.downloadDone,
+                  downloadVisual === 'pause' && styles.pauseGlyph,
+                  downloadVisual === 'done' && styles.downloadDone,
                 ]}
               >
                 {downloadGlyph}
@@ -426,16 +424,6 @@ export function CollectionScreen() {
             isPlayingThisAlbum={isPlayingThisAlbum}
             onPlay={playAlbum}
           />
-        ) : null}
-        {downloadActive && (kind === 'album' || kind === 'folder') ? (
-          <View style={styles.downloadBox}>
-            <Text style={styles.downloadHint}>
-              Sto scaricando… {formatDownloadPercent(downloadPercent)}
-            </Text>
-            <View style={styles.barTrack}>
-              <View style={[styles.barFill, { width: `${downloadPercent}%` }]} />
-            </View>
-          </View>
         ) : null}
         {album ? <Text style={styles.sectionLabel}>Tracce</Text> : null}
         {isDriveAlbum ? (
@@ -536,6 +524,7 @@ export function CollectionScreen() {
                       (markersByTrackId[trackId] ?? []).filter((marker) => marker.hidden !== true).length
                     }
                     downloadingOf={(trackId) => downloadingIds[trackId] != null}
+                    blockedOf={(trackId) => blockedIds.has(trackId)}
                     onToggle={() =>
                       setOpenVersionIds((current) => ({
                         ...current,
@@ -544,6 +533,10 @@ export function CollectionScreen() {
                     }
                     onPlayChosen={() => {
                       const chosenId = item.folder.chosenId;
+                      if (blockedIds.has(chosenId)) {
+                        warnBlocked();
+                        return;
+                      }
                       void ensurePlayableAndOpen(chosenId, trackIds, { autoPlay: true }).then((opened) => {
                         if (!opened) {
                           Alert.alert('Ascolto', 'Questo brano non è ancora arrivato. Riprova tra un attimo.');
@@ -551,6 +544,10 @@ export function CollectionScreen() {
                       });
                     }}
                     onPlayVersion={(track) => {
+                      if (blockedIds.has(track.id)) {
+                        warnBlocked();
+                        return;
+                      }
                       useLibraryStore.getState().chooseAlbumVersion(id, item.folder.id, track.id);
                       void ensurePlayableAndOpen(track.id, trackIds, { autoPlay: true }).then((opened) => {
                         if (!opened) {
@@ -575,7 +572,12 @@ export function CollectionScreen() {
                           .length
                       }
                       downloading={downloadingIds[item.track.id] != null}
+                      blocked={blockedIds.has(item.track.id)}
                       onPress={() => {
+                        if (blockedIds.has(item.track.id)) {
+                          warnBlocked();
+                          return;
+                        }
                         useLibraryStore.getState().chooseAlbumVersion(id, item.folderId, item.track.id);
                         void ensurePlayableAndOpen(item.track.id, trackIds, { autoPlay: true }).then(
                           (opened) => {
@@ -610,7 +612,12 @@ export function CollectionScreen() {
                         .length
                     }
                     downloading={downloadingIds[item.track.id] != null}
+                    blocked={blockedIds.has(item.track.id)}
                     onPress={() => {
+                      if (blockedIds.has(item.track.id)) {
+                        warnBlocked();
+                        return;
+                      }
                       void ensurePlayableAndOpen(
                         item.track.id,
                         trackIds,
@@ -730,30 +737,9 @@ const styles = StyleSheet.create({
   downloadDone: {
     color: '#34C759',
   },
-  percentGlyph: {
-    fontSize: 12,
-    fontWeight: '700',
+  pauseGlyph: {
+    fontSize: 16,
     marginTop: 0,
-  },
-  downloadBox: {
-    marginBottom: 12,
-  },
-  downloadHint: {
-    color: colors.accent,
-    fontSize: 13,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  barTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.surfaceRaised,
-    overflow: 'hidden',
-  },
-  barFill: {
-    height: '100%',
-    backgroundColor: colors.accent,
-    borderRadius: 3,
   },
   editSpacer: {
     width: 28,

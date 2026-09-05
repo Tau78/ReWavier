@@ -12,6 +12,7 @@ export function VersionFolderRow({
   playerTrackId,
   noteCountOf,
   downloadingOf,
+  blockedOf,
   embedChildren = true,
   onToggle,
   onPlayChosen,
@@ -26,6 +27,7 @@ export function VersionFolderRow({
   playerTrackId?: string;
   noteCountOf: (trackId: string) => number;
   downloadingOf: (trackId: string) => boolean;
+  blockedOf?: (trackId: string) => boolean;
   /** When false, children are separate reorderable rows in the parent list. */
   embedChildren?: boolean;
   onToggle: () => void;
@@ -89,6 +91,7 @@ export function VersionFolderRow({
                 active={track.id === playerTrackId || track.id === folder.chosenId}
                 noteCount={noteCountOf(track.id)}
                 downloading={downloadingOf(track.id)}
+                blocked={blockedOf?.(track.id) === true}
                 onPress={() => onPlayVersion(track)}
                 onMenu={() => onVersionMenu(track)}
                 onSwipeDelete={

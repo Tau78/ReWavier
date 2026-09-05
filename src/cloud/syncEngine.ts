@@ -70,7 +70,6 @@ function syncAlbumMessage(input: {
   added: number;
   removed: number;
   versioned: number;
-  notesArchived: number;
   notesPulled: number;
   deviceMessage: string;
 }): string | null {
@@ -83,13 +82,7 @@ function syncAlbumMessage(input: {
   }
   if (input.versioned > 0) {
     parts.push(
-      input.notesArchived > 0
-        ? input.versioned === 1
-          ? '1 nuova versione (appunti in archivio)'
-          : `${input.versioned} nuove versioni (appunti in archivio)`
-        : input.versioned === 1
-          ? '1 nuova versione'
-          : `${input.versioned} nuove versioni`,
+      input.versioned === 1 ? '1 brano da aggiornare' : `${input.versioned} brani da aggiornare`,
     );
   }
   if (parts.length > 0) {
@@ -257,7 +250,6 @@ async function runCloudSyncBody(): Promise<void> {
   let added = 0;
   let removed = 0;
   let versioned = 0;
-  let notesArchived = 0;
 
   try {
     const store = useLibraryStore.getState();
@@ -348,17 +340,10 @@ async function runCloudSyncBody(): Promise<void> {
           store.updateTrackRemote(existing.id, metaFrom(remote));
           continue;
         }
-        const beforeMarkers = store.markersByTrackId[existing.id] ?? [];
-        const visibleBefore = beforeMarkers.filter((marker) => marker.hidden !== true).length;
-        const destUri = await saveAudio(remote, existing.id, existing.downloaded === true);
-        // New remote version: archive current notes automatically and clear waveform.
-        store.replaceTrackFile(existing.id, destUri, []);
-        store.updateTrackRemote(existing.id, metaFrom(remote));
-        const afterMarkers = useLibraryStore.getState().markersByTrackId[existing.id] ?? [];
-        refreshMarkersIfPlaying(existing.id, afterMarkers);
-        reloadIfPlaying(existing.id);
+        // Keep the file on the phone until the user taps Aggiorna — replacing it
+        // while it is playing can freeze the app.
+        store.markTrackNeedsUpdate(existing.id, metaFrom(remote));
         versioned += 1;
-        notesArchived += visibleBefore;
       }
 
       const localTracks = albumLocalTracks(album.id, treeFolderIds);
@@ -479,7 +464,6 @@ async function runCloudSyncBody(): Promise<void> {
           added,
           removed,
           versioned,
-          notesArchived,
           notesPulled,
           deviceMessage,
         }),
@@ -519,18 +503,6 @@ function refreshTrackFieldsIfPlaying(trackId: string) {
       practiceHoleId: next.practiceHoleId,
     },
   });
-}
-
-function reloadIfPlaying(trackId: string) {
-  const player = usePlayerStore.getState();
-  if (player.track.id !== trackId) {
-    return;
-  }
-  const next = useLibraryStore.getState().getTrack(trackId);
-  if (!next) {
-    return;
-  }
-  player.loadTrack(next, useLibraryStore.getState().markersByTrackId[trackId] ?? [], player.queueIds);
 }
 
 export async function applyAudioReview(trackId: string, keepMarkerIds: string[]): Promise<void> {

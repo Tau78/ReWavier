@@ -61,6 +61,7 @@ function mergeTracks(local: Track[], remote: Track[]): { tracks: Track[]; idRema
       inboxUri: existing.inboxUri,
       downloaded: Boolean(existing.fileUri || existing.inboxUri || existing.downloaded),
       downloadedAt: existing.downloadedAt || incoming.downloadedAt,
+      pendingRemoteUpdate: existing.pendingRemoteUpdate || incoming.pendingRemoteUpdate,
     });
   }
   return { tracks: [...byId.values()], idRemap };

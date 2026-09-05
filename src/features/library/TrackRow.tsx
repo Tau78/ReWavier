@@ -11,6 +11,7 @@ export function TrackRow({
   track,
   noteCount,
   downloading,
+  blocked,
   active,
   onPress,
   onLongPress,
@@ -22,6 +23,7 @@ export function TrackRow({
   track: Track;
   noteCount: number;
   downloading?: boolean;
+  blocked?: boolean;
   active?: boolean;
   onPress: () => void;
   onLongPress?: () => void;
@@ -44,9 +46,19 @@ export function TrackRow({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={280}
-      style={({ pressed }) => [styles.row, active && styles.active, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.row,
+        active && styles.active,
+        blocked && styles.blocked,
+        pressed && !blocked && styles.pressed,
+      ]}
       accessibilityRole="button"
-      accessibilityLabel={`${track.title}, ${track.artist}`}
+      accessibilityLabel={
+        blocked
+          ? `${track.title}, in aggiornamento. Aspetta che sia di nuovo pronto.`
+          : `${track.title}, ${track.artist}`
+      }
+      accessibilityState={{ disabled: blocked }}
     >
       <Pressable
         onPress={onArtwork}
@@ -70,11 +82,14 @@ export function TrackRow({
         )}
       </Pressable>
       <View style={styles.meta}>
-        <Text style={[styles.title, active && styles.titleActive]} numberOfLines={1}>
+        <Text
+          style={[styles.title, active && styles.titleActive, blocked && styles.titleBlocked]}
+          numberOfLines={1}
+        >
           {track.title}
         </Text>
-        <Text style={styles.sub} numberOfLines={1}>
-          {track.artist}
+        <Text style={[styles.sub, blocked && styles.titleBlocked]} numberOfLines={1}>
+          {blocked ? 'In aggiornamento…' : track.artist}
         </Text>
       </View>
       <View style={styles.aside}>
@@ -135,6 +150,12 @@ const styles = StyleSheet.create({
   },
   titleActive: {
     color: colors.accent,
+  },
+  blocked: {
+    opacity: 0.45,
+  },
+  titleBlocked: {
+    color: colors.textMuted,
   },
   artHit: {
     width: 44,
