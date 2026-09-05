@@ -1,6 +1,9 @@
 import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
+import { DownloadPausedError, isDownloadPausedError } from '../domain/collectionDownloadVisual';
+import { throwIfDownloadPaused, useDownloadProgressStore } from '../store/downloadProgressStore';
+
 import { googleTokenHasDriveScope } from '../auth/googleAuthResult';
 import { getValidGoogleAccessToken, loadGoogleAuth } from '../auth/googleToken';
 
@@ -246,6 +249,9 @@ export async function listDriveFolderTree(
 }
 
 function friendlyDownloadError(error: unknown): Error {
+  if (isDownloadPausedError(error) || useDownloadProgressStore.getState().pauseRequested) {
+    return error instanceof DownloadPausedError ? error : new DownloadPausedError();
+  }
   const raw = error instanceof Error ? error.message : String(error ?? '');
   if (
     /downloadAsync|does not exist|makeDirectory|ENOENT|Directory '/i.test(raw) ||
@@ -271,17 +277,21 @@ export async function downloadDriveFile(
     dest.delete();
   }
   const headers = { Authorization: `Bearer ${access}` };
+  throwIfDownloadPaused();
+  const resumable = LegacyFS.createDownloadResumable(url, destUri, { headers }, ({
+    totalBytesWritten,
+    totalBytesExpectedToWrite,
+  }) => {
+    if (totalBytesExpectedToWrite > 0) {
+      onProgress?.(totalBytesWritten / totalBytesExpectedToWrite);
+    }
+  });
+  useDownloadProgressStore.getState().setCurrentCancel(() => {
+    void resumable.pauseAsync();
+  });
   try {
-    const result = onProgress
-      ? await LegacyFS.createDownloadResumable(url, destUri, { headers }, ({
-          totalBytesWritten,
-          totalBytesExpectedToWrite,
-        }) => {
-          if (totalBytesExpectedToWrite > 0) {
-            onProgress(totalBytesWritten / totalBytesExpectedToWrite);
-          }
-        }).downloadAsync()
-      : await LegacyFS.downloadAsync(url, destUri, { headers });
+    const result = await resumable.downloadAsync();
+    throwIfDownloadPaused();
     if (!result || result.status !== 200) {
       throw new Error('Drive non ha scaricato il brano. Riprova.');
     }
@@ -290,7 +300,12 @@ export async function downloadDriveFile(
     }
     return result.uri;
   } catch (error) {
+    if (isDownloadPausedError(error) || useDownloadProgressStore.getState().pauseRequested) {
+      throw new DownloadPausedError();
+    }
     throw friendlyDownloadError(error);
+  } finally {
+    useDownloadProgressStore.getState().setCurrentCancel(null);
   }
 }
 

@@ -35,7 +35,8 @@ import { saveDocumentFromUri } from '../files/albumDocuments';
 import { copyToDownloads, ensureInboxDirectory, inboxDirectory } from '../files/downloads';
 import { safeTempFileName } from '../files/fileNames';
 import { writeSidecarToLibrary } from '../files/libraryFiles';
-import { useDownloadProgressStore } from '../store/downloadProgressStore';
+import { isDownloadPausedError } from '../domain/collectionDownloadVisual';
+import { throwIfDownloadPaused, useDownloadProgressStore } from '../store/downloadProgressStore';
 import { flushLibraryPersist, useLibraryStore } from '../store/libraryStore';
 import { refreshPlayingArtwork, usePlayerStore } from '../store/playerStore';
 import { useSessionStore } from '../store/sessionStore';
@@ -70,7 +71,6 @@ function syncAlbumMessage(input: {
   added: number;
   removed: number;
   versioned: number;
-  notesArchived: number;
   notesPulled: number;
   deviceMessage: string;
 }): string | null {
@@ -83,13 +83,7 @@ function syncAlbumMessage(input: {
   }
   if (input.versioned > 0) {
     parts.push(
-      input.notesArchived > 0
-        ? input.versioned === 1
-          ? '1 nuova versione (appunti in archivio)'
-          : `${input.versioned} nuove versioni (appunti in archivio)`
-        : input.versioned === 1
-          ? '1 nuova versione'
-          : `${input.versioned} nuove versioni`,
+      input.versioned === 1 ? '1 brano da aggiornare' : `${input.versioned} brani da aggiornare`,
     );
   }
   if (parts.length > 0) {
@@ -146,6 +140,75 @@ function albumLocalTracks(albumId: string, treeFolderIds?: ReadonlySet<string>):
   return uniqueTracksById(out);
 }
 
+export type DriveAlbumPeek = {
+  newRemoteCount: number;
+  changedTrackIds: string[];
+};
+
+/** Elenca Drive senza scaricare: brani nuovi o versioni cambiate. */
+export async function peekDriveAlbum(albumId: string): Promise<DriveAlbumPeek> {
+  const empty: DriveAlbumPeek = { newRemoteCount: 0, changedTrackIds: [] };
+  const album = useLibraryStore.getState().albums.find((item) => item.id === albumId);
+  if (!album || album.origin !== 'drive') {
+    useDownloadProgressStore.getState().setDriveNews(albumId, 0);
+    return empty;
+  }
+  if (!(await hasDriveToken())) {
+    useDownloadProgressStore.getState().setDriveNews(albumId, 0);
+    return empty;
+  }
+  let folderId = album.driveFolderId;
+  if (!folderId) {
+    const found = await findFolderByName(album.driveFolderName || album.name);
+    if (found) {
+      folderId = found.id;
+      useLibraryStore.getState().linkAlbumDrive(album.id, found.id, found.name);
+    }
+  }
+  if (!folderId) {
+    useDownloadProgressStore.getState().setDriveNews(albumId, 0);
+    return empty;
+  }
+
+  const tree = await listDriveFolderTree(
+    folderId,
+    album.driveFolderName || album.name,
+    album.driveRecursive ? 8 : 0,
+    album.driveSharedDriveId ? { sharedDriveId: album.driveSharedDriveId } : undefined,
+  );
+  const treeFolderIds = new Set(tree.map((node) => node.id));
+  const audios = uniqueRemotes(
+    tree.flatMap((node) => node.children.filter((file) => isAudioName(file.name))),
+  );
+  const locals = albumLocalTracks(album.id, treeFolderIds);
+  const claimed = createRemoteClaimSet();
+  let newRemoteCount = 0;
+  const changedTrackIds: string[] = [];
+
+  for (const remote of audios) {
+    if (remoteIsClaimed(claimed, remote)) {
+      continue;
+    }
+    const existing = findBestLocalForRemote(locals, remote);
+    if (!existing) {
+      newRemoteCount += 1;
+      continue;
+    }
+    claimRemote(claimed, remote);
+    if (existing.driveFileId && existing.driveFileId !== remote.id) {
+      continue;
+    }
+    if (remoteAudioChanged(existing, remote)) {
+      useLibraryStore.getState().markTrackNeedsUpdate(existing.id, metaFrom(remote));
+      changedTrackIds.push(existing.id);
+    }
+  }
+
+  useDownloadProgressStore.getState().setDriveNews(albumId, newRemoteCount);
+  await flushLibraryPersist();
+  return { newRemoteCount, changedTrackIds };
+}
+
 function countDriveImportJobs(
   tree: { children: DriveFile[] }[],
 ): number {
@@ -168,6 +231,7 @@ function countDriveImportJobs(
 }
 
 async function saveAudio(remote: DriveFile, trackId: string, _downloaded: boolean): Promise<string> {
+  throwIfDownloadPaused();
   const dest = new File(inboxDirectory(), safeTempFileName('sync', trackId, remote.name));
   const uri = await downloadDriveFile(remote.id, dest.uri, reportDriveFraction);
   const stored = await copyToDownloads(uri, trackId, remote.name);
@@ -257,11 +321,11 @@ async function runCloudSyncBody(): Promise<void> {
   let added = 0;
   let removed = 0;
   let versioned = 0;
-  let notesArchived = 0;
 
   try {
     const store = useLibraryStore.getState();
     for (const album of albums) {
+      throwIfDownloadPaused();
       let folderId = album.driveFolderId;
       if (!folderId) {
         const found = await findFolderByName(album.driveFolderName || album.name);
@@ -290,6 +354,7 @@ async function runCloudSyncBody(): Promise<void> {
       const importedRemotes = createRemoteClaimSet();
 
       for (const remote of audios) {
+        throwIfDownloadPaused();
         if (remoteIsClaimed(importedRemotes, remote)) {
           continue;
         }
@@ -348,17 +413,10 @@ async function runCloudSyncBody(): Promise<void> {
           store.updateTrackRemote(existing.id, metaFrom(remote));
           continue;
         }
-        const beforeMarkers = store.markersByTrackId[existing.id] ?? [];
-        const visibleBefore = beforeMarkers.filter((marker) => marker.hidden !== true).length;
-        const destUri = await saveAudio(remote, existing.id, existing.downloaded === true);
-        // New remote version: archive current notes automatically and clear waveform.
-        store.replaceTrackFile(existing.id, destUri, []);
-        store.updateTrackRemote(existing.id, metaFrom(remote));
-        const afterMarkers = useLibraryStore.getState().markersByTrackId[existing.id] ?? [];
-        refreshMarkersIfPlaying(existing.id, afterMarkers);
-        reloadIfPlaying(existing.id);
+        // Keep the file on the phone until the user taps Aggiorna — replacing it
+        // while it is playing can freeze the app.
+        store.markTrackNeedsUpdate(existing.id, metaFrom(remote));
         versioned += 1;
-        notesArchived += visibleBefore;
       }
 
       const localTracks = albumLocalTracks(album.id, treeFolderIds);
@@ -491,12 +549,15 @@ async function runCloudSyncBody(): Promise<void> {
           added,
           removed,
           versioned,
-          notesArchived,
           notesPulled,
           deviceMessage,
         }),
       });
-    } catch {
+    } catch (error) {
+      if (isDownloadPausedError(error)) {
+        sync.finish({ lastSyncedAt: Date.now(), message: null });
+        return;
+      }
       sync.fail('Allineamento non riuscito. Riprova tra un attimo.');
     }
   } finally {
@@ -531,18 +592,6 @@ function refreshTrackFieldsIfPlaying(trackId: string) {
       practiceHoleId: next.practiceHoleId,
     },
   });
-}
-
-function reloadIfPlaying(trackId: string) {
-  const player = usePlayerStore.getState();
-  if (player.track.id !== trackId) {
-    return;
-  }
-  const next = useLibraryStore.getState().getTrack(trackId);
-  if (!next) {
-    return;
-  }
-  player.loadTrack(next, useLibraryStore.getState().markersByTrackId[trackId] ?? [], player.queueIds);
 }
 
 export async function applyAudioReview(trackId: string, keepMarkerIds: string[]): Promise<void> {

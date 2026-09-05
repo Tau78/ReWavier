@@ -1,4 +1,5 @@
 import { playableUri, trackCanFetchRemote } from '../../domain/audioFormats';
+import { isTrackDownloadBlocked } from '../../store/downloadProgressStore';
 import { useLibraryStore } from '../../store/libraryStore';
 import { usePlayerStore } from '../../store/playerStore';
 
@@ -8,7 +9,7 @@ export function openTrack(
   options?: { autoPlay?: boolean; startAtMs?: number },
 ): boolean {
   const track = useLibraryStore.getState().getTrack(trackId);
-  if (!track || !playableUri(track)) {
+  if (!track || !playableUri(track) || isTrackDownloadBlocked(trackId)) {
     return false;
   }
   const markers = useLibraryStore.getState().markersByTrackId[trackId] ?? [];
@@ -22,7 +23,7 @@ export function openTrack(
 export function playQueue(trackIds: string[]): boolean {
   const playableIds = trackIds.filter((id) => {
     const track = useLibraryStore.getState().getTrack(id);
-    return Boolean(track && playableUri(track));
+    return Boolean(track && playableUri(track) && !isTrackDownloadBlocked(id));
   });
   const first = playableIds[0];
   if (!first) {
@@ -39,6 +40,9 @@ export async function ensurePlayableAndOpen(
 ): Promise<boolean> {
   if (openTrack(trackId, queueIds, options)) {
     return true;
+  }
+  if (isTrackDownloadBlocked(trackId)) {
+    return false;
   }
   const track = useLibraryStore.getState().getTrack(trackId);
   if (!track || !trackCanFetchRemote(track)) {

@@ -13,6 +13,8 @@ export type Track = {
   remoteModifiedAt?: string;
   remoteSize?: number;
   remoteHash?: string;
+  /** Drive has a newer file; keep the local copy until the user updates. */
+  pendingRemoteUpdate?: boolean;
   startMs?: number;
   endMs?: number;
   exerciseOpenId?: string;

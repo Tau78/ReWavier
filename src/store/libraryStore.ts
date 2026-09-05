@@ -46,7 +46,8 @@ import {
   type LibrarySnapshot,
 } from '../files/libraryPersist';
 import { setActiveLibraryOwner } from '../files/libraryOwner';
-import { isDownloaded, playableUri, trackCanFetchRemote } from '../domain/audioFormats';
+import { isDownloaded, playableUri } from '../domain/audioFormats';
+import { isDownloadPausedError, trackNeedsFetch } from '../domain/collectionDownloadVisual';
 import { downloadDriveFile } from '../cloud/driveApi';
 import { safeTempFileName } from '../files/fileNames';
 import { audioFileNamesForTrack, migrateTracksToAudioFolder, scanAudioFolder } from '../files/audioFolder';
@@ -59,7 +60,7 @@ import {
 import { audioMatchKey, sourceFileNameFromTitle } from '../domain/sidecar';
 import { writeSidecarToLibrary, removeSidecarFromLibrary, type ImportedBundle } from '../files/libraryFiles';
 import { userHasUsage } from '../domain/session';
-import { useDownloadProgressStore } from './downloadProgressStore';
+import { throwIfDownloadPaused, useDownloadProgressStore } from './downloadProgressStore';
 import { useSessionStore } from './sessionStore';
 import { useSyncStore } from './syncStore';
 
@@ -105,6 +106,10 @@ export type LibraryActions = {
     trackId: string,
     meta: Pick<Track, 'driveFileId' | 'remoteModifiedAt' | 'remoteSize' | 'remoteHash'>,
   ) => void;
+  markTrackNeedsUpdate: (
+    trackId: string,
+    meta: Pick<Track, 'driveFileId' | 'remoteModifiedAt' | 'remoteSize' | 'remoteHash'>,
+  ) => void;
   setTrackInbox: (trackId: string, inboxUri: string) => void;
   createPlaylist: (name: string) => string;
   renameFolder: (id: string, name: string) => void;
@@ -141,10 +146,14 @@ export type LibraryActions = {
   ) => void;
   addTracksToAlbum: (albumId: string, trackIds: string[]) => void;
   replaceTrackFile: (trackId: string, fileUri: string, keepMarkerIds: string[]) => void;
-  downloadTrack: (trackId: string) => Promise<void>;
+  downloadTrack: (trackId: string, options?: { replace?: boolean }) => Promise<void>;
   removeDownload: (trackId: string) => Promise<void>;
   downloadAlbum: (albumId: string) => Promise<void>;
-  downloadCollection: (kind: 'album' | 'folder', id: string) => Promise<void>;
+  downloadCollection: (
+    kind: 'album' | 'folder',
+    id: string,
+    options?: { reuseSession?: boolean },
+  ) => Promise<void>;
   updateTrackDuration: (id: string, durationMs: number) => void;
   setTrackPeaks: (id: string, peaks: number[]) => void;
   createSmartPlaylist: (playlist: Omit<SmartPlaylist, 'id'>) => string;
@@ -372,6 +381,14 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     set((state) => ({
       tracks: state.tracks.map((track) =>
         track.id === trackId ? { ...track, ...meta } : track,
+      ),
+    }));
+  },
+
+  markTrackNeedsUpdate(trackId, meta) {
+    set((state) => ({
+      tracks: state.tracks.map((track) =>
+        track.id === trackId ? { ...track, ...meta, pendingRemoteUpdate: true } : track,
       ),
     }));
   },
@@ -988,25 +1005,29 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     persistSidecar(get().getTrack(trackId), get().markersByTrackId[trackId] ?? []);
   },
 
-  async downloadTrack(trackId) {
+  async downloadTrack(trackId, options) {
     const track = get().getTrack(trackId);
     if (!track || get().downloadingIds[trackId] != null) {
       return;
     }
-    if (isDownloaded(track)) {
+    const replace = options?.replace === true || track.pendingRemoteUpdate === true;
+    if (!replace && isDownloaded(track)) {
       return;
     }
+    const { releaseTrackFromPlayer } = await import('./playerStore');
+    await releaseTrackFromPlayer(trackId);
     const progress = useDownloadProgressStore.getState();
     const ownsSession = !progress.active;
     if (ownsSession) {
-      progress.begin(1);
+      progress.beginCollection([trackId]);
     }
     set((state) => ({
       downloadingIds: { ...state.downloadingIds, [trackId]: 0 },
     }));
     let tempUri: string | undefined;
     try {
-      let source = playableUri(track);
+      throwIfDownloadPaused();
+      let source = replace ? undefined : playableUri(track);
       if (!source && track.driveFileId) {
         const dest = new File(inboxDirectory(), safeTempFileName('dl', track.id, track.sourceFileName));
         source = await downloadDriveFile(track.driveFileId, dest.uri, (fraction) => {
@@ -1023,22 +1044,39 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       if (!source) {
         throw new Error('Questo brano non è ancora arrivato. Riprova.');
       }
+      const previousUri = track.fileUri;
       const fileUri = await copyToDownloads(
         source,
         track.id,
         track.sourceFileName ?? `${track.title}.m4a`,
       );
-      set((state) => {
-        const { [trackId]: _, ...rest } = state.downloadingIds;
-        return {
-          downloadingIds: rest,
-          tracks: state.tracks.map((item) =>
-            item.id === trackId
-              ? { ...item, fileUri, downloaded: true, downloadedAt: Date.now() }
-              : item,
-          ),
-        };
-      });
+      if (replace) {
+        get().replaceTrackFile(trackId, fileUri, []);
+        set((state) => {
+          const { [trackId]: _, ...rest } = state.downloadingIds;
+          return {
+            downloadingIds: rest,
+            tracks: state.tracks.map((item) =>
+              item.id === trackId ? { ...item, pendingRemoteUpdate: undefined } : item,
+            ),
+          };
+        });
+        if (previousUri && previousUri !== fileUri) {
+          void removeUri(previousUri);
+        }
+      } else {
+        set((state) => {
+          const { [trackId]: _, ...rest } = state.downloadingIds;
+          return {
+            downloadingIds: rest,
+            tracks: state.tracks.map((item) =>
+              item.id === trackId
+                ? { ...item, fileUri, downloaded: true, downloadedAt: Date.now(), pendingRemoteUpdate: undefined }
+                : item,
+            ),
+          };
+        });
+      }
       await flushLibraryPersist();
       progress.advance();
     } catch (error) {
@@ -1046,6 +1084,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         const { [trackId]: _, ...rest } = state.downloadingIds;
         return { downloadingIds: rest };
       });
+      if (isDownloadPausedError(error)) {
+        return;
+      }
       throw error;
     } finally {
       if (tempUri) {
@@ -1083,25 +1124,52 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     await get().downloadCollection('album', albumId);
   },
 
-  async downloadCollection(kind, id) {
+  async downloadCollection(kind, id, options) {
+    const reuseSession = options?.reuseSession === true;
+    const progress = useDownloadProgressStore.getState();
+    if (progress.active && progress.mode === 'collection' && !reuseSession) {
+      progress.requestPause();
+      return;
+    }
     const tracks = get().tracksIn(kind, id);
-    const pending = tracks.filter((track) => !isDownloaded(track));
-    const fetchable = pending.filter((track) => playableUri(track) || trackCanFetchRemote(track));
+    const pending = tracks.filter((track) => !isDownloaded(track) || track.pendingRemoteUpdate);
+    const fetchable = pending.filter((track) => trackNeedsFetch(track));
     if (fetchable.length === 0) {
+      if (reuseSession) {
+        return;
+      }
       throw new Error(
         pending.length > 0
           ? 'Questi brani non sono ancora arrivati. Riprova.'
           : 'Non c’è nessun brano da scaricare.',
       );
     }
-    const progress = useDownloadProgressStore.getState();
-    progress.begin(fetchable.length);
+    if (!reuseSession) {
+      progress.beginCollection(fetchable.map((track) => track.id));
+    }
     try {
+      const { releaseTrackFromPlayer, usePlayerStore } = await import('./playerStore');
+      const playingId = usePlayerStore.getState().track.id;
+      if (playingId && fetchable.some((track) => track.id === playingId)) {
+        await releaseTrackFromPlayer(playingId);
+      }
       for (const track of fetchable) {
-        await get().downloadTrack(track.id);
+        if (useDownloadProgressStore.getState().pauseRequested) {
+          break;
+        }
+        try {
+          await get().downloadTrack(track.id, { replace: track.pendingRemoteUpdate === true });
+        } catch (error) {
+          if (isDownloadPausedError(error)) {
+            break;
+          }
+          throw error;
+        }
       }
     } finally {
-      progress.end();
+      if (!reuseSession) {
+        progress.end();
+      }
     }
   },
 

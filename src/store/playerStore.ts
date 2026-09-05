@@ -28,14 +28,16 @@ import {
   type PracticeIds,
 } from '../domain/practice';
 
+import { isTrackDownloadBlocked } from './downloadProgressStore';
+import { useLibraryStore } from './libraryStore';
+import { useSessionStore } from './sessionStore';
+
 const EMPTY_TRACK: Track = {
   id: '',
   title: '',
   artist: '',
   durationMs: 0,
 };
-import { useLibraryStore } from './libraryStore';
-import { useSessionStore } from './sessionStore';
 
 const HIDDEN_BUBBLE: NoteBubbleState = {
   visible: false,
@@ -182,10 +184,7 @@ function pauseEngines(state: PlayerState): void {
   }
 }
 
-export function clearPlayerIfTrackDeleted(trackId: string): void {
-  if (usePlayerStore.getState().track.id !== trackId) {
-    return;
-  }
+function resetPlayerRuntime() {
   loadGeneration += 1;
   pendingPlay = false;
   pendingSeekMs = null;
@@ -196,6 +195,13 @@ export function clearPlayerIfTrackDeleted(trackId: string): void {
   suppressPausePrompt(2500);
   usingFile = false;
   mockEngine.reset(EMPTY_TRACK.durationMs);
+}
+
+export function clearPlayerIfTrackDeleted(trackId: string): void {
+  if (usePlayerStore.getState().track.id !== trackId) {
+    return;
+  }
+  resetPlayerRuntime();
   void fileEngine.unload();
   usePlayerStore.setState({
     track: EMPTY_TRACK,
@@ -206,6 +212,48 @@ export function clearPlayerIfTrackDeleted(trackId: string): void {
     bubble: { ...HIDDEN_BUBBLE },
     loadState: 'idle',
   });
+}
+
+/**
+ * Unload the file before it is replaced or deleted. If another queue track is
+ * still playable, jump there; otherwise clear the player so the dock does not
+ * keep a dead file open.
+ */
+export async function releaseTrackFromPlayer(trackId: string): Promise<void> {
+  const player = usePlayerStore.getState();
+  if (player.track.id !== trackId) {
+    return;
+  }
+  const wasPlaying = player.isPlaying;
+  const queueIds = player.queueIds;
+  resetPlayerRuntime();
+  try {
+    await fileEngine.unload();
+  } catch {
+    // session already gone
+  }
+  usePlayerStore.setState({
+    track: EMPTY_TRACK,
+    peaks: [],
+    markers: [],
+    positionMs: 0,
+    isPlaying: false,
+    bubble: { ...HIDDEN_BUBBLE },
+    loadState: 'idle',
+  });
+
+  for (const nextId of queueIds) {
+    if (nextId === trackId || isTrackDownloadBlocked(nextId)) {
+      continue;
+    }
+    const next = useLibraryStore.getState().getTrack(nextId);
+    if (!next || !playableUri(next) || isTrackDownloadBlocked(nextId)) {
+      continue;
+    }
+    const markers = useLibraryStore.getState().markersByTrackId[nextId] ?? [];
+    usePlayerStore.getState().loadTrack(next, markers, queueIds, { autoPlay: wasPlaying });
+    return;
+  }
 }
 
 export function refreshPlayingArtwork(trackId: string) {
@@ -247,6 +295,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   play() {
     const state = get();
     const { track, loadState, markers } = state;
+    if (track.id && isTrackDownloadBlocked(track.id)) {
+      return;
+    }
     const uri = playableUri(track);
     const range = activePlayRange(track, markers);
 
@@ -682,7 +733,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     while (nextIndex >= 0 && nextIndex < queueIds.length) {
       const nextId = queueIds[nextIndex];
       const next = useLibraryStore.getState().getTrack(nextId);
-      if (next && playableUri(next)) {
+      if (next && playableUri(next) && !isTrackDownloadBlocked(nextId)) {
         const markers = useLibraryStore.getState().markersByTrackId[nextId] ?? [];
         get().loadTrack(next, markers, queueIds, options);
         return true;
