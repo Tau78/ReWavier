@@ -49,11 +49,26 @@ Play Console ReWavier: invita quel SA con permesso **Release**. Script: `bash sc
 
 ## Google OAuth — disclaimer “app non verificata”
 
+**Non è Play Console.** Play = `play.google.com/console` (negozio). OAuth = `console.cloud.google.com` (API login/Drive).
+
+Progetto ReWavier (account `mauro@www.musicproeventi.it`):
+
+| | |
+| --- | --- |
+| Project ID | `rewavier-app` |
+| Project number | `1049963169218` (prefisso dei client ID in `app.json`) |
+| Credenziali | https://console.cloud.google.com/apis/credentials?project=1049963169218 |
+| Schermata consenso | https://console.cloud.google.com/apis/credentials/consent?project=1049963169218 |
+
+Se “non c’è”: sei sul Play Console MusicProEventi, o sull’account Gmail sbagliato. Entra con **`mauro@www.musicproeventi.it`**, non con `andreoni.mauro@gmail.com`.
+
 | Velocità | Azione |
 | --- | --- |
 | **Subito (codice)** | Login = identity. Drive = solo `drive.file`, mai `drive.readonly`. |
 | **Giorni** | Cloud Console → OAuth consent → Verification + branding. |
 | **Lento** | `drive.readonly` richiede CASA — non usarlo. |
+
+Banner blu «Verifica degli sviluppatori Android» in Play Console = altro (account Play), non toglie il disclaimer OAuth in-app.
 
 ## Riferimenti app
 

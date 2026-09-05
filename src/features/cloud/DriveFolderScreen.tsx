@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -26,6 +26,7 @@ type Route = RouteProp<RootStackParamList, 'DriveFolder'>;
 
 type Crumb = { id: string; name: string; sharedDriveId?: string };
 type PickerTab = 'mine' | 'shared';
+type SearchHit = DriveFile | SharedDriveEntry;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -43,18 +44,30 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
   });
 }
 
+function filterHits(items: SearchHit[], needle: string): SearchHit[] {
+  const q = needle.trim().toLowerCase();
+  if (!q) {
+    return items;
+  }
+  return items.filter((item) => item.name.toLowerCase().includes(q));
+}
+
 export function DriveFolderScreen() {
   const navigation = useNavigation<Nav>();
   const albumId = useRoute<Route>().params?.albumId;
   const [tab, setTab] = useState<PickerTab>('mine');
   const [query, setQuery] = useState('');
-  const [searchHits, setSearchHits] = useState<Array<DriveFile | SharedDriveEntry>>([]);
+  const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [stack, setStack] = useState<Crumb[]>([]);
   const [children, setChildren] = useState<DriveFile[]>([]);
   const [busy, setBusy] = useState(true);
   const [working, setWorking] = useState(false);
   const downloadPercent = useDownloadProgressStore((s) => s.percent);
   const downloadActive = useDownloadProgressStore((s) => s.active);
+  const catalogRef = useRef<SearchHit[]>([]);
+  const searchGen = useRef(0);
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
 
   const browsing = stack.length > 0;
   const current = stack[stack.length - 1];
@@ -75,15 +88,40 @@ export function DriveFolderScreen() {
     return 'Immagine';
   };
 
-  const loadSearch = (needle?: string, which: PickerTab = tab) => {
-    setBusy(true);
-    const load = which === 'shared' ? listSharedDriveEntries(needle) : listDriveFolders(needle);
+  const loadSearch = (needle?: string, which: PickerTab = tab, opts?: { silent?: boolean }) => {
+    const trimmed = needle?.trim() ?? '';
+    const gen = ++searchGen.current;
+    if (!opts?.silent) {
+      setBusy(true);
+    }
+    const load = which === 'shared' ? listSharedDriveEntries(trimmed || undefined) : listDriveFolders(trimmed || undefined);
     void load
-      .then(setSearchHits)
+      .then((hits) => {
+        if (gen !== searchGen.current || which !== tabRef.current) {
+          return;
+        }
+        if (!trimmed) {
+          catalogRef.current = hits;
+        }
+        setSearchHits(hits);
+      })
       .catch((error) => {
+        if (gen !== searchGen.current) {
+          return;
+        }
         Alert.alert('Drive', error instanceof Error ? error.message : 'Cartelle non disponibili');
       })
-      .finally(() => setBusy(false));
+      .finally(() => {
+        if (gen === searchGen.current) {
+          setBusy(false);
+        }
+      });
+  };
+
+  const onSearchChange = (text: string) => {
+    setQuery(text);
+    // Mostra subito i match sulla lista già caricata; la rete raffina dopo.
+    setSearchHits(filterHits(catalogRef.current, text));
   };
 
   const switchTab = (next: PickerTab) => {
@@ -94,7 +132,8 @@ export function DriveFolderScreen() {
     setStack([]);
     setChildren([]);
     setQuery('');
-    loadSearch('', next);
+    catalogRef.current = [];
+    setSearchHits([]);
   };
 
   const openFolder = (folder: DriveFile | SharedDriveEntry) => {
@@ -150,8 +189,19 @@ export function DriveFolderScreen() {
   };
 
   useEffect(() => {
-    loadSearch();
-  }, []);
+    if (browsing) {
+      return;
+    }
+    const trimmed = query.trim();
+    const delay = trimmed ? 280 : 0;
+    const timer = setTimeout(() => {
+      loadSearch(trimmed, tab, {
+        // Non nascondere la lista mentre raffini: i match locali restano visibili.
+        silent: catalogRef.current.length > 0,
+      });
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [query, tab, browsing]);
 
   const choose = (recursive: boolean) => {
     if (!current || working) {
@@ -172,11 +222,11 @@ export function DriveFolderScreen() {
         navigation.replace('Collection', { kind: 'album', id });
       } catch (error) {
         const raw = error instanceof Error ? error.message : '';
+        const technical =
+          /file:\/\/|%25|downloadAsync|does not exist|\/Users\/|Containers\//i.test(raw);
         Alert.alert(
           'Drive',
-          raw && !raw.includes('file://') && !raw.includes('%25')
-            ? raw
-            : 'Questo brano non è arrivato sul telefono. Riprova.',
+          raw && !technical ? raw : 'Questo brano non è arrivato sul telefono. Riprova.',
         );
       } finally {
         setWorking(false);
@@ -272,11 +322,13 @@ export function DriveFolderScreen() {
         <TextInput
           style={styles.search}
           value={query}
-          onChangeText={setQuery}
-          onSubmitEditing={() => loadSearch(query)}
+          onChangeText={onSearchChange}
+          onSubmitEditing={() => loadSearch(query.trim(), tab)}
           placeholder={tab === 'shared' ? 'Cerca un Drive o una cartella…' : 'Cerca cartella…'}
           placeholderTextColor={colors.textMuted}
           returnKeyType="search"
+          autoCorrect={false}
+          autoCapitalize="none"
         />
       )}
       {busy ? <ActivityIndicator color={colors.accent} style={styles.spinner} /> : null}
@@ -303,9 +355,11 @@ export function DriveFolderScreen() {
             <View style={styles.emptyBox}>
               <EmptyGraphic />
               <Text style={styles.empty}>
-                {tab === 'shared'
-                  ? 'Nessun Drive condiviso. Se la band o la scuola ne ha uno, chiedi di esserci dentro.'
-                  : 'Nessuna cartella. Accedi con Google e crea o scegli una cartella sul tuo Drive.'}
+                {query.trim()
+                  ? 'Nessun risultato. Prova un altro nome.'
+                  : tab === 'shared'
+                    ? 'Nessun Drive condiviso. Se la band o la scuola ne ha uno, chiedi di esserci dentro.'
+                    : 'Nessuna cartella. Accedi con Google e crea o scegli una cartella sul tuo Drive.'}
               </Text>
             </View>
           ) : null}

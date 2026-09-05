@@ -3,7 +3,6 @@ import * as LegacyFS from 'expo-file-system/legacy';
 
 import { googleTokenHasDriveScope } from '../auth/googleAuthResult';
 import { getValidGoogleAccessToken, loadGoogleAuth } from '../auth/googleToken';
-import { ensureParentDirAsync } from '../files/fsSafe';
 
 const DRIVE = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
@@ -246,6 +245,19 @@ export async function listDriveFolderTree(
   return nodes;
 }
 
+function friendlyDownloadError(error: unknown): Error {
+  const raw = error instanceof Error ? error.message : String(error ?? '');
+  if (
+    /downloadAsync|does not exist|makeDirectory|ENOENT|Directory '/i.test(raw) ||
+    raw.includes('file://') ||
+    raw.includes('/Users/') ||
+    raw.includes('Containers/')
+  ) {
+    return new Error('Questo brano non è arrivato sul telefono. Riprova.');
+  }
+  return error instanceof Error ? error : new Error('Questo brano non è arrivato sul telefono. Riprova.');
+}
+
 export async function downloadDriveFile(
   fileId: string,
   destUri: string,
@@ -253,29 +265,33 @@ export async function downloadDriveFile(
 ): Promise<string> {
   const access = await token();
   const url = `${DRIVE}/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`;
-  await ensureParentDirAsync(destUri);
   const dest = new File(destUri);
+  dest.parentDirectory.create({ intermediates: true, idempotent: true });
   if (dest.exists) {
     dest.delete();
   }
   const headers = { Authorization: `Bearer ${access}` };
-  const result = onProgress
-    ? await LegacyFS.createDownloadResumable(url, destUri, { headers }, ({
-        totalBytesWritten,
-        totalBytesExpectedToWrite,
-      }) => {
-        if (totalBytesExpectedToWrite > 0) {
-          onProgress(totalBytesWritten / totalBytesExpectedToWrite);
-        }
-      }).downloadAsync()
-    : await LegacyFS.downloadAsync(url, destUri, { headers });
-  if (!result || result.status !== 200) {
-    throw new Error('Drive non ha scaricato il brano. Riprova.');
+  try {
+    const result = onProgress
+      ? await LegacyFS.createDownloadResumable(url, destUri, { headers }, ({
+          totalBytesWritten,
+          totalBytesExpectedToWrite,
+        }) => {
+          if (totalBytesExpectedToWrite > 0) {
+            onProgress(totalBytesWritten / totalBytesExpectedToWrite);
+          }
+        }).downloadAsync()
+      : await LegacyFS.downloadAsync(url, destUri, { headers });
+    if (!result || result.status !== 200) {
+      throw new Error('Drive non ha scaricato il brano. Riprova.');
+    }
+    if (dest.exists) {
+      return dest.uri;
+    }
+    return result.uri;
+  } catch (error) {
+    throw friendlyDownloadError(error);
   }
-  if (dest.exists) {
-    return dest.uri;
-  }
-  return result.uri;
 }
 
 export async function getDriveFileParentId(fileId: string): Promise<string | undefined> {

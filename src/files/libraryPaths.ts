@@ -1,7 +1,20 @@
 import { Directory, Paths } from 'expo-file-system';
 
-import { ensureDirAsync } from './fsSafe';
 import { getActiveLibraryOwner } from './libraryOwner';
+
+function createDir(dir: Directory): Directory {
+  dir.create({ intermediates: true, idempotent: true });
+  return dir;
+}
+
+function createDirIfNeeded(dir: Directory): Directory {
+  try {
+    createDir(dir);
+  } catch {
+    // listing and recover tolerate a missing folder
+  }
+  return dir;
+}
 
 export function documentsDirectory(): Directory {
   return Paths.document;
@@ -33,15 +46,11 @@ export function userLibraryDirectory(owner = getActiveLibraryOwner()): Directory
 }
 
 export async function ensureAudioDirectory(): Promise<Directory> {
-  const dir = audioDirectory();
-  await ensureDirAsync(dir.uri);
-  return dir;
+  return createDir(audioDirectory());
 }
 
 export async function ensureLibraryDirectory(): Promise<Directory> {
-  const dir = libraryDirectory();
-  await ensureDirAsync(dir.uri);
-  return dir;
+  return createDir(libraryDirectory());
 }
 
 function childDirectory(name: string): Directory {
@@ -49,17 +58,15 @@ function childDirectory(name: string): Directory {
 }
 
 async function ensureChildDirectory(name: string): Promise<Directory> {
-  const dir = childDirectory(name);
-  await ensureDirAsync(dir.uri);
-  return dir;
+  return createDir(childDirectory(name));
 }
 
 export function inboxDirectory(): Directory {
-  return childDirectory('inbox');
+  return createDirIfNeeded(childDirectory('inbox'));
 }
 
 export function downloadsDirectory(): Directory {
-  return childDirectory('downloads');
+  return createDirIfNeeded(childDirectory('downloads'));
 }
 
 export async function ensureInboxDirectory(): Promise<Directory> {

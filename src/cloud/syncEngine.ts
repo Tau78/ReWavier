@@ -32,7 +32,7 @@ import {
 } from '../domain/sidecar';
 import { saveArtworkFromUri } from '../files/albumArtwork';
 import { saveDocumentFromUri } from '../files/albumDocuments';
-import { copyToDownloads, inboxDirectory } from '../files/downloads';
+import { copyToDownloads, ensureInboxDirectory, inboxDirectory } from '../files/downloads';
 import { safeTempFileName } from '../files/fileNames';
 import { writeSidecarToLibrary } from '../files/libraryFiles';
 import { useDownloadProgressStore } from '../store/downloadProgressStore';
@@ -1027,6 +1027,7 @@ export async function importDriveFolder(
   const store = useLibraryStore.getState();
   const recursive = options?.recursive === true;
   const sharedDriveId = options?.sharedDriveId;
+  await ensureInboxDirectory();
   const albumId =
     options?.albumId ??
     store.createAlbum(folderName, {

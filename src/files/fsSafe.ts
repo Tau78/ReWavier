@@ -1,3 +1,4 @@
+import { Directory, File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
 export async function pathExistsAsync(uri: string): Promise<boolean> {
@@ -9,22 +10,21 @@ export async function pathExistsAsync(uri: string): Promise<boolean> {
   }
 }
 
+function createDir(uri: string): void {
+  new Directory(uri).create({ intermediates: true, idempotent: true });
+}
+
 export async function ensureDirAsync(uri: string): Promise<void> {
   try {
-    if (!(await pathExistsAsync(uri))) {
-      await LegacyFS.makeDirectoryAsync(uri, { intermediates: true });
-    }
+    createDir(uri);
   } catch {
     // iCloud può essere lento: la scrittura fallirà se la cartella non c’è.
   }
 }
 
-/** Like ensureDirAsync, but surfaces creation errors (needed before downloadAsync). */
+/** Surfaces creation errors — required before downloadAsync. */
 export async function ensureDirStrictAsync(uri: string): Promise<void> {
-  if (await pathExistsAsync(uri)) {
-    return;
-  }
-  await LegacyFS.makeDirectoryAsync(uri, { intermediates: true });
+  createDir(uri);
 }
 
 export function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
@@ -44,5 +44,5 @@ export function parentDirUri(fileUri: string): string {
 }
 
 export async function ensureParentDirAsync(fileUri: string): Promise<void> {
-  await ensureDirStrictAsync(parentDirUri(fileUri));
+  new File(fileUri).parentDirectory.create({ intermediates: true, idempotent: true });
 }
