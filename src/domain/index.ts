@@ -19,3 +19,11 @@ export type {
   SmartCondition,
   SmartPlaylist,
 } from './library';
+export type { FolderRole } from './folderRole';
+export {
+  canWriteWithRole,
+  folderRoleLabel,
+  folderRoleLine,
+  roleFromDriveCapabilities,
+  roleOfAlbum,
+} from './folderRole';

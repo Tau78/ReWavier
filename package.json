@@ -16,6 +16,7 @@
     "store:ios:metadata": "bash scripts/asc-metadata.sh",
     "store:ios:submit": "bash scripts/asc-submit.sh",
     "submit:android": "bash scripts/play-submit.sh",
+    "store:android:listing": "bash scripts/play-listing.sh",
     "setup:google": "bash scripts/setup-google-oauth.sh",
     "vai": "bash scripts/vai.sh"
   },

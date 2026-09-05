@@ -1,3 +1,4 @@
+import type { FolderRole } from './folderRole';
 import { type Marker, type Track } from './models';
 
 export type CollectionKind = 'folder' | 'album' | 'playlist' | 'smart';
@@ -45,6 +46,8 @@ export type Album = {
   driveFolderId?: string;
   /** Shared Drive (team) id when the album lives outside My Drive. */
   driveSharedDriveId?: string;
+  /** Current user’s Drive role for `driveFolderId` (owner / editor / viewer). */
+  driveRole?: FolderRole;
   /** When true, sync also walks Drive subfolders and keeps the same tree in the app. */
   driveRecursive?: boolean;
   lastSyncedAt?: number;

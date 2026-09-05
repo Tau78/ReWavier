@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { albumContainsTrackId } from '../../domain/albumVersions';
+import { canWriteWithRole, roleOfAlbum } from '../../domain/folderRole';
 import { optionalTrackText } from '../../domain/models';
 import { useLibraryStore } from '../../store/libraryStore';
 import { colors } from '../../theme/colors';
@@ -39,6 +41,9 @@ export function TrackScoreTabs({ trackId }: { trackId: string }) {
   const storedChords = useLibraryStore(
     (state) => state.tracks.find((track) => track.id === trackId)?.chords ?? '',
   );
+  const writeAllowed = useLibraryStore((state) =>
+    canWriteWithRole(roleOfAlbum(state.albums.find((album) => albumContainsTrackId(album, trackId)))),
+  );
   const [tab, setTab] = useState<ScoreTab>('onda');
   const [lyricsDraft, setLyricsDraft] = useState(storedLyrics);
   const [chordsDraft, setChordsDraft] = useState(storedChords);
@@ -54,9 +59,11 @@ export function TrackScoreTabs({ trackId }: { trackId: string }) {
 
   useEffect(() => {
     return () => {
-      saveScore(trackId, lyricsRef.current, chordsRef.current);
+      if (writeAllowed) {
+        saveScore(trackId, lyricsRef.current, chordsRef.current);
+      }
     };
-  }, [trackId]);
+  }, [trackId, writeAllowed]);
 
   const lyricsDirty = optionalTrackText(lyricsDraft) !== optionalTrackText(storedLyrics);
   const chordsDirty = optionalTrackText(chordsDraft) !== optionalTrackText(storedChords);
@@ -65,7 +72,9 @@ export function TrackScoreTabs({ trackId }: { trackId: string }) {
     if (next === tab) {
       return;
     }
-    saveScore(trackId, lyricsRef.current, chordsRef.current);
+    if (writeAllowed) {
+      saveScore(trackId, lyricsRef.current, chordsRef.current);
+    }
     setTab(next);
   };
 
@@ -97,11 +106,16 @@ export function TrackScoreTabs({ trackId }: { trackId: string }) {
 
       {tab === 'testo' ? (
         <ScoreEditor
-          value={lyricsDraft}
+          value={writeAllowed ? lyricsDraft : storedLyrics}
           onChangeText={setLyricsDraft}
-          onBlur={() => saveScore(trackId, lyricsRef.current, chordsRef.current)}
+          onBlur={() => {
+            if (writeAllowed) {
+              saveScore(trackId, lyricsRef.current, chordsRef.current);
+            }
+          }}
           onSave={() => saveScore(trackId, lyricsRef.current, chordsRef.current)}
-          dirty={lyricsDirty}
+          dirty={writeAllowed && lyricsDirty}
+          readOnly={!writeAllowed}
           placeholder="Scrivi il testo del brano."
           accessibilityLabel="Testo del brano"
         />
@@ -109,11 +123,16 @@ export function TrackScoreTabs({ trackId }: { trackId: string }) {
 
       {tab === 'accordi' ? (
         <ScoreEditor
-          value={chordsDraft}
+          value={writeAllowed ? chordsDraft : storedChords}
           onChangeText={setChordsDraft}
-          onBlur={() => saveScore(trackId, lyricsRef.current, chordsRef.current)}
+          onBlur={() => {
+            if (writeAllowed) {
+              saveScore(trackId, lyricsRef.current, chordsRef.current);
+            }
+          }}
           onSave={() => saveScore(trackId, lyricsRef.current, chordsRef.current)}
-          dirty={chordsDirty}
+          dirty={writeAllowed && chordsDirty}
+          readOnly={!writeAllowed}
           placeholder="Scrivi gli accordi, una riga per battuta."
           accessibilityLabel="Accordi del brano"
           chords
@@ -129,6 +148,7 @@ function ScoreEditor({
   onBlur,
   onSave,
   dirty,
+  readOnly,
   placeholder,
   accessibilityLabel,
   chords,
@@ -138,6 +158,7 @@ function ScoreEditor({
   onBlur: () => void;
   onSave: () => void;
   dirty: boolean;
+  readOnly?: boolean;
   placeholder: string;
   accessibilityLabel: string;
   chords?: boolean;
@@ -149,6 +170,7 @@ function ScoreEditor({
         value={value}
         onChangeText={onChangeText}
         onBlur={onBlur}
+        editable={!readOnly}
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
         multiline
@@ -160,7 +182,7 @@ function ScoreEditor({
         spellCheck={!chords}
         accessibilityLabel={accessibilityLabel}
       />
-      {dirty ? (
+      {dirty && !readOnly ? (
         <Pressable
           onPress={onSave}
           style={styles.saveBtn}

@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
+import { canWriteWithRole, FOLDER_READ_ONLY_MESSAGE, roleOfAlbum } from '../../domain/folderRole';
 import type { AlbumVersionFolder, CollectionKind, Folder } from '../../domain/library';
 import type { Track } from '../../domain/models';
 import { userHasUsage } from '../../domain/session';
@@ -13,7 +14,7 @@ import { peekDriveAlbum } from '../../cloud/syncEngine';
 import { pickAndSaveAlbumArtwork, pickAndSaveArtwork } from '../../files/albumArtwork';
 import { pickAndImportAudio, shareSidecar } from '../../files/libraryFiles';
 import type { RootStackParamList } from '../../navigation/types';
-import { useLibraryStore } from '../../store/libraryStore';
+import { albumRoleForTrack, useLibraryStore } from '../../store/libraryStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { ActionMenu, type ActionItem } from './ActionMenu';
 import { DeleteTrackModal } from './DeleteTrackModal';
@@ -89,11 +90,27 @@ export function useLibraryActions(
     return user && userHasUsage(user, 'band') ? user.authorSlug : undefined;
   };
 
+  const refuseWrite = (opts: { albumId?: string; trackId?: string }) => {
+    const role = opts.albumId
+      ? roleOfAlbum(useLibraryStore.getState().albums.find((item) => item.id === opts.albumId))
+      : opts.trackId
+        ? albumRoleForTrack(opts.trackId)
+        : 'owner';
+    if (canWriteWithRole(role)) {
+      return false;
+    }
+    Alert.alert(FOLDER_READ_ONLY_MESSAGE);
+    return true;
+  };
+
   const importAudio = async (
     folderId: string | null = currentFolderId,
     albumId?: string,
   ) => {
     if (busy) {
+      return;
+    }
+    if (albumId && refuseWrite({ albumId })) {
       return;
     }
     try {
@@ -143,6 +160,9 @@ export function useLibraryActions(
   };
 
   const pickTrackArtwork = (track: Track) => {
+    if (refuseWrite({ trackId: track.id })) {
+      return;
+    }
     if (track.artworkUri) {
       Alert.alert('Copertina', 'Vuoi cambiare o togliere la foto di questa traccia?', [
         { text: 'Annulla', style: 'cancel' },
@@ -185,7 +205,12 @@ export function useLibraryActions(
     },
     {
       label: 'Rinomina',
-      onPress: () => setPrompt({ type: 'rename-track', id: track.id, value: track.title }),
+      onPress: () => {
+        if (refuseWrite({ trackId: track.id })) {
+          return;
+        }
+        setPrompt({ type: 'rename-track', id: track.id, value: track.title });
+      },
     },
     {
       label: 'Sposta in playlist',
@@ -201,6 +226,10 @@ export function useLibraryActions(
           );
         });
       },
+    },
+    {
+      label: 'Esporta per Logic, Ableton o Reaper',
+      onPress: () => navigation.navigate('DawExport', { trackId: track.id }),
     },
     {
       label: 'Resoconto',
@@ -219,12 +248,22 @@ export function useLibraryActions(
     },
     {
       label: 'Sostituisci file',
-      onPress: () => navigation.navigate('ReplaceFile', { trackId: track.id }),
+      onPress: () => {
+        if (refuseWrite({ trackId: track.id })) {
+          return;
+        }
+        navigation.navigate('ReplaceFile', { trackId: track.id });
+      },
     },
     {
       label: 'Elimina',
       danger: true,
-      onPress: () => setPendingDelete(track),
+      onPress: () => {
+        if (refuseWrite({ trackId: track.id })) {
+          return;
+        }
+        setPendingDelete(track);
+      },
     },
   ];
 
@@ -272,12 +311,20 @@ export function useLibraryActions(
     {
       label: 'Aggiungi audio',
       onPress: () => {
+        if (refuseWrite({ albumId })) {
+          return;
+        }
         void importAudio(null, albumId);
       },
     },
     {
       label: 'Registra bozza',
-      onPress: () => navigation.navigate('RecordSketch', { albumId }),
+      onPress: () => {
+        if (refuseWrite({ albumId })) {
+          return;
+        }
+        navigation.navigate('RecordSketch', { albumId });
+      },
     },
     {
       label: 'Resoconto',
@@ -326,17 +373,30 @@ export function useLibraryActions(
     },
     {
       label: 'Sostituisci file',
-      onPress: () => navigation.navigate('ReplaceFile', { albumId }),
+      onPress: () => {
+        if (refuseWrite({ albumId })) {
+          return;
+        }
+        navigation.navigate('ReplaceFile', { albumId });
+      },
     },
     {
       label: 'Aggiungi separatore',
-      onPress: () => setPrompt({ type: 'new-separator', albumId }),
+      onPress: () => {
+        if (refuseWrite({ albumId })) {
+          return;
+        }
+        setPrompt({ type: 'new-separator', albumId });
+      },
     },
     {
       label: useLibraryStore.getState().albums.find((item) => item.id === albumId)?.artworkUri
         ? 'Cambia copertina'
         : 'Aggiungi copertina',
       onPress: () => {
+        if (refuseWrite({ albumId })) {
+          return;
+        }
         void (async () => {
           try {
             const uri = await pickAndSaveAlbumArtwork(albumId);
@@ -356,6 +416,9 @@ export function useLibraryActions(
     {
       label: 'Rinomina',
       onPress: () => {
+        if (refuseWrite({ albumId })) {
+          return;
+        }
         const album = useLibraryStore.getState().albums.find((item) => item.id === albumId);
         setPrompt({ type: 'rename-album', id: albumId, value: album?.name ?? '' });
       },
@@ -382,12 +445,19 @@ export function useLibraryActions(
   const versionFolderActions = (albumId: string, folder: AlbumVersionFolder): ActionItem[] => [
     {
       label: 'Rinomina',
-      onPress: () =>
-        setPrompt({ type: 'rename-versions', albumId, id: folder.id, value: folder.name }),
+      onPress: () => {
+        if (refuseWrite({ albumId })) {
+          return;
+        }
+        setPrompt({ type: 'rename-versions', albumId, id: folder.id, value: folder.name });
+      },
     },
     {
       label: 'Togli la cartella',
       onPress: () => {
+        if (refuseWrite({ albumId })) {
+          return;
+        }
         Alert.alert(
           'Togliere la cartella?',
           'I brani restano nell’album, ognuno per conto suo.',
@@ -406,12 +476,20 @@ export function useLibraryActions(
   const separatorActions = (albumId: string, separatorId: string, name: string): ActionItem[] => [
     {
       label: 'Rinomina',
-      onPress: () => setPrompt({ type: 'rename-separator', albumId, id: separatorId, value: name }),
+      onPress: () => {
+        if (refuseWrite({ albumId })) {
+          return;
+        }
+        setPrompt({ type: 'rename-separator', albumId, id: separatorId, value: name });
+      },
     },
     {
       label: 'Elimina separatore',
       danger: true,
       onPress: () => {
+        if (refuseWrite({ albumId })) {
+          return;
+        }
         Alert.alert('Togliere il separatore?', name, [
           { text: 'Annulla', style: 'cancel' },
           {
@@ -621,10 +699,18 @@ export function useLibraryActions(
         onSubmit={(value) => {
           const store = useLibraryStore.getState();
           if (prompt?.type === 'rename-track') {
+            if (refuseWrite({ trackId: prompt.id })) {
+              setPrompt(null);
+              return;
+            }
             store.renameTrack(prompt.id, value);
           } else if (prompt?.type === 'rename-folder') {
             store.renameFolder(prompt.id, value);
           } else if (prompt?.type === 'rename-album') {
+            if (refuseWrite({ albumId: prompt.id })) {
+              setPrompt(null);
+              return;
+            }
             store.renameAlbum(prompt.id, value);
           } else if (prompt?.type === 'rename-playlist') {
             store.renamePlaylist(prompt.id, value);
@@ -650,10 +736,22 @@ export function useLibraryActions(
             const id = store.createPlaylist(value);
             onOpened?.('playlist', id);
           } else if (prompt?.type === 'new-separator') {
+            if (refuseWrite({ albumId: prompt.albumId })) {
+              setPrompt(null);
+              return;
+            }
             store.addAlbumSeparator(prompt.albumId, value);
           } else if (prompt?.type === 'rename-separator') {
+            if (refuseWrite({ albumId: prompt.albumId })) {
+              setPrompt(null);
+              return;
+            }
             store.renameAlbumSeparator(prompt.albumId, prompt.id, value);
           } else if (prompt?.type === 'rename-versions') {
+            if (refuseWrite({ albumId: prompt.albumId })) {
+              setPrompt(null);
+              return;
+            }
             store.renameAlbumVersionFolder(prompt.albumId, prompt.id, value);
           }
           setPrompt(null);
@@ -719,7 +817,12 @@ export function useLibraryActions(
     newFolder: (parentId: string | null = currentFolderId) =>
       setPrompt({ type: 'new-folder', parentId }),
     newPlaylist: () => setPrompt({ type: 'new-playlist' }),
-    confirmDeleteTrack: (track: Track) => setPendingDelete(track),
+    confirmDeleteTrack: (track: Track) => {
+      if (refuseWrite({ trackId: track.id })) {
+        return;
+      }
+      setPendingDelete(track);
+    },
     confirmDeleteFolder: (folder: Folder) => {
       Alert.alert('Eliminare la playlist?', 'Le tracce restano in libreria.', [
         { text: 'Annulla', style: 'cancel' },

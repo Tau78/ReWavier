@@ -1,0 +1,12 @@
+title: ReWavier
+short_description: Apri un audio, tocca + e annota il momento esatto. Resta sul telefono.
+whatsnew: Entra con Google senza avvisi. Drive vede solo i file che usi con ReWavier, non tutto Drive.
+
+description: |
+  ReWavier è il quaderno di ascolto per chi lavora con l’audio: musica, lezioni, riunioni, corsi, formazione, colloqui e appunti vocali.
+
+  Apri un audio, metti in pausa e scrivi un appunto sul momento esatto — minuti, secondi, millisecondi — sulla forma d’onda (la linea del suono). Tocchi +, la traccia si ferma, compare il fumetto con l’orario. Il segnalino resta lì.
+
+  Serve a creator, band, insegnanti e in ambito Business. I file restano sul telefono. Entra con Google: usi il tuo account e colleghi anche Drive.
+
+  Niente pubblicità. Niente social. Solo ascolto e appunti sul tempo.

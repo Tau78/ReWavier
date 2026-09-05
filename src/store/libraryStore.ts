@@ -1,4 +1,5 @@
 import { File } from 'expo-file-system';
+import { Alert } from 'react-native';
 import { create } from 'zustand';
 
 import {
@@ -24,6 +25,7 @@ import {
   sortTracksAlphabetically,
 } from '../domain/albumOrder';
 import {
+  albumContainsTrackId,
   applyAlbumListReorder,
   applyAlbumVersionDrop,
   flattenAlbumTrackIds,
@@ -35,6 +37,12 @@ import {
   withNamedVersionFolder,
   type AlbumListReorderItem,
 } from '../domain/albumVersions';
+import {
+  canWriteWithRole,
+  FOLDER_READ_ONLY_MESSAGE,
+  roleOfAlbum,
+  type FolderRole,
+} from '../domain/folderRole';
 import { optionalTrackText, type Marker, type Track } from '../domain/models';
 import { withPractice, type PracticeIds } from '../domain/practice';
 import { isDemoUser } from '../auth/demoAccount';
@@ -93,14 +101,16 @@ export type LibraryActions = {
       driveFolderId?: string;
       driveSharedDriveId?: string;
       driveRecursive?: boolean;
+      driveRole?: FolderRole;
     },
   ) => string;
   linkAlbumDrive: (
     albumId: string,
     folderId: string,
     folderName: string,
-    extras?: { driveRecursive?: boolean; driveSharedDriveId?: string },
+    extras?: { driveRecursive?: boolean; driveSharedDriveId?: string; driveRole?: FolderRole },
   ) => void;
+  setAlbumDriveRole: (id: string, role: FolderRole) => void;
   touchAlbumSync: (albumId: string) => void;
   updateTrackRemote: (
     trackId: string,
@@ -176,6 +186,34 @@ export type LibraryActions = {
 };
 
 export type LibraryStore = LibraryState & LibraryActions;
+
+export function albumForTrack(trackId: string): Album | undefined {
+  return useLibraryStore.getState().albums.find((album) => albumContainsTrackId(album, trackId));
+}
+
+export function albumRoleForTrack(trackId: string): FolderRole {
+  return roleOfAlbum(albumForTrack(trackId));
+}
+
+export function albumRoleForAlbumId(albumId: string): FolderRole {
+  return roleOfAlbum(useLibraryStore.getState().albums.find((album) => album.id === albumId));
+}
+
+function refuseAlbumWrite(albumId: string): boolean {
+  if (canWriteWithRole(albumRoleForAlbumId(albumId))) {
+    return false;
+  }
+  Alert.alert(FOLDER_READ_ONLY_MESSAGE);
+  return true;
+}
+
+function refuseTrackWrite(trackId: string): boolean {
+  if (canWriteWithRole(albumRoleForTrack(trackId))) {
+    return false;
+  }
+  Alert.alert(FOLDER_READ_ONLY_MESSAGE);
+  return true;
+}
 
 function sidecarSlug(): string | undefined {
   const user = useSessionStore.getState().user;
@@ -346,6 +384,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           driveFolderId: extras?.driveFolderId,
           driveSharedDriveId: extras?.driveSharedDriveId,
           driveRecursive: extras?.driveRecursive,
+          driveRole: extras?.driveRole,
         },
       ],
     }));
@@ -363,8 +402,17 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
               driveFolderName: folderName,
               driveSharedDriveId: extras?.driveSharedDriveId ?? album.driveSharedDriveId,
               driveRecursive: extras?.driveRecursive ?? album.driveRecursive,
+              driveRole: extras?.driveRole ?? album.driveRole,
             }
           : album,
+      ),
+    }));
+  },
+
+  setAlbumDriveRole(id, role) {
+    set((state) => ({
+      albums: state.albums.map((album) =>
+        album.id === id ? { ...album, driveRole: role } : album,
       ),
     }));
   },
@@ -469,6 +517,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     if (!trimmed) {
       return;
     }
+    if (refuseAlbumWrite(id)) {
+      return;
+    }
     set((state) => ({
       albums: state.albums.map((album) =>
         album.id === id ? { ...album, name: trimmed } : album,
@@ -477,6 +528,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   setAlbumArtwork(id, artworkUri) {
+    if (refuseAlbumWrite(id)) {
+      return;
+    }
     const previous = get().albums.find((album) => album.id === id)?.artworkUri;
     if (previous && previous !== artworkUri) {
       void removeUri(previous);
@@ -530,6 +584,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   setAlbumNotes(id, notes, extras = {}) {
+    if (!extras.fromCloud && !canWriteWithRole(albumRoleForAlbumId(id))) {
+      return;
+    }
     const updatedAt = extras.updatedAt ?? Date.now();
     set((state) => ({
       albums: state.albums.map((album) =>
@@ -542,6 +599,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   addAlbumSeparator(albumId, name) {
+    if (refuseAlbumWrite(albumId)) {
+      return '';
+    }
     const trimmed = name.trim() || 'Separatore';
     const separatorId = createId('sep');
     set((state) => ({
@@ -564,6 +624,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     if (!trimmed) {
       return;
     }
+    if (refuseAlbumWrite(albumId)) {
+      return;
+    }
     set((state) => ({
       albums: state.albums.map((album) =>
         album.id === albumId
@@ -579,6 +642,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   deleteAlbumSeparator(albumId, separatorId) {
+    if (refuseAlbumWrite(albumId)) {
+      return;
+    }
     set((state) => ({
       albums: state.albums.map((album) =>
         album.id === albumId
@@ -594,6 +660,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   dropAlbumVersion(albumId, sourceId, targetId) {
+    if (refuseAlbumWrite(albumId)) {
+      return false;
+    }
     let changed = false;
     set((state) => ({
       albums: state.albums.map((album) => {
@@ -616,6 +685,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   reorderAlbumList(albumId, items) {
+    if (refuseAlbumWrite(albumId)) {
+      return;
+    }
     set((state) => ({
       albums: state.albums.map((album) => {
         if (album.id !== albumId) {
@@ -627,6 +699,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   unpackAlbumVersionFolder(albumId, folderId) {
+    if (refuseAlbumWrite(albumId)) {
+      return;
+    }
     set((state) => ({
       albums: state.albums.map((album) => {
         if (album.id !== albumId) {
@@ -638,6 +713,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   renameAlbumVersionFolder(albumId, folderId, name) {
+    if (refuseAlbumWrite(albumId)) {
+      return;
+    }
     set((state) => ({
       albums: state.albums.map((album) => {
         if (album.id !== albumId) {
@@ -691,6 +769,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   renameTrack(id, title) {
     const trimmed = title.trim();
     if (!trimmed) {
+      return;
+    }
+    if (refuseTrackWrite(id)) {
       return;
     }
     const previous = get().getTrack(id);
@@ -1232,6 +1313,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     if (!album || album.trackIds.length < 2) {
       return;
     }
+    if (refuseAlbumWrite(id)) {
+      return;
+    }
     const labelOf = (itemId: string) => {
       const folder = versionFolderById(album, itemId);
       if (folder) {
@@ -1265,6 +1349,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
 
   setCollectionOrder(kind, id, trackIds, extras = {}) {
     if (kind === 'smart') {
+      return;
+    }
+    if (kind === 'album' && !extras.fromCloud && refuseAlbumWrite(id)) {
       return;
     }
     const updatedAt = extras.updatedAt ?? Date.now();

@@ -103,6 +103,10 @@ export function SettingsScreen() {
               ? ` · marker ${user.markersEditableByOthers ? 'modificabili' : 'sola lettura'}`
               : ''}
           </Text>
+          <Text style={styles.rowHint}>
+            Il permesso di scrivere in un album Drive arriva da come è stata condivisa quella
+            cartella, non da un interruttore qui.
+          </Text>
         </View>
 
         {user?.provider === 'google' && !driveLinked ? (

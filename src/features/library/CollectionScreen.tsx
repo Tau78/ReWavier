@@ -4,7 +4,8 @@ import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { peekDriveAlbum, runCloudSync, type DriveAlbumPeek } from '../../cloud/syncEngine';
+import { peekDriveAlbum, refreshAlbumDriveRole, runCloudSync, type DriveAlbumPeek } from '../../cloud/syncEngine';
+import { canWriteWithRole, folderRoleLine, roleOfAlbum } from '../../domain/folderRole';
 import { orderedAlbumItemIds } from '../../domain/albumOrder';
 import { playableAlbumTrackIds, versionFolderById, type AlbumListReorderItem } from '../../domain/albumVersions';
 import { isDownloaded } from '../../domain/audioFormats';
@@ -157,8 +158,9 @@ export function CollectionScreen() {
 
   const [dragging, setDragging] = useState(false);
   const [openVersionIds, setOpenVersionIds] = useState<Record<string, boolean>>({});
-  const canReorder = kind !== 'smart';
   const album = kind === 'album' ? albums.find((item) => item.id === id) : undefined;
+  const albumWritable = canWriteWithRole(roleOfAlbum(album));
+  const canReorder = kind !== 'smart' && albumWritable;
   const isDriveAlbum = album?.origin === 'drive';
   const syncStatus = useSyncStore((s) => s.status);
   const syncMessage = useSyncStore((s) => s.message);
@@ -215,9 +217,10 @@ export function CollectionScreen() {
   useFocusEffect(
     useCallback(() => {
       if (isDriveAlbum) {
+        void refreshAlbumDriveRole(id);
         void refreshFromDrive();
       }
-    }, [isDriveAlbum, refreshFromDrive]),
+    }, [isDriveAlbum, id, refreshFromDrive]),
   );
   const displayTracks = useMemo(() => {
     const held = heldFileUriRef.current;
@@ -511,6 +514,11 @@ export function CollectionScreen() {
             isPlayingThisAlbum={isPlayingThisAlbum}
             onPlay={playAlbum}
           />
+        ) : null}
+        {album?.driveFolderId ? (
+          <Text style={[styles.hint, styles.hintInScroll, styles.roleLine]}>
+            {folderRoleLine(roleOfAlbum(album))}
+          </Text>
         ) : null}
         {album ? <Text style={styles.sectionLabel}>Tracce</Text> : null}
         {isDriveAlbum ? (
@@ -842,6 +850,11 @@ const styles = StyleSheet.create({
   },
   hintInScroll: {
     paddingHorizontal: 4,
+  },
+  roleLine: {
+    textAlign: 'center',
+    paddingBottom: 12,
+    marginTop: -8,
   },
   sortBtn: {
     flexDirection: 'row',

@@ -1,4 +1,5 @@
 import { colors } from '../theme/colors';
+import { canWriteWithRole, type FolderRole } from './folderRole';
 import type { Marker } from './models';
 import { userHasUsage, type SessionUser } from './session';
 
@@ -53,6 +54,14 @@ export function canEditMarker(marker: Marker, user: SessionUser | null): boolean
     return true;
   }
   return marker.editableByOthers === true;
+}
+
+export function canEditMarkerInAlbum(
+  marker: Marker,
+  user: SessionUser | null,
+  role: FolderRole,
+): boolean {
+  return canWriteWithRole(role) && canEditMarker(marker, user);
 }
 
 export function stampNewMarker(

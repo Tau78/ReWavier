@@ -6,7 +6,8 @@ import { FileAudioEngine } from '../audio/fileEngine';
 import { MockAudioEngine } from '../audio/mockEngine';
 import { nowPlayingMetadata } from '../audio/nowPlaying';
 import { playableUri } from '../domain/audioFormats';
-import { stampNewMarker } from '../domain/markers';
+import { canWriteWithRole, FOLDER_READ_ONLY_MESSAGE } from '../domain/folderRole';
+import { canEditMarkerInAlbum, stampNewMarker } from '../domain/markers';
 import {
   clampTime,
   isCustomRange,
@@ -29,7 +30,7 @@ import {
 } from '../domain/practice';
 
 import { isTrackDownloadBlocked } from './downloadProgressStore';
-import { useLibraryStore } from './libraryStore';
+import { albumRoleForTrack, useLibraryStore } from './libraryStore';
 import { useSessionStore } from './sessionStore';
 
 const EMPTY_TRACK: Track = {
@@ -109,6 +110,32 @@ export type PlayerStore = PlayerState & PlayerActions;
 
 function persistMarkers(trackId: string, markers: Marker[]) {
   useLibraryStore.getState().setTrackMarkers(trackId, markers);
+}
+
+function refuseFolderWrite(trackId?: string): boolean {
+  const id = trackId || usePlayerStore.getState().track.id;
+  if (!id || canWriteWithRole(albumRoleForTrack(id))) {
+    return false;
+  }
+  Alert.alert(FOLDER_READ_ONLY_MESSAGE);
+  return true;
+}
+
+function refuseMarkerWrite(markerId?: string | null): boolean {
+  const { track, markers } = usePlayerStore.getState();
+  const role = albumRoleForTrack(track.id);
+  if (!canWriteWithRole(role)) {
+    Alert.alert(FOLDER_READ_ONLY_MESSAGE);
+    return true;
+  }
+  if (!markerId) {
+    return false;
+  }
+  const marker = markers.find((item) => item.id === markerId);
+  if (marker && !canEditMarkerInAlbum(marker, useSessionStore.getState().user, role)) {
+    return true;
+  }
+  return false;
 }
 
 const mockEngine = new MockAudioEngine(EMPTY_TRACK.durationMs);
@@ -408,6 +435,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       get().seekTo(startMs);
     }
     if (persist) {
+      if (refuseFolderWrite(track.id)) {
+        return;
+      }
       useLibraryStore.getState().setTrackBounds(track.id, startMs, current.endMs);
     }
     suppressPausePrompt(1500);
@@ -428,6 +458,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       get().seekTo(endMs);
     }
     if (persist) {
+      if (refuseFolderWrite(track.id)) {
+        return;
+      }
       useLibraryStore.getState().setTrackBounds(track.id, current.startMs, endMs);
     }
     suppressPausePrompt(1500);
@@ -467,6 +500,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   pressAddNote() {
+    if (refuseFolderWrite()) {
+      return;
+    }
     const state = get();
     suppressPausePrompt(4000);
     resumeAfterBubble = mockDrivesPlayback(state)
@@ -524,6 +560,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     if (!text) {
       return;
     }
+    if (refuseMarkerWrite(bubble.markerId)) {
+      return;
+    }
 
     const now = Date.now();
     if (bubble.markerId) {
@@ -566,6 +605,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   moveMarker(id, timestampMs) {
+    if (refuseMarkerWrite(id)) {
+      return;
+    }
     const clamped = clampTime(timestampMs, get().track.durationMs);
     const now = Date.now();
     const { markers, bubble, track } = get();
@@ -583,6 +625,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   hideMarker(id, hidden = true) {
+    if (refuseMarkerWrite(id)) {
+      return;
+    }
     const now = Date.now();
     const { markers, bubble, track } = get();
     const next = markers.map((marker) =>
@@ -600,6 +645,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   deleteMarker(id) {
+    if (refuseMarkerWrite(id)) {
+      return;
+    }
     const { markers, bubble, track } = get();
     const next = markers.filter((marker) => marker.id !== id);
     persistMarkers(track.id, next);
@@ -651,6 +699,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   setExerciseBound(markerId, role) {
+    if (refuseFolderWrite()) {
+      return;
+    }
     const { track, markers } = get();
     if (!markers.some((marker) => marker.id === markerId)) {
       return;
@@ -672,6 +723,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   setPracticeHole(markerId) {
+    if (refuseFolderWrite()) {
+      return;
+    }
     const { track, markers } = get();
     if (!markers.some((marker) => marker.id === markerId)) {
       return;
@@ -683,6 +737,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   clearExercise() {
+    if (refuseFolderWrite()) {
+      return;
+    }
     const { track } = get();
     const practice = {
       ...practiceFromTrack(track),
@@ -694,6 +751,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   clearPracticeHole() {
+    if (refuseFolderWrite()) {
+      return;
+    }
     const { track } = get();
     const practice = { ...practiceFromTrack(track), practiceHoleId: undefined };
     persistPractice(track, practice);
@@ -701,6 +761,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   replyAt(timestampMs) {
+    if (refuseFolderWrite()) {
+      return;
+    }
     const state = get();
     suppressPausePrompt(4000);
     resumeAfterBubble = false;
@@ -890,7 +953,7 @@ function applyPersistedLoop(
   const bounds = normalizeLoopBounds(startMs, endMs, track.durationMs);
   const next = { ...track, startMs: bounds.startMs, endMs: bounds.endMs };
   set({ track: next });
-  if (track.id) {
+  if (track.id && !refuseFolderWrite(track.id)) {
     useLibraryStore.getState().setTrackBounds(track.id, bounds.startMs, bounds.endMs);
   }
   const positionMs = readPositionMs(get());

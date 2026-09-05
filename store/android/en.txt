@@ -1,0 +1,12 @@
+title: ReWavier
+short_description: Open audio, tap +, note the exact moment. Files stay on the phone.
+whatsnew: Sign in with Google without the safety warning. Drive only sees files you use with ReWavier, not all of Drive. This version also fixes the Android opening screen.
+
+description: |
+  ReWavier is a listening notebook for anyone who works with audio: music, lessons, meetings, courses, training, interviews, and voice notes.
+
+  Open an audio file, pause, and write a note on the exact moment — minutes, seconds, milliseconds — on the sound wave. Tap +, the track stops, and a bubble shows the time. The marker stays there.
+
+  For creators, bands, teachers, and work. Files stay on the phone. Sign in with Google to use your account and connect Drive too.
+
+  No ads. No social. Just listening and notes on time.

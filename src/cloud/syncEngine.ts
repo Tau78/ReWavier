@@ -19,6 +19,7 @@ import {
   findTrackCoverFile,
   isPdfName,
 } from '../domain/driveMedia';
+import { canWriteWithRole, roleOfAlbum } from '../domain/folderRole';
 import { createId } from '../domain/library';
 import type { Marker, Track } from '../domain/models';
 import { userHasUsage } from '../domain/session';
@@ -44,6 +45,7 @@ import { isSyncInFlight, SYNC_STALE_MS, useSyncStore } from '../store/syncStore'
 import { runDeviceSync } from './deviceSync/runDeviceSync';
 import {
   downloadDriveFile,
+  fetchFolderRole,
   findChildByName,
   findFolderByName,
   getDriveFileParentId,
@@ -108,6 +110,23 @@ function reportDriveFraction(fraction: number) {
   useDownloadProgressStore.getState().setFileFraction(fraction);
 }
 
+/** Best-effort Drive capabilities → album.driveRole. Never throws. */
+export async function refreshAlbumDriveRole(albumId: string): Promise<void> {
+  try {
+    const album = useLibraryStore.getState().albums.find((item) => item.id === albumId);
+    if (!album?.driveFolderId) {
+      return;
+    }
+    const role = await fetchFolderRole(album.driveFolderId);
+    useLibraryStore.getState().setAlbumDriveRole(albumId, role);
+  } catch {
+    const album = useLibraryStore.getState().albums.find((item) => item.id === albumId);
+    if (album?.driveFolderId && album.driveRole == null) {
+      useLibraryStore.getState().setAlbumDriveRole(albumId, 'editor');
+    }
+  }
+}
+
 function finishDriveItem() {
   useDownloadProgressStore.getState().advance();
 }
@@ -163,6 +182,7 @@ export async function peekDriveAlbum(albumId: string): Promise<DriveAlbumPeek> {
     if (found) {
       folderId = found.id;
       useLibraryStore.getState().linkAlbumDrive(album.id, found.id, found.name);
+      await refreshAlbumDriveRole(album.id);
     }
   }
   if (!folderId) {
@@ -338,6 +358,8 @@ async function runCloudSyncBody(): Promise<void> {
         needsFolderLink = true;
         continue;
       }
+
+      await refreshAlbumDriveRole(album.id);
 
       const tree = await listDriveFolderTree(
         folderId,
@@ -537,6 +559,7 @@ async function runCloudSyncBody(): Promise<void> {
       await syncAlbumNotes(album.id, children);
 
       store.touchAlbumSync(album.id);
+      await refreshAlbumDriveRole(album.id);
     }
 
       sync.finish({
@@ -682,7 +705,7 @@ async function syncAlbumNotes(
 
 export async function pushAlbumNotes(albumId: string): Promise<void> {
   const album = sharedDriveAlbum(albumId);
-  if (!album?.driveFolderId) {
+  if (!album?.driveFolderId || !canWriteWithRole(roleOfAlbum(album))) {
     return;
   }
   const text = album.notes ?? '';
@@ -711,7 +734,7 @@ export async function pushAlbumNotes(albumId: string): Promise<void> {
 
 export async function pushAlbumOrder(albumId: string): Promise<void> {
   const album = sharedDriveAlbum(albumId);
-  if (!album?.driveFolderId) {
+  if (!album?.driveFolderId || !canWriteWithRole(roleOfAlbum(album))) {
     return;
   }
   if (!(await hasDriveToken())) {
@@ -809,7 +832,7 @@ export async function pushSidecarIfShared(trackId: string): Promise<void> {
   const album = sharedDriveAlbum(undefined, trackId);
   const store = useLibraryStore.getState();
   const track = store.getTrack(trackId);
-  if (!album?.driveFolderId || !track) {
+  if (!album?.driveFolderId || !track || !canWriteWithRole(roleOfAlbum(album))) {
     return;
   }
   if (!(await hasDriveToken())) {
@@ -1111,6 +1134,7 @@ export async function importDriveFolder(
       driveSharedDriveId: sharedDriveId,
     });
   }
+  await refreshAlbumDriveRole(albumId);
 
   const tree = await listDriveFolderTree(
     folderId,

@@ -14,6 +14,7 @@ export type RootStackParamList = {
   SyncReview: undefined;
   RecordSketch: { folderId?: string; albumId?: string };
   LessonRecap: { kind: 'album' | 'folder' | 'track'; id: string };
+  DawExport: { trackId: string };
   NoteHeat: { trackId: string };
   PdfPreview: { fileUri: string; name: string };
 };

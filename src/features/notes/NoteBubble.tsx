@@ -11,8 +11,10 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
+import { albumContainsTrackId } from '../../domain/albumVersions';
+import { canWriteWithRole, roleOfAlbum } from '../../domain/folderRole';
 import {
-  canEditMarker,
+  canEditMarkerInAlbum,
   markerAuthorLabel,
   markerColor,
   visibleMarkers,
@@ -20,6 +22,7 @@ import {
 import { formatTimecode } from '../../domain/models';
 import { markersNearTime } from '../../domain/practice';
 import { shareMarkerClip } from '../../files/shareMarkerClip';
+import { useLibraryStore } from '../../store/libraryStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { colors, layout } from '../../theme/colors';
@@ -52,9 +55,14 @@ export function NoteBubble() {
   const thread = visibleMarkers(markersNearTime(markers, bubble.timestampMs)).filter(
     (marker) => marker.id !== bubble.markerId,
   );
-  const readOnly = isEditing && current != null && !canEditMarker(current, user);
+  const folderRole = useLibraryStore((state) =>
+    roleOfAlbum(state.albums.find((album) => albumContainsTrackId(album, track.id))),
+  );
+  const folderReadOnly = !canWriteWithRole(folderRole);
+  const readOnly =
+    folderReadOnly || (isEditing && current != null && !canEditMarkerInAlbum(current, user, folderRole));
   const canSave = !readOnly && bubble.draft.trim().length > 0;
-  const canReply = isEditing || thread.length > 0;
+  const canReply = !folderReadOnly && (isEditing || thread.length > 0);
 
   const persistNote = () => {
     if (!canSave) {

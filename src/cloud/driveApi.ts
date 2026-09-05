@@ -6,6 +6,7 @@ import { throwIfDownloadPaused, useDownloadProgressStore } from '../store/downlo
 
 import { googleTokenHasDriveScope } from '../auth/googleAuthResult';
 import { getValidGoogleAccessToken, loadGoogleAuth } from '../auth/googleToken';
+import { roleFromDriveCapabilities, type FolderRole } from '../domain/folderRole';
 
 const DRIVE = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
@@ -136,6 +137,17 @@ export async function listSharedDriveEntries(query?: string): Promise<SharedDriv
   }
 
   return [...drives, ...extras];
+}
+
+export async function fetchFolderRole(folderId: string): Promise<FolderRole> {
+  const fields = 'ownedByMe,capabilities(canEdit,canComment)';
+  const data = await driveGet<{
+    ownedByMe?: boolean;
+    capabilities?: { canEdit?: boolean; canComment?: boolean };
+  }>(
+    `/files/${encodeURIComponent(folderId)}?fields=${encodeURIComponent(fields)}&supportsAllDrives=true`,
+  );
+  return roleFromDriveCapabilities(data);
 }
 
 export async function getDriveFile(fileId: string): Promise<DriveFile | null> {

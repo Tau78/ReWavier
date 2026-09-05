@@ -5,6 +5,7 @@ import { DriveFolderScreen } from '../features/cloud/DriveFolderScreen';
 import { SyncReviewScreen } from '../features/cloud/SyncReviewScreen';
 import { HomeScreen } from '../features/home/HomeScreen';
 import { CollectionScreen } from '../features/library/CollectionScreen';
+import { DawExportScreen } from '../features/library/DawExportScreen';
 import { LessonRecapScreen } from '../features/library/LessonRecapScreen';
 import { NoteHeatScreen } from '../features/library/NoteHeatScreen';
 import { PdfPreviewScreen } from '../features/library/PdfPreviewScreen';
@@ -56,6 +57,7 @@ export function AppStack() {
         <Stack.Screen name="SyncReview" component={SyncReviewScreen} />
         <Stack.Screen name="RecordSketch" component={RecordSketchScreen} />
         <Stack.Screen name="LessonRecap" component={LessonRecapScreen} />
+        <Stack.Screen name="DawExport" component={DawExportScreen} />
         <Stack.Screen name="NoteHeat" component={NoteHeatScreen} />
         <Stack.Screen name="PdfPreview" component={PdfPreviewScreen} />
         <Stack.Screen name="Player" component={PlayerScreen} />
