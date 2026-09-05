@@ -13,6 +13,9 @@
     "build:ios": "eas build --platform ios --profile production",
     "build:preview": "eas build --platform ios --profile preview",
     "submit:ios": "eas submit --platform ios --profile production",
+    "store:ios:metadata": "bash scripts/asc-metadata.sh",
+    "store:ios:submit": "bash scripts/asc-submit.sh",
+    "submit:android": "bash scripts/play-submit.sh",
     "setup:google": "bash scripts/setup-google-oauth.sh",
     "vai": "bash scripts/vai.sh"
   },

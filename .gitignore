@@ -43,3 +43,7 @@ firebase-debug.log
 # generated native folders
 /ios
 /android
+google-play-service-account.json
+
+.env.asc
+.env.play

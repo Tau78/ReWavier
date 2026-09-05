@@ -108,7 +108,7 @@ export async function listSharedDriveEntries(query?: string): Promise<SharedDriv
       });
     }
   } catch {
-    // drive.readonly should allow this; ignore if the account has no Shared Drives
+    // Shared Drive roots need broader Drive scope; with drive.file alone this often fails.
   }
 
   const q = encodeURIComponent(

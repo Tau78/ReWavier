@@ -52,8 +52,11 @@ load_asc_api() {
   [[ -n "$ASC_KEY_ID" && -n "$ASC_ISSUER_ID" && -n "$ASC_KEY_PATH" && -f "$ASC_KEY_PATH" ]]
 }
 
-echo "→ Sync native iOS project from app.json (clean)"
-npx expo prebuild --platform ios --clean --no-install
+if [[ ! -d "$ROOT/ios/ReWavier.xcworkspace" && ! -d "$ROOT/ios/ReWavier.xcodeproj" ]]; then
+  echo "Manca ios/ nativo. Non uso expo prebuild (policy store-release). Genera ios/ una volta a mano se serve." >&2
+  exit 1
+fi
+echo "→ Prebuild saltato (ios/ presente, Xcode nativo)"
 
 echo "→ CocoaPods"
 (cd ios && pod install)
