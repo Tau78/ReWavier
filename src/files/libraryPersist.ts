@@ -146,9 +146,18 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
     }),
     playlists: snapshot.playlists.map((playlist) => ({
       ...playlist,
-      trackIds: pruneIds(playlist.trackIds),
+      id: typeof playlist.id === 'string' ? playlist.id : '',
+      name: typeof playlist.name === 'string' ? playlist.name : '',
+      trackIds: pruneIds(Array.isArray(playlist.trackIds) ? playlist.trackIds : []),
     })),
-    smartPlaylists: snapshot.smartPlaylists.filter((item) => !SEEDED_SMART_IDS.has(item.id)),
+    smartPlaylists: snapshot.smartPlaylists
+      .filter((item) => item && !SEEDED_SMART_IDS.has(item.id))
+      .map((item) => ({
+        id: typeof item.id === 'string' ? item.id : '',
+        name: typeof item.name === 'string' ? item.name : '',
+        conditions: Array.isArray(item.conditions) ? item.conditions : [],
+      }))
+      .filter((item) => item.id.length > 0),
     markersByTrackId: Object.fromEntries(
       Object.entries(snapshot.markersByTrackId).filter(([id]) => keep.has(id)),
     ),
@@ -170,7 +179,13 @@ function parseLibrarySnapshot(parsed: LibrarySnapshot): LibrarySnapshot | null {
     folders: Array.isArray(parsed.folders) ? parsed.folders : [],
     albums: Array.isArray(parsed.albums) ? parsed.albums : [],
     playlists: Array.isArray(parsed.playlists) ? parsed.playlists : [],
-    smartPlaylists: Array.isArray(parsed.smartPlaylists) ? parsed.smartPlaylists : [],
+    smartPlaylists: Array.isArray(parsed.smartPlaylists)
+      ? parsed.smartPlaylists.map((item) => ({
+          id: typeof item?.id === 'string' ? item.id : '',
+          name: typeof item?.name === 'string' ? item.name : '',
+          conditions: Array.isArray(item?.conditions) ? item.conditions : [],
+        }))
+      : [],
     markersByTrackId:
       parsed.markersByTrackId && typeof parsed.markersByTrackId === 'object'
         ? parsed.markersByTrackId

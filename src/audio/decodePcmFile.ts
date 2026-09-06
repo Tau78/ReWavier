@@ -1,11 +1,19 @@
 import { File } from 'expo-file-system';
 
 import { peakCountForDuration, peaksFromFrames } from './pcmPeaks';
+import {
+  MAX_WAVEFORM_DECODE_BYTES,
+  MAX_WAVEFORM_DECODE_DURATION_MS,
+} from './waveformBridge';
 
 export type DecodedPeaks = {
   peaks: number[];
   durationMs: number;
 };
+
+function emptyPeaks(durationMs = 0): DecodedPeaks {
+  return { peaks: [], durationMs };
+}
 
 function readFourCC(view: DataView, offset: number): string {
   return String.fromCharCode(
@@ -119,6 +127,10 @@ function decodeWav(buffer: ArrayBuffer): DecodedPeaks | null {
   }
 
   const durationMs = Math.round((frameCount / sampleRate) * 1000);
+  if (durationMs > MAX_WAVEFORM_DECODE_DURATION_MS) {
+    // Same refuse pattern as WaveformDecoderHost — no full-frame scan.
+    return emptyPeaks(durationMs);
+  }
   const peaks = peaksFromFrames(
     frameCount,
     peakCountForDuration(durationMs),
@@ -172,6 +184,9 @@ function decodeAiff(buffer: ArrayBuffer): DecodedPeaks | null {
   }
 
   const durationMs = Math.round((frameCount / sampleRate) * 1000);
+  if (durationMs > MAX_WAVEFORM_DECODE_DURATION_MS) {
+    return emptyPeaks(durationMs);
+  }
   const peaks = peaksFromFrames(
     frameCount,
     peakCountForDuration(durationMs),
@@ -186,7 +201,15 @@ export async function decodePcmPeaks(uri: string): Promise<DecodedPeaks | null> 
     if (!file.exists) {
       return null;
     }
+    const size = typeof file.size === 'number' ? file.size : null;
+    if (size != null && size > MAX_WAVEFORM_DECODE_BYTES) {
+      // Refuse before file.bytes() — full load OOMs on mobile.
+      return emptyPeaks();
+    }
     const bytes = await file.bytes();
+    if (bytes.byteLength > MAX_WAVEFORM_DECODE_BYTES) {
+      return emptyPeaks();
+    }
     const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     return decodeWav(buffer) ?? decodeAiff(buffer);
   } catch {

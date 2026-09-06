@@ -8,6 +8,18 @@ import {
 
 import type { PlaybackListener } from './mockEngine';
 
+/** Thrown when a load is superseded by cancelLoad / a newer load / unload. */
+export class LoadAbortedError extends Error {
+  constructor() {
+    super('Audio load aborted');
+    this.name = 'LoadAbortedError';
+  }
+}
+
+export function isLoadAborted(error: unknown): boolean {
+  return error instanceof LoadAbortedError || (error instanceof Error && error.name === 'LoadAbortedError');
+}
+
 /** Playback session: keep going when the app is not in the foreground. */
 export async function applyPlaybackAudioMode(): Promise<void> {
   await setAudioModeAsync({
@@ -26,6 +38,8 @@ export class FileAudioEngine {
   private playing = false;
   private durationMs = 0;
   private rate = 1;
+  /** Bumped to abort in-flight load() / waitForDuration without overlapping create/unload. */
+  private loadGeneration = 0;
   private readonly listeners = new Set<PlaybackListener>();
 
   getPositionMs(): number {
@@ -43,53 +57,81 @@ export class FileAudioEngine {
     return this.durationMs;
   }
 
-  async load(uri: string, metadata?: AudioMetadata): Promise<number> {
-    await this.unload();
+  /**
+   * Invalidate any in-flight load so it stops before createAudioPlayer / after
+   * waitForDuration, and does not leave a half-created player on this engine.
+   */
+  cancelLoad(): void {
+    this.loadGeneration += 1;
+  }
+
+  /**
+   * @param isCurrent Optional store-level gate (e.g. loadGeneration). Checked
+   *   together with the engine token so an orphaned loadChain callback cannot
+   *   create a native player after releaseTrackFromPlayer moved on.
+   */
+  async load(
+    uri: string,
+    metadata?: AudioMetadata,
+    isCurrent?: () => boolean,
+  ): Promise<number> {
+    const gen = ++this.loadGeneration;
+    const alive = () => gen === this.loadGeneration && (isCurrent?.() ?? true);
+
+    if (!alive()) {
+      throw new LoadAbortedError();
+    }
+
+    await this.releasePlayer();
+    if (!alive()) {
+      throw new LoadAbortedError();
+    }
+
     this.metadata = metadata;
     await applyPlaybackAudioMode();
+    if (!alive()) {
+      throw new LoadAbortedError();
+    }
+
     const player = createAudioPlayer(
       { uri },
       { updateInterval: 50, keepAudioSessionActive: true },
     );
+
+    if (!alive()) {
+      disposeOrphanPlayer(player);
+      throw new LoadAbortedError();
+    }
+
     this.player = player;
     this.statusSub = player.addListener('playbackStatusUpdate', (status) => this.onStatus(status));
-    const durationMs = await waitForDuration(player);
-    this.durationMs = durationMs;
-    this.positionMs = Math.round(player.currentTime * 1000);
-    this.playing = player.playing;
-    this.applyRate();
-    this.publishLockScreen();
-    this.emit();
-    return this.durationMs;
+
+    try {
+      const durationMs = await waitForDuration(player, alive);
+      if (!alive()) {
+        await this.discardIfCurrent(player);
+        throw new LoadAbortedError();
+      }
+      this.durationMs = durationMs;
+      this.positionMs = Math.round(player.currentTime * 1000);
+      this.playing = player.playing;
+      this.applyRate();
+      this.publishLockScreen();
+      this.emit();
+      return this.durationMs;
+    } catch (error) {
+      await this.discardIfCurrent(player);
+      if (isLoadAborted(error) || !alive()) {
+        throw new LoadAbortedError();
+      }
+      throw error;
+    }
   }
 
   async unload(): Promise<void> {
-    const player = this.player;
-    this.statusSub?.remove();
-    this.statusSub = null;
-    this.player = null;
-    this.metadata = undefined;
-    this.playing = false;
-    this.positionMs = 0;
-    this.durationMs = 0;
-    if (player) {
-      try {
-        player.clearLockScreenControls();
-      } catch {
-        // already cleared
-      }
-      try {
-        player.pause();
-      } catch {
-        // already paused
-      }
-      try {
-        player.remove();
-      } catch {
-        // already released
-      }
-    }
-    this.emit();
+    // Abort any in-flight load that still holds a reference to the old player.
+    this.loadGeneration += 1;
+    await this.releasePlayer();
   }
 
   updateMetadata(metadata: AudioMetadata): void {
@@ -145,6 +187,30 @@ export class FileAudioEngine {
     };
   }
 
+  /** Drop player without bumping loadGeneration (used by load itself). */
+  private async releasePlayer(): Promise<void> {
+    const player = this.player;
+    this.statusSub?.remove();
+    this.statusSub = null;
+    this.player = null;
+    this.metadata = undefined;
+    this.playing = false;
+    this.positionMs = 0;
+    this.durationMs = 0;
+    if (player) {
+      disposeOrphanPlayer(player);
+    }
+    this.emit();
+  }
+
+  private async discardIfCurrent(player: AudioPlayer): Promise<void> {
+    if (this.player === player) {
+      await this.releasePlayer();
+      return;
+    }
+    disposeOrphanPlayer(player);
+  }
+
   private applyRate(): void {
     const player = this.player;
     if (!player) {
@@ -196,25 +262,82 @@ export class FileAudioEngine {
   }
 }
 
-function waitForDuration(player: AudioPlayer, timeoutMs = 20_000): Promise<number> {
+function disposeOrphanPlayer(player: AudioPlayer): void {
+  try {
+    player.clearLockScreenControls();
+  } catch {
+    // already cleared
+  }
+  try {
+    player.pause();
+  } catch {
+    // already paused
+  }
+  try {
+    player.remove();
+  } catch {
+    // already released
+  }
+}
+
+function waitForDuration(
+  player: AudioPlayer,
+  isCurrent: () => boolean,
+  timeoutMs = 20_000,
+): Promise<number> {
+  if (!isCurrent()) {
+    return Promise.reject(new LoadAbortedError());
+  }
   if (player.isLoaded && player.duration > 0) {
     return Promise.resolve(Math.round(player.duration * 1000));
   }
   return new Promise((resolve, reject) => {
-    const finish = (durationSec: number) => {
+    let settled = false;
+    const cleanup = () => {
       clearTimeout(timer);
+      clearInterval(poll);
       sub.remove();
+    };
+    const finish = (durationSec: number) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
       resolve(Math.round(durationSec * 1000));
     };
+    const abort = () => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      cleanup();
+      reject(new LoadAbortedError());
+    };
     const timer = setTimeout(() => {
-      sub.remove();
+      if (!isCurrent()) {
+        abort();
+        return;
+      }
+      settled = true;
+      cleanup();
       if (player.isLoaded) {
         resolve(Math.round((player.duration || 0) * 1000));
         return;
       }
       reject(new Error('Caricamento audio non riuscito'));
     }, timeoutMs);
+    // cancelLoad does not emit player events — poll so stale waits exit promptly.
+    const poll = setInterval(() => {
+      if (!isCurrent()) {
+        abort();
+      }
+    }, 40);
     const sub = player.addListener('playbackStatusUpdate', (status) => {
+      if (!isCurrent()) {
+        abort();
+        return;
+      }
       if (status.isLoaded) {
         finish(status.duration || player.duration || 0);
       }

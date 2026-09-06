@@ -276,6 +276,23 @@ function friendlyDownloadError(error: unknown): Error {
   return error instanceof Error ? error : new Error('Questo brano non è arrivato sul telefono. Riprova.');
 }
 
+/** Parse Drive upload/update JSON body. Never throws SyntaxError — syncEngine can catch this. */
+function parseDriveUploadBody(body: string, context: 'upload' | 'update'): DriveFile {
+  const raw = typeof body === 'string' ? body.trim() : '';
+  if (!raw) {
+    throw new Error(`Drive ${context}: risposta vuota dopo HTTP ok.`);
+  }
+  try {
+    const parsed = JSON.parse(raw) as DriveFile;
+    if (parsed && typeof parsed === 'object' && typeof parsed.id === 'string' && parsed.id.length > 0) {
+      return parsed;
+    }
+  } catch {
+    // empty / HTML / non-JSON
+  }
+  throw new Error(`Drive ${context}: risposta non JSON dopo HTTP ok.`);
+}
+
 export async function downloadDriveFile(
   fileId: string,
   destUri: string,
@@ -381,7 +398,7 @@ export async function uploadDriveFile(params: {
   if (result.status < 200 || result.status >= 300) {
     throw new Error(`Drive upload ${result.status}`);
   }
-  return JSON.parse(result.body) as DriveFile;
+  return parseDriveUploadBody(result.body, 'upload');
 }
 
 export async function updateDriveFileMedia(
@@ -411,7 +428,12 @@ export async function updateDriveFileMedia(
   if (result.status < 200 || result.status >= 300) {
     throw new Error(`Drive update ${result.status}`);
   }
-  return JSON.parse(result.body) as DriveFile;
+  try {
+    return parseDriveUploadBody(result.body, 'update');
+  } catch {
+    // Media update succeeded; body may still be empty/HTML. Callers already know fileId.
+    return { id: fileId, name: '', mimeType };
+  }
 }
 
 export async function renameDriveFile(fileId: string, name: string): Promise<DriveFile> {

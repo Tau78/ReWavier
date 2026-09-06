@@ -1,12 +1,26 @@
+import { File } from 'expo-file-system';
+
 import { playableUri } from '../domain/audioFormats';
 import type { Track } from '../domain/models';
 import { useLibraryStore } from '../store/libraryStore';
 import { decodePcmPeaks, type DecodedPeaks } from './decodePcmFile';
 import { peakCountForDuration } from './pcmPeaks';
-import { createWaveformJobId, decodeViaWebView } from './waveformBridge';
+import {
+  createWaveformJobId,
+  decodeViaWebView,
+  MAX_WAVEFORM_DECODE_BYTES,
+  MAX_WAVEFORM_DECODE_DURATION_MS,
+} from './waveformBridge';
 import { readPeaksCache, writePeaksCache } from './waveformCache';
 
+/** Inflight keyed by trackId + file URI so a replace cannot reuse a stale decode. */
 const inflight = new Map<string, Promise<number[]>>();
+
+const ENSURE_PEAKS_TIMEOUT_MS = 60_000;
+
+function peaksWorkKey(trackId: string, uri: string): string {
+  return `${trackId}::${uri}`;
+}
 
 function fileNameFromUri(uri: string): string {
   const path = uri.split('?')[0] ?? uri;
@@ -14,10 +28,39 @@ function fileNameFromUri(uri: string): string {
   return decodeURIComponent(parts[parts.length - 1] ?? '');
 }
 
+function fileByteSize(uri: string): number | null {
+  try {
+    const file = new File(uri);
+    if (!file.exists) {
+      return null;
+    }
+    return typeof file.size === 'number' ? file.size : null;
+  } catch {
+    return null;
+  }
+}
+
+function tooLargeForWebDecode(fileUri: string, durationMs: number): boolean {
+  if (durationMs > MAX_WAVEFORM_DECODE_DURATION_MS) {
+    return true;
+  }
+  const size = fileByteSize(fileUri);
+  return size != null && size > MAX_WAVEFORM_DECODE_BYTES;
+}
+
 async function extractFromFile(fileUri: string, durationMs: number): Promise<DecodedPeaks> {
+  if (tooLargeForWebDecode(fileUri, durationMs)) {
+    // Empty peaks: avoid OOM; UI keeps placeholder until a lighter path exists.
+    return { peaks: [], durationMs };
+  }
   const pcm = await decodePcmPeaks(fileUri);
   if (pcm && pcm.peaks.length > 0) {
     return pcm;
+  }
+  // PCM may refuse after size/header checks that the track hint missed.
+  const knownDurationMs = Math.max(durationMs, pcm?.durationMs ?? 0);
+  if (tooLargeForWebDecode(fileUri, knownDurationMs)) {
+    return { peaks: [], durationMs: knownDurationMs };
   }
   const samples = peakCountForDuration(durationMs);
   return decodeViaWebView({
@@ -25,7 +68,17 @@ async function extractFromFile(fileUri: string, durationMs: number): Promise<Dec
     fileName: fileNameFromUri(fileUri),
     uri: fileUri,
     samples,
+    durationMs,
   });
+}
+
+/** Drop in-flight peak jobs for a track (call when the audio file is replaced). */
+export function invalidatePeaksWork(trackId: string): void {
+  for (const key of [...inflight.keys()]) {
+    if (key === trackId || key.startsWith(`${trackId}::`)) {
+      inflight.delete(key);
+    }
+  }
 }
 
 export async function ensurePeaks(track: Track): Promise<number[]> {
@@ -39,7 +92,8 @@ export async function ensurePeaks(track: Track): Promise<number[]> {
     return cached;
   }
 
-  const existing = inflight.get(track.id);
+  const key = peaksWorkKey(track.id, uri);
+  const existing = inflight.get(key);
   if (existing) {
     return existing;
   }
@@ -47,6 +101,10 @@ export async function ensurePeaks(track: Track): Promise<number[]> {
   const work = (async () => {
     const disk = await readPeaksCache(uri);
     if (disk && disk.peaks.length > 0) {
+      const still = useLibraryStore.getState().getTrack(track.id);
+      if (!still || playableUri(still) !== uri) {
+        return [];
+      }
       useLibraryStore.getState().setTrackPeaks(track.id, disk.peaks);
       if (disk.durationMs > 0 && disk.durationMs !== track.durationMs) {
         useLibraryStore.getState().updateTrackDuration(track.id, disk.durationMs);
@@ -55,18 +113,54 @@ export async function ensurePeaks(track: Track): Promise<number[]> {
     }
 
     const result = await extractFromFile(uri, track.durationMs);
+    const still = useLibraryStore.getState().getTrack(track.id);
+    if (!still || playableUri(still) !== uri) {
+      return [];
+    }
+    if (result.peaks.length === 0) {
+      return [];
+    }
     useLibraryStore.getState().setTrackPeaks(track.id, result.peaks);
     if (result.durationMs > 0 && result.durationMs !== track.durationMs) {
       useLibraryStore.getState().updateTrackDuration(track.id, result.durationMs);
     }
+    // Yield before large JSON.stringify so the UI can process taps.
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
     await writePeaksCache(uri, result);
     return result.peaks;
   })();
 
-  inflight.set(track.id, work);
+  inflight.set(key, work);
+
+  let timedOut = false;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const raced = Promise.race([
+    work,
+    new Promise<number[]>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        // Unblock callers; allow a later retry if the hung job never settles.
+        if (inflight.get(key) === work) {
+          inflight.delete(key);
+        }
+        reject(new Error('Timeout estrazione peaks'));
+      }, ENSURE_PEAKS_TIMEOUT_MS);
+    }),
+  ]);
+
   try {
-    return await work;
+    return await raced;
+  } catch {
+    if (inflight.get(key) === work) {
+      inflight.delete(key);
+    }
+    return [];
   } finally {
-    inflight.delete(track.id);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    if (!timedOut && inflight.get(key) === work) {
+      inflight.delete(key);
+    }
   }
 }

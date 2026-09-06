@@ -68,6 +68,13 @@ export function DriveFolderScreen() {
   const searchGen = useRef(0);
   const tabRef = useRef(tab);
   tabRef.current = tab;
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const browsing = stack.length > 0;
   const current = stack[stack.length - 1];
@@ -215,12 +222,18 @@ export function DriveFolderScreen() {
           albumId,
           sharedDriveId: current.sharedDriveId,
         });
+        if (!mountedRef.current) {
+          return;
+        }
         if (albumId) {
           navigation.goBack();
           return;
         }
         navigation.replace('Collection', { kind: 'album', id });
       } catch (error) {
+        if (!mountedRef.current) {
+          return;
+        }
         const raw = error instanceof Error ? error.message : '';
         const technical =
           /file:\/\/|%25|downloadAsync|does not exist|\/Users\/|Containers\//i.test(raw);
@@ -229,7 +242,9 @@ export function DriveFolderScreen() {
           raw && !technical ? raw : 'Questo brano non è arrivato sul telefono. Riprova.',
         );
       } finally {
-        setWorking(false);
+        if (mountedRef.current) {
+          setWorking(false);
+        }
       }
     })();
   };

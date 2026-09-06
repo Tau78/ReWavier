@@ -1,5 +1,5 @@
 import { File } from 'expo-file-system';
-import { Alert } from 'react-native';
+import { Alert, InteractionManager } from 'react-native';
 import { create } from 'zustand';
 
 import {
@@ -305,19 +305,61 @@ function findImportedTrack(tracks: Track[], incoming: Track): Track | undefined 
 }
 
 function collapseDuplicateTracks(tracks: Track[], albums: Album[]): { tracks: Track[]; albums: Album[] } {
-  const groups: Track[][] = [];
-  for (const track of tracks) {
-    const group = groups.find((items) => items.some((item) => tracksAreSameImport(item, track)));
-    if (group) {
-      group.push(track);
-    } else {
-      groups.push([track]);
+  const n = tracks.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const find = (i: number): number => {
+    let cur = i;
+    while (parent[cur] !== cur) {
+      parent[cur] = parent[parent[cur]];
+      cur = parent[cur];
+    }
+    return cur;
+  };
+  const union = (a: number, b: number) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) {
+      parent[rb] = ra;
+    }
+  };
+
+  const byId = new Map<string, number>();
+  const byDrive = new Map<string, number>();
+  const byName = new Map<string, number>();
+  for (let i = 0; i < n; i++) {
+    const track = tracks[i]!;
+    const idHit = byId.get(track.id);
+    if (idHit != null) {
+      union(i, idHit);
+    }
+    byId.set(track.id, i);
+    if (track.driveFileId) {
+      const driveHit = byDrive.get(track.driveFileId);
+      if (driveHit != null) {
+        union(i, driveHit);
+      }
+      byDrive.set(track.driveFileId, i);
+    }
+    const name = importNameKey(track);
+    if (name) {
+      const nameHit = byName.get(name);
+      if (nameHit != null) {
+        union(i, nameHit);
+      }
+      byName.set(name, i);
     }
   }
-  const winners = groups.map((group) =>
-    group.reduce((best, track) => (trackQuality(track) > trackQuality(best) ? track : best)),
-  );
-  const keep = new Set(winners.map((track) => track.id));
+
+  const bestByRoot = new Map<number, Track>();
+  for (let i = 0; i < n; i++) {
+    const track = tracks[i]!;
+    const root = find(i);
+    const best = bestByRoot.get(root);
+    if (!best || trackQuality(track) > trackQuality(best)) {
+      bestByRoot.set(root, track);
+    }
+  }
+  const keep = new Set([...bestByRoot.values()].map((track) => track.id));
   return {
     tracks: tracks.filter((track) => keep.has(track.id)),
     albums: albums.map((album) => ({
@@ -1086,6 +1128,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   replaceTrackFile(trackId, fileUri, keepMarkerIds) {
     const keep = new Set(keepMarkerIds);
     const now = Date.now();
+    void import('../audio/extractPeaks').then((mod) => mod.invalidatePeaksWork(trackId));
     set((state) => {
       const current = state.markersByTrackId[trackId] ?? [];
       const nextMarkers = current.map((marker) =>
@@ -1172,6 +1215,15 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         });
         if (previousUri && previousUri !== fileUri) {
           void removeUri(previousUri);
+        }
+        const next = get().getTrack(trackId);
+        if (next && playableUri(next)) {
+          // Pre-warm peaks off the tap path (same idea as ReplaceFileScreen).
+          InteractionManager.runAfterInteractions(() => {
+            void import('../audio/extractPeaks')
+              .then((mod) => mod.ensurePeaks(next))
+              .catch(() => undefined);
+          });
         }
       } else {
         set((state) => {
@@ -1451,6 +1503,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       markersByTrackId: {},
       peaksByTrackId: {},
       downloadingIds: {},
+      libraryHydrated: false,
     });
   },
 
@@ -1461,37 +1514,49 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   async hydrate() {
-    persistReady = false;
-    if (persistTimer) {
-      clearTimeout(persistTimer);
-      persistTimer = undefined;
+    if (libraryHydratePromise) {
+      return libraryHydratePromise;
     }
-    const user = useSessionStore.getState().user;
-    if (!user) {
-      get().unload();
-      return;
-    }
-    setActiveLibraryOwner(user.id);
-    if (!isDemoUser(user)) {
-      await adoptLegacyLibraryIfNeeded(user.id);
-    }
-    const snapshot = await loadLibrarySnapshot({ requireOwnerKey: isDemoUser(user) });
-    set({
-      tracks: snapshot?.tracks ?? [],
-      folders: snapshot?.folders ?? [],
-      albums: snapshot?.albums ?? [],
-      playlists: snapshot?.playlists ?? [],
-      smartPlaylists: snapshot?.smartPlaylists ?? [],
-      markersByTrackId: snapshot?.markersByTrackId ?? {},
-      peaksByTrackId: {},
-      downloadingIds: {},
-    });
-    persistReady = true;
-    if (isDemoUser(user)) {
-      useSyncStore.getState().reset();
-      return;
-    }
-    void finishLibraryHydrate(snapshot != null);
+    libraryHydratePromise = (async () => {
+      try {
+        persistReady = false;
+        if (persistTimer) {
+          clearTimeout(persistTimer);
+          persistTimer = undefined;
+        }
+        set({ libraryHydrated: false });
+        const user = useSessionStore.getState().user;
+        if (!user) {
+          get().unload();
+          return;
+        }
+        setActiveLibraryOwner(user.id);
+        if (!isDemoUser(user)) {
+          await adoptLegacyLibraryIfNeeded(user.id);
+        }
+        const snapshot = await loadLibrarySnapshot({ requireOwnerKey: isDemoUser(user) });
+        set({
+          tracks: snapshot?.tracks ?? [],
+          folders: snapshot?.folders ?? [],
+          albums: snapshot?.albums ?? [],
+          playlists: snapshot?.playlists ?? [],
+          smartPlaylists: snapshot?.smartPlaylists ?? [],
+          markersByTrackId: snapshot?.markersByTrackId ?? {},
+          peaksByTrackId: {},
+          downloadingIds: {},
+        });
+        persistReady = true;
+        if (isDemoUser(user)) {
+          useSyncStore.getState().reset();
+          return;
+        }
+        await finishLibraryHydrate(snapshot != null);
+      } finally {
+        set({ libraryHydrated: true });
+        libraryHydratePromise = undefined;
+      }
+    })();
+    return libraryHydratePromise;
   },
 
   getTrack(id) {

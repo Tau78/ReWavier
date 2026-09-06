@@ -6,6 +6,8 @@ import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 import { libraryDirectory } from '../files/libraryFiles';
 import { normalizePeaks } from './pcmPeaks';
 import {
+  MAX_WAVEFORM_DECODE_BYTES,
+  MAX_WAVEFORM_DECODE_DURATION_MS,
   registerWaveformDecoder,
   type WaveformJob,
 } from './waveformBridge';
@@ -16,20 +18,43 @@ const DECODER_HTML = `<!DOCTYPE html>
 <head><meta charset="utf-8" /><style>html,body{margin:0;background:transparent}</style></head>
 <body>
 <script>
+var MAX_BYTES = ${MAX_WAVEFORM_DECODE_BYTES};
+var MAX_DURATION_SEC = ${MAX_WAVEFORM_DECODE_DURATION_MS / 1000};
 function mix(channels, i) {
   var sum = 0;
   for (var c = 0; c < channels.length; c++) sum += channels[c][i] || 0;
   return sum / channels.length;
 }
 window.__decode = function (job) {
+  if (job.durationMs && job.durationMs > ${MAX_WAVEFORM_DECODE_DURATION_MS}) {
+    window.ReactNativeWebView.postMessage(JSON.stringify({
+      id: job.id,
+      ok: false,
+      error: 'File troppo lungo per la waveform'
+    }));
+    return;
+  }
   fetch('./' + job.fileName)
     .catch(function () { return fetch(job.fileName); })
     .catch(function () { return fetch(job.uri); })
-    .then(function (res) { return res.arrayBuffer(); })
+    .then(function (res) {
+      var len = Number(res.headers.get('content-length') || 0);
+      if (len > MAX_BYTES) {
+        throw new Error('File troppo grande per la waveform');
+      }
+      return res.arrayBuffer();
+    })
     .then(function (ab) {
+      if (ab.byteLength > MAX_BYTES) {
+        throw new Error('File troppo grande per la waveform');
+      }
       var Ctx = window.AudioContext || window.webkitAudioContext;
       var ctx = new Ctx();
       return ctx.decodeAudioData(ab.slice(0)).then(function (buf) {
+        if (buf.duration > MAX_DURATION_SEC) {
+          ctx.close();
+          throw new Error('File troppo lungo per la waveform');
+        }
         var channels = [];
         for (var c = 0; c < buf.numberOfChannels; c++) channels.push(buf.getChannelData(c));
         var n = buf.length;
@@ -77,6 +102,37 @@ type Waiter = {
   timer: ReturnType<typeof setTimeout>;
 };
 
+function fileByteSize(uri: string): number | null {
+  try {
+    const file = new File(uri);
+    if (!file.exists) {
+      return null;
+    }
+    return typeof file.size === 'number' ? file.size : null;
+  } catch {
+    return null;
+  }
+}
+
+function refuseOversizedJob(job: WaveformJob): Error | null {
+  const durationMs = job.durationMs ?? 0;
+  if (durationMs > MAX_WAVEFORM_DECODE_DURATION_MS) {
+    return new Error('File troppo lungo per la waveform');
+  }
+  const size = fileByteSize(job.uri);
+  if (size != null && size > MAX_WAVEFORM_DECODE_BYTES) {
+    return new Error('File troppo grande per la waveform');
+  }
+  return null;
+}
+
+function rejectWaiters(waiters: Waiter[], message: string): void {
+  for (const waiter of waiters) {
+    clearTimeout(waiter.timer);
+    waiter.reject(new Error(message));
+  }
+}
+
 export function WaveformDecoderHost() {
   const webViewRef = useRef<WebView>(null);
   const [sourceUri, setSourceUri] = useState<string | null>(null);
@@ -92,12 +148,20 @@ export function WaveformDecoderHost() {
     if (!next) {
       return;
     }
+    const oversized = refuseOversizedJob(next.job);
+    if (oversized) {
+      clearTimeout(next.timer);
+      next.reject(oversized);
+      kick();
+      return;
+    }
     currentRef.current = next;
     const payload = JSON.stringify({
       id: next.job.id,
       fileName: next.job.fileName,
       uri: next.job.uri,
       samples: next.job.samples,
+      durationMs: next.job.durationMs ?? 0,
     });
     webViewRef.current.injectJavaScript(`window.__decode(${payload}); true;`);
   };
@@ -110,10 +174,17 @@ export function WaveformDecoderHost() {
 
     registerWaveformDecoder((job) => {
       return new Promise<DecodedPeaks>((resolve, reject) => {
+        const oversized = refuseOversizedJob(job);
+        if (oversized) {
+          reject(oversized);
+          return;
+        }
         const timer = setTimeout(() => {
           if (currentRef.current?.job.id === job.id) {
             currentRef.current = null;
             kick();
+          } else {
+            queueRef.current = queueRef.current.filter((w) => w.job.id !== job.id);
           }
           reject(new Error('Timeout decodifica waveform'));
         }, 45_000);
@@ -125,6 +196,13 @@ export function WaveformDecoderHost() {
     return () => {
       registerWaveformDecoder(null);
       readyRef.current = false;
+      const pending = queueRef.current.splice(0, queueRef.current.length);
+      const current = currentRef.current;
+      currentRef.current = null;
+      if (current) {
+        pending.push(current);
+      }
+      rejectWaiters(pending, 'Decodifica waveform interrotta');
     };
   }, []);
 
@@ -153,13 +231,19 @@ export function WaveformDecoderHost() {
       payload.peaks.length > 0 &&
       payload.peaks.every((value) => typeof value === 'number')
     ) {
-      current.resolve({
-        peaks: normalizePeaks(payload.peaks),
-        durationMs: payload.durationMs ?? 0,
-      });
-    } else {
-      current.reject(new Error(payload.error || 'Decodifica waveform non riuscita'));
+      const peaks = payload.peaks;
+      const durationMs = payload.durationMs ?? 0;
+      // Yield so React can paint / handle taps before normalizePeaks.
+      setTimeout(() => {
+        current.resolve({
+          peaks: normalizePeaks(peaks),
+          durationMs,
+        });
+        kick();
+      }, 0);
+      return;
     }
+    current.reject(new Error(payload.error || 'Decodifica waveform non riuscita'));
     kick();
   };
 

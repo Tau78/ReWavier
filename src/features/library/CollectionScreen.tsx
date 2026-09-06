@@ -333,7 +333,7 @@ export function CollectionScreen() {
         ? `Drive · ${album.trackIds.length} tracce`
         : album?.artist || `${album?.trackIds.length ?? 0} tracce`
       : kind === 'smart'
-        ? `${smartPlaylists.find((item) => item.id === id)?.conditions.length ?? 0} regole`
+        ? `${smartPlaylists.find((item) => item.id === id)?.conditions?.length ?? 0} regole`
         : `${tracks.length} tracce`;
 
   const downloadKind = kind === 'folder' ? 'folder' : 'album';

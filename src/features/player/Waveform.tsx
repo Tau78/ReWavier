@@ -604,8 +604,14 @@ export function Waveform() {
 
   const translateX = useRef(new Animated.Value(0)).current;
   const playheadX = useRef(new Animated.Value(0)).current;
+  const playheadAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   const tapeStartRef = useRef(0);
   const lastDetailSpan = useRef(DEFAULT_DETAIL_MS);
+
+  const stopPlayheadAnim = () => {
+    playheadAnimRef.current?.stop();
+    playheadAnimRef.current = null;
+  };
 
   const durationMs = Math.max(track.durationMs, 1);
   const detailSpan = clampWindowMs(detailWindowMs, durationMs);
@@ -685,12 +691,15 @@ export function Waveform() {
       setTapeStartMs(nextTape);
     }
     if (zoomWidth <= 0) {
+      stopPlayheadAnim();
       return;
     }
     const tx = tapeTranslateX(positionMs, nextTape, durationMs, zoomWidth, detailSpan);
     const hx = playheadOffsetPx(positionMs, durationMs, zoomWidth, detailSpan) - PLAYHEAD_HALF;
+    // One in-flight timing only: positionMs arrives ~20Hz; stacking 52ms parallels freezes JS/native.
+    stopPlayheadAnim();
     if (isPlaying && !tapeChanged && !spanChanged) {
-      Animated.parallel([
+      const anim = Animated.parallel([
         Animated.timing(translateX, {
           toValue: tx,
           duration: 52,
@@ -703,12 +712,20 @@ export function Waveform() {
           easing: Easing.linear,
           useNativeDriver: true,
         }),
-      ]).start();
+      ]);
+      playheadAnimRef.current = anim;
+      anim.start(({ finished }) => {
+        if (finished && playheadAnimRef.current === anim) {
+          playheadAnimRef.current = null;
+        }
+      });
       return;
     }
     translateX.setValue(tx);
     playheadX.setValue(hx);
   }, [positionMs, isPlaying, zoomWidth, durationMs, detailSpan, translateX, playheadX]);
+
+  useEffect(() => () => stopPlayheadAnim(), []);
 
   const overviewBars = useMemo(() => {
     const count = overviewWidth > 0 ? Math.max(48, Math.floor(overviewWidth / 3.4)) : 0;
@@ -721,7 +738,8 @@ export function Waveform() {
   }, [peaks, overviewWidth, overviewView.startMs, overviewView.endMs, durationMs]);
 
   const zoomBars = useMemo(() => {
-    const count = tapeWidth > 0 ? Math.max(40, Math.floor(tapeWidth / 4.2)) : 0;
+    const count =
+      tapeWidth > 0 ? Math.min(480, Math.max(40, Math.floor(tapeWidth / 4.2))) : 0;
     return samplePeaks(peaks, tapeStartMs / durationMs, (tapeStartMs + tapeSpanMs) / durationMs, count);
   }, [peaks, tapeWidth, tapeStartMs, tapeSpanMs, durationMs]);
 

@@ -9,7 +9,7 @@ import { copyReplacementAudio, pickReplacementAudio } from '../../files/libraryF
 import type { RootStackParamList } from '../../navigation/types';
 import { ensurePeaks } from '../../audio/extractPeaks';
 import { useLibraryStore } from '../../store/libraryStore';
-import { usePlayerStore } from '../../store/playerStore';
+import { releaseTrackFromPlayer, usePlayerStore } from '../../store/playerStore';
 import { colors, layout } from '../../theme/colors';
 import { KindRow } from '../../theme/graphics';
 
@@ -97,11 +97,17 @@ export function ReplaceFileScreen() {
           picked.uri,
           track.sourceFileName ?? picked.name,
         );
+        // Same order as downloadTrack({ replace: true }): unload first or the
+        // engine keeps the old file open and the UI freezes on reload.
+        const wasLoaded = usePlayerStore.getState().track.id === track.id;
+        if (wasLoaded) {
+          await releaseTrackFromPlayer(track.id);
+        }
         useLibraryStore.getState().replaceTrackFile(track.id, fileUri, [...keepIds]);
         const next = useLibraryStore.getState().getTrack(track.id);
         if (next) {
           void ensurePeaks(next).catch(() => undefined);
-          if (usePlayerStore.getState().track.id === next.id) {
+          if (wasLoaded) {
             const nextMarkers = useLibraryStore.getState().markersByTrackId[next.id] ?? [];
             usePlayerStore.getState().loadTrack(next, nextMarkers);
           }

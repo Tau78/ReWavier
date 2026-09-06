@@ -1,28 +1,49 @@
 import type { DecodedPeaks } from './decodePcmFile';
 
+/** Skip full WebView decode above these caps — mobile OOM from unbounded PCM. */
+export const MAX_WAVEFORM_DECODE_DURATION_MS = 15 * 60 * 1000; // 15 min
+export const MAX_WAVEFORM_DECODE_BYTES = 24 * 1024 * 1024; // 24 MB compressed
+
 export type WaveformJob = {
   id: string;
   fileName: string;
   uri: string;
   samples: number;
+  /** Known duration hint; used to refuse oversized tracks before decode. */
+  durationMs?: number;
 };
 
 type DecoderFn = (job: WaveformJob) => Promise<DecodedPeaks>;
 
-let decoder: DecoderFn | null = null;
-const waiting: Array<{
+type WaitingItem = {
   job: WaveformJob;
   resolve: (value: DecodedPeaks) => void;
   reject: (error: Error) => void;
-}> = [];
+  timer: ReturnType<typeof setTimeout>;
+};
+
+let decoder: DecoderFn | null = null;
+const waiting: WaitingItem[] = [];
+
+const WAIT_FOR_DECODER_MS = 45_000;
+
+function clearWaitingTimer(item: WaitingItem): void {
+  clearTimeout(item.timer);
+}
 
 export function registerWaveformDecoder(next: DecoderFn | null): void {
   decoder = next;
   if (!next) {
+    const queued = waiting.splice(0, waiting.length);
+    for (const item of queued) {
+      clearWaitingTimer(item);
+      item.reject(new Error('Decodifica waveform interrotta'));
+    }
     return;
   }
   const queued = waiting.splice(0, waiting.length);
   for (const item of queued) {
+    clearWaitingTimer(item);
     next(item.job).then(item.resolve, item.reject);
   }
 }
@@ -32,7 +53,19 @@ export function decodeViaWebView(job: WaveformJob): Promise<DecodedPeaks> {
     return decoder(job);
   }
   return new Promise((resolve, reject) => {
-    waiting.push({ job, resolve, reject });
+    const item: WaitingItem = {
+      job,
+      resolve,
+      reject,
+      timer: setTimeout(() => {
+        const idx = waiting.indexOf(item);
+        if (idx >= 0) {
+          waiting.splice(idx, 1);
+        }
+        reject(new Error('Timeout attesa decoder waveform'));
+      }, WAIT_FOR_DECODER_MS),
+    };
+    waiting.push(item);
   });
 }
 

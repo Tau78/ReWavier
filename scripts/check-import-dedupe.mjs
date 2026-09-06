@@ -30,19 +30,49 @@ function trackQuality(track) {
 }
 
 function collapseDuplicateTracks(tracks, albums) {
-  const groups = [];
-  for (const track of tracks) {
-    const group = groups.find((items) => items.some((item) => tracksAreSameImport(item, track)));
-    if (group) {
-      group.push(track);
-    } else {
-      groups.push([track]);
+  const n = tracks.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const find = (i) => {
+    let cur = i;
+    while (parent[cur] !== cur) {
+      parent[cur] = parent[parent[cur]];
+      cur = parent[cur];
+    }
+    return cur;
+  };
+  const union = (a, b) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[rb] = ra;
+  };
+  const byId = new Map();
+  const byDrive = new Map();
+  const byName = new Map();
+  for (let i = 0; i < n; i++) {
+    const track = tracks[i];
+    const idHit = byId.get(track.id);
+    if (idHit != null) union(i, idHit);
+    byId.set(track.id, i);
+    if (track.driveFileId) {
+      const driveHit = byDrive.get(track.driveFileId);
+      if (driveHit != null) union(i, driveHit);
+      byDrive.set(track.driveFileId, i);
+    }
+    const name = importNameKey(track);
+    if (name) {
+      const nameHit = byName.get(name);
+      if (nameHit != null) union(i, nameHit);
+      byName.set(name, i);
     }
   }
-  const winners = groups.map((group) =>
-    group.reduce((best, track) => (trackQuality(track) > trackQuality(best) ? track : best)),
-  );
-  const keep = new Set(winners.map((track) => track.id));
+  const bestByRoot = new Map();
+  for (let i = 0; i < n; i++) {
+    const track = tracks[i];
+    const root = find(i);
+    const best = bestByRoot.get(root);
+    if (!best || trackQuality(track) > trackQuality(best)) bestByRoot.set(root, track);
+  }
+  const keep = new Set([...bestByRoot.values()].map((track) => track.id));
   return {
     tracks: tracks.filter((track) => keep.has(track.id)),
     albums: albums.map((album) => ({

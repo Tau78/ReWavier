@@ -1,8 +1,8 @@
-import { Alert } from 'react-native';
+import { Alert, InteractionManager } from 'react-native';
 import { create } from 'zustand';
 
 import { ensurePeaks } from '../audio/extractPeaks';
-import { FileAudioEngine } from '../audio/fileEngine';
+import { FileAudioEngine, isLoadAborted } from '../audio/fileEngine';
 import { MockAudioEngine } from '../audio/mockEngine';
 import { nowPlayingMetadata } from '../audio/nowPlaying';
 import { playableUri } from '../domain/audioFormats';
@@ -206,13 +206,21 @@ function pauseEngines(state: PlayerState): void {
     return;
   }
   pendingPlay = false;
-  if (state.loadState === 'ready') {
-    fileEngine.pause();
+  // Pause native audio even if loadState is still 'loading' (race after file replace).
+  if (state.loadState === 'ready' || usingFile) {
+    try {
+      fileEngine.pause();
+    } catch {
+      // session already gone
+    }
   }
 }
 
 function resetPlayerRuntime() {
   loadGeneration += 1;
+  // Abort in-flight fileEngine.load / waitForDuration so a new load cannot
+  // overlap unload+create on the shared native player (expo-audio crash).
+  fileEngine.cancelLoad();
   pendingPlay = false;
   pendingSeekMs = null;
   resumeAfterBubble = false;
@@ -254,6 +262,8 @@ export async function releaseTrackFromPlayer(trackId: string): Promise<void> {
   const wasPlaying = player.isPlaying;
   const queueIds = player.queueIds;
   resetPlayerRuntime();
+  // Drop queued loads so a replace cannot leave a stale loadChain holding the engine.
+  loadChain = Promise.resolve();
   try {
     await fileEngine.unload();
   } catch {
@@ -299,7 +309,10 @@ export function refreshPlayingArtwork(trackId: string) {
 /** Free the shared audio session so a sketch can open the mic (expo-audio). */
 export async function releaseAudioForRecording(): Promise<void> {
   usePlayerStore.getState().pause();
+  loadGeneration += 1;
+  fileEngine.cancelLoad();
   if (!usingFile) {
+    await fileEngine.unload();
     return;
   }
   usingFile = false;
@@ -371,9 +384,13 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       return;
     }
     pendingSeekMs = null;
-    if (state.loadState === 'ready') {
-      fileEngine.pause();
-      fileEngine.seekTo(range.startMs);
+    if (state.loadState === 'ready' || usingFile) {
+      try {
+        fileEngine.pause();
+        fileEngine.seekTo(range.startMs);
+      } catch {
+        // session already gone
+      }
     }
     set({ positionMs: range.startMs, isPlaying: false });
   },
@@ -808,6 +825,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
   loadTrack(track, markers = [], queueIds, options) {
     const gen = ++loadGeneration;
+    // Cancel any native load already past the loadChain gate (orphaned chain
+    // after releaseTrackFromPlayer, or a still-awaiting waitForDuration).
+    fileEngine.cancelLoad();
     resumeAfterBubble = false;
     lastAdvanceKey = '';
     aroundUntilMs = null;
@@ -841,28 +861,38 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     });
 
     if (uri) {
-      void ensurePeaks(track)
-        .then((peaks) => {
-          if (gen !== loadGeneration || get().track.id !== track.id || peaks.length === 0) {
-            return;
-          }
-          set({ peaks });
-          const durationMs = useLibraryStore.getState().getTrack(track.id)?.durationMs;
-          if (durationMs && durationMs !== get().track.durationMs) {
-            set((state) => ({
-              track: boundsForDuration(state.track, durationMs),
-            }));
-          }
-        })
-        .catch(() => undefined);
+      // Peaks after interactions so tap → play stays responsive (esp. after Drive replace).
+      InteractionManager.runAfterInteractions(() => {
+        if (gen !== loadGeneration || get().track.id !== track.id) {
+          return;
+        }
+        void ensurePeaks(track)
+          .then((peaks) => {
+            if (gen !== loadGeneration || get().track.id !== track.id || peaks.length === 0) {
+              return;
+            }
+            set({ peaks });
+            const durationMs = useLibraryStore.getState().getTrack(track.id)?.durationMs;
+            if (durationMs && durationMs !== get().track.durationMs) {
+              set((state) => ({
+                track: boundsForDuration(state.track, durationMs),
+              }));
+            }
+          })
+          .catch(() => undefined);
+      });
 
       loadChain = loadChain.then(async () => {
         if (gen !== loadGeneration) {
           return;
         }
         try {
-          const durationMs = await fileEngine.load(uri, nowPlayingMetadata(track));
+          const durationMs = await fileEngine.load(uri, nowPlayingMetadata(track), () =>
+            gen === loadGeneration && get().track.id === track.id,
+          );
           if (gen !== loadGeneration || get().track.id !== track.id) {
+            // Stale after await: engine load may have created a player for us —
+            // only keep it if this generation still owns the session.
             return;
           }
           usingFile = true;
@@ -891,9 +921,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
           if (pendingPlay) {
             pendingPlay = false;
             fileEngine.play();
+            set({ isPlaying: true });
           }
-        } catch {
-          if (gen !== loadGeneration || get().track.id !== track.id) {
+        } catch (error) {
+          if (isLoadAborted(error) || gen !== loadGeneration || get().track.id !== track.id) {
             return;
           }
           usingFile = false;

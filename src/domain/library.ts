@@ -146,10 +146,11 @@ export function trackMatchesSmart(
   markers: Marker[],
   playlist: SmartPlaylist,
 ): boolean {
-  if (playlist.conditions.length === 0) {
+  const conditions = playlist.conditions ?? [];
+  if (conditions.length === 0) {
     return false;
   }
-  return playlist.conditions.every((condition) => {
+  return conditions.every((condition) => {
     if (condition.type === 'minNotes') {
       return markers.filter((marker) => marker.hidden !== true).length >= condition.value;
     }
