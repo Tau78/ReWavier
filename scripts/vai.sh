@@ -306,10 +306,11 @@ merge_pr() {
     local behind
     behind="$(git rev-list --count HEAD..@{u} 2>/dev/null || echo 0)"
     if [[ "${behind:-0}" != "0" ]]; then
-      git pull --ff-only origin main
+      # Prefer ff; if main diverged (commit locale + remoto), merge.
+      git pull --ff-only origin main 2>/dev/null || git pull --no-rebase origin main
     fi
   else
-    git pull --ff-only origin main 2>/dev/null || true
+    git pull --ff-only origin main 2>/dev/null || git pull --no-rebase origin main 2>/dev/null || true
   fi
 
   if [[ "$start_branch" != "main" ]]; then
