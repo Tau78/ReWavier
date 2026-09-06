@@ -31,7 +31,7 @@ import { formatTimecode } from '../../domain/models';
 import { copyToDownloads } from '../../files/downloads';
 import type { RootStackParamList } from '../../navigation/types';
 import { useLibraryStore } from '../../store/libraryStore';
-import { releaseAudioForRecording } from '../../store/playerStore';
+import { releaseAudioForRecording, reloadCurrentTrackIfNeeded } from '../../store/playerStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { colors, layout } from '../../theme/colors';
 import { KindRow } from '../../theme/graphics';
@@ -141,7 +141,11 @@ export function RecordSketchScreen() {
       } catch {
         // Already released after navigation — do not throw into the error boundary.
       }
-      void applyPlaybackAudioMode().catch(() => undefined);
+      void applyPlaybackAudioMode()
+        .catch(() => undefined)
+        .finally(() => {
+          reloadCurrentTrackIfNeeded();
+        });
     };
     // recorder identity is stable for the screen lifetime
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -201,12 +205,18 @@ export function RecordSketchScreen() {
     });
   };
 
+  const restorePlaybackAfterMic = async () => {
+    await applyPlaybackAudioMode().catch(() => undefined);
+    reloadCurrentTrackIfNeeded();
+  };
+
   const start = async () => {
     try {
       await releaseAudioForRecording();
       const permission = await requestRecordingPermissionsAsync();
       if (!permission.granted) {
         Alert.alert('Microfono', 'Per registrare una bozza serve il permesso microfono.');
+        await restorePlaybackAfterMic();
         return;
       }
       await setAudioModeAsync({
@@ -222,6 +232,7 @@ export function RecordSketchScreen() {
       setElapsedMs(0);
     } catch (error) {
       setRecording(false);
+      await restorePlaybackAfterMic();
       if (shouldExplainScreenMicConflict(isScreenCaptured(), true)) {
         Alert.alert(
           'Microfono occupato',
@@ -252,7 +263,7 @@ export function RecordSketchScreen() {
         setElapsedMs(next.durationMillis);
       }
     } finally {
-      await applyPlaybackAudioMode().catch(() => undefined);
+      await restorePlaybackAfterMic();
     }
   };
 
@@ -327,7 +338,10 @@ export function RecordSketchScreen() {
     } catch (error) {
       Alert.alert('Salvataggio', error instanceof Error ? error.message : 'Non riesco a salvare la bozza');
     } finally {
-      setSaving(false);
+      // Success path sets disposedRef before navigate — skip setState on unmounted screen.
+      if (!disposedRef.current) {
+        setSaving(false);
+      }
     }
   };
 

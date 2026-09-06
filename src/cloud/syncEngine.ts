@@ -195,7 +195,7 @@ export async function peekDriveAlbum(albumId: string): Promise<DriveAlbumPeek> {
     return empty;
   }
 
-  const tree = await listDriveFolderTree(
+  const { nodes: tree } = await listDriveFolderTree(
     folderId,
     album.driveFolderName || album.name,
     album.driveRecursive ? 8 : 0,
@@ -412,7 +412,7 @@ async function runCloudSyncBody(): Promise<void> {
         return;
       }
 
-      const tree = await listDriveFolderTree(
+      const { nodes: tree, truncated: treeTruncated } = await listDriveFolderTree(
         folderId,
         album.driveFolderName || album.name,
         album.driveRecursive ? 8 : 0,
@@ -429,6 +429,8 @@ async function runCloudSyncBody(): Promise<void> {
       );
       const sidecars = tree.flatMap((node) => node.children.filter((file) => isSidecarName(file.name)));
       const importedRemotes = createRemoteClaimSet();
+      // One snapshot per album pass — refreshed after imports that add tracks.
+      let locals = albumLocalTracks(album.id, treeFolderIds);
 
       for (const remote of audios) {
         if (!isCloudSyncUserActive(expectedUserId)) {
@@ -439,7 +441,6 @@ async function runCloudSyncBody(): Promise<void> {
         if (remoteIsClaimed(importedRemotes, remote)) {
           continue;
         }
-        const locals = albumLocalTracks(album.id, treeFolderIds);
         const existing = findBestLocalForRemote(locals, remote);
         const onAlbum = new Set(
           useLibraryStore.getState().tracksIn('album', album.id).map((track) => track.id),
@@ -452,7 +453,8 @@ async function runCloudSyncBody(): Promise<void> {
             sync.finish({ lastSyncedAt: Date.now(), message: null });
             return;
           }
-          const appeared = findBestLocalForRemote(albumLocalTracks(album.id, treeFolderIds), remote);
+          locals = albumLocalTracks(album.id, treeFolderIds);
+          const appeared = findBestLocalForRemote(locals, remote);
           if (appeared) {
             if (!onAlbum.has(appeared.id)) {
               store.addTracksToAlbum(album.id, [appeared.id]);
@@ -479,6 +481,7 @@ async function runCloudSyncBody(): Promise<void> {
             ],
             { albumId: album.id },
           );
+          locals = albumLocalTracks(album.id, treeFolderIds);
           added += 1;
           claimRemote(importedRemotes, remote);
           continue;
@@ -509,15 +512,24 @@ async function runCloudSyncBody(): Promise<void> {
         versioned += 1;
       }
 
-      const localTracks = albumLocalTracks(album.id, treeFolderIds);
-      const extras = surplusLocalTracks(localTracks, audios);
-      for (const track of extras) {
-        if (!isCloudSyncUserActive(expectedUserId)) {
-          sync.finish({ lastSyncedAt: Date.now(), message: null });
-          return;
+      // Incomplete Drive view (tree node cap or folder page cap): never surplus-delete.
+      // A truncated listing would look like missing remotes and wipe local tracks.
+      if (treeTruncated) {
+        if (__DEV__) {
+          console.warn(
+            `[sync] skip surplus delete for album ${album.id}: Drive tree truncated`,
+          );
         }
-        await useLibraryStore.getState().deleteTrack(track.id, { deleteFromDevice: true });
-        removed += 1;
+      } else {
+        const extras = surplusLocalTracks(locals, audios);
+        for (const track of extras) {
+          if (!isCloudSyncUserActive(expectedUserId)) {
+            sync.finish({ lastSyncedAt: Date.now(), message: null });
+            return;
+          }
+          await useLibraryStore.getState().deleteTrack(track.id, { deleteFromDevice: true });
+          removed += 1;
+        }
       }
 
       for (const remote of sidecars) {
@@ -545,7 +557,7 @@ async function runCloudSyncBody(): Promise<void> {
         if (!parsed) {
           continue;
         }
-        const track = albumLocalTracks(album.id, treeFolderIds).find(
+        const track = locals.find(
           (item) =>
             audioMatchKey(item.sourceFileName ?? item.title) ===
             audioMatchKey(parsed.audioFileName || remote.name),
@@ -556,8 +568,12 @@ async function runCloudSyncBody(): Promise<void> {
         const before = store.markersByTrackId[track.id] ?? [];
         const merged = mergeMarkers(before, parsed.markers);
         const added = merged.filter((marker) => !before.some((item) => item.id === marker.id)).length;
+        // Compare by marker id → updatedAt (mergeMarkers may reorder; index compare storms persist).
+        const beforeUpdatedAt = new Map(before.map((marker) => [marker.id, marker.updatedAt]));
         const markersChanged =
-          added > 0 || merged.some((marker, i) => marker.updatedAt !== before[i]?.updatedAt);
+          added > 0 ||
+          merged.length !== before.length ||
+          merged.some((marker) => beforeUpdatedAt.get(marker.id) !== marker.updatedAt);
         const boundsChanged =
           (parsed.startMs !== undefined && parsed.startMs !== track.startMs) ||
           (parsed.endMs !== undefined && parsed.endMs !== track.endMs);
@@ -633,7 +649,7 @@ async function runCloudSyncBody(): Promise<void> {
         sync.finish({ lastSyncedAt: Date.now(), message: null });
         return;
       }
-      await applyDriveMediaTree(album.id, tree);
+      await applyDriveMediaTree(album.id, tree, { skipSurplusDeletes: treeTruncated });
       if (!isCloudSyncUserActive(expectedUserId)) {
         sync.finish({ lastSyncedAt: Date.now(), message: null });
         return;
@@ -912,7 +928,7 @@ export async function followTrackRenameOnDrive(
     }
   }
 
-  const children = folderId ? await listFolderChildren(folderId) : [];
+  const children = folderId ? (await listFolderChildren(folderId)).files : [];
   let audioId = track.driveFileId;
   if (!audioId && folderId) {
     const match = children.find(
@@ -1125,6 +1141,7 @@ async function applyPdfsFromFiles(
 async function applyDriveMediaTree(
   albumId: string,
   tree: { id: string; parentId: string | null; name: string; children: DriveFile[] }[],
+  options?: { skipSurplusDeletes?: boolean },
 ): Promise<void> {
   const root = tree[0];
   if (root) {
@@ -1148,6 +1165,10 @@ async function applyDriveMediaTree(
     if (cover) {
       await applyTrackCover(track.id, cover);
     }
+  }
+  // Same rule as surplus tracks: never delete docs from an incomplete Drive view.
+  if (options?.skipSurplusDeletes) {
+    return;
   }
   const album = useLibraryStore.getState().albums.find((item) => item.id === albumId);
   for (const document of album?.documents ?? []) {
@@ -1282,7 +1303,7 @@ export async function importDriveFolder(
   }
   await refreshAlbumDriveRole(albumId);
 
-  const tree = await listDriveFolderTree(
+  const { nodes: tree, truncated: treeTruncated } = await listDriveFolderTree(
     folderId,
     folderName,
     recursive ? 8 : 0,
@@ -1311,7 +1332,7 @@ export async function importDriveFolder(
       await importAudiosInFolder(albumId, driveToApp.get(node.id) ?? null, node.children);
     }
 
-    await applyDriveMediaTree(albumId, tree);
+    await applyDriveMediaTree(albumId, tree, { skipSurplusDeletes: treeTruncated });
     return albumId;
   } finally {
     progress.end();

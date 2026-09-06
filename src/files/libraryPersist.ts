@@ -23,6 +23,10 @@ function persistAndKeep(uri?: string): string | undefined {
 
 export const LIBRARY_SNAPSHOT_VERSION = 2;
 const SNAPSHOT_NAME = 'library.json';
+const SNAPSHOT_TMP_NAME = 'library.json.tmp';
+
+/** One in-flight disk write; later saves queue on this chain. */
+let saveChain: Promise<void> = Promise.resolve();
 
 export type LibrarySnapshot = {
   version: number;
@@ -51,6 +55,10 @@ export function emptyLibrarySnapshot(): LibrarySnapshot {
 
 function snapshotFileUri(): string {
   return `${userLibraryDirectory().uri}/${SNAPSHOT_NAME}`;
+}
+
+function snapshotTempFileUri(): string {
+  return `${userLibraryDirectory().uri}/${SNAPSHOT_TMP_NAME}`;
 }
 
 function legacySnapshotFileUri(): string {
@@ -236,14 +244,39 @@ export async function loadLibrarySnapshot(opts?: {
   }
 }
 
-export async function saveLibrarySnapshot(snapshot: LibrarySnapshot): Promise<void> {
+async function writeLibrarySnapshotAtomic(snapshot: LibrarySnapshot): Promise<void> {
   await ensureDirAsync(userLibraryDirectory().uri);
-  await LegacyFS.writeAsStringAsync(
-    snapshotFileUri(),
-    JSON.stringify({
-      ...snapshot,
-      version: LIBRARY_SNAPSHOT_VERSION,
-      ownerKey: getActiveLibraryOwner() ?? snapshot.ownerKey,
-    }),
+  const dest = snapshotFileUri();
+  const tmp = snapshotTempFileUri();
+  const body = JSON.stringify({
+    ...snapshot,
+    version: LIBRARY_SNAPSHOT_VERSION,
+    ownerKey: getActiveLibraryOwner() ?? snapshot.ownerKey,
+  });
+  await LegacyFS.writeAsStringAsync(tmp, body);
+  try {
+    await LegacyFS.moveAsync({ from: tmp, to: dest });
+  } catch {
+    // Android may refuse rename over an existing file; iOS overwrites.
+    await LegacyFS.deleteAsync(dest, { idempotent: true });
+    await LegacyFS.moveAsync({ from: tmp, to: dest });
+  }
+}
+
+/** Serialize all library.json writes (schedulePersist / flush / remote apply). */
+export function saveLibrarySnapshot(snapshot: LibrarySnapshot): Promise<void> {
+  const queued = saveChain.then(
+    () => writeLibrarySnapshotAtomic(snapshot),
+    () => writeLibrarySnapshotAtomic(snapshot),
   );
+  saveChain = queued.then(
+    () => undefined,
+    () => undefined,
+  );
+  return queued;
+}
+
+/** Wait until every queued save has finished (flush uses this via await save). */
+export function waitForLibraryPersistIdle(): Promise<void> {
+  return saveChain;
 }

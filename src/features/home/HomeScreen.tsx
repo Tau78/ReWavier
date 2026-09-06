@@ -136,6 +136,12 @@ export function HomeScreen() {
   const scrollHost = useRef<View>(null);
   const scrollY = useRef(0);
   const scrollBox = useRef({ y: 0, height: 0 });
+  const dragIdRef = useRef<string | null>(null);
+  const hoverKeyRef = useRef<string | null>(null);
+  const lastRemesureAt = useRef(0);
+  const lastGhostAt = useRef(0);
+  const latestGhost = useRef<{ x: number; y: number } | null>(null);
+  const ghostTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dropTargets = useMemo<HomeDropTarget[]>(() => {
     const folders = rootFolders.map((folder) => ({
@@ -210,21 +216,71 @@ export function HomeScreen() {
     scrollRef.current?.scrollTo({ y: next, animated: false });
   }, []);
 
+  const clearGhostTimer = useCallback(() => {
+    if (ghostTimer.current) {
+      clearTimeout(ghostTimer.current);
+      ghostTimer.current = null;
+    }
+  }, []);
+
+  const flushGhost = useCallback(() => {
+    const next = latestGhost.current;
+    if (!next) {
+      return;
+    }
+    lastGhostAt.current = Date.now();
+    setGhost(next);
+  }, []);
+
   const onTrackDragMove = useCallback(
     (trackId: string, pageX: number, pageY: number) => {
-      setDragId(trackId);
-      setGhost({ x: pageX, y: pageY });
+      if (dragIdRef.current !== trackId) {
+        dragIdRef.current = trackId;
+        setDragId(trackId);
+        // Fresh rects when a drag starts.
+        lastRemesureAt.current = 0;
+      }
+
+      latestGhost.current = { x: pageX, y: pageY };
+      const now = Date.now();
+      const ghostElapsed = now - lastGhostAt.current;
+      if (ghostElapsed >= 40) {
+        clearGhostTimer();
+        flushGhost();
+      } else if (!ghostTimer.current) {
+        ghostTimer.current = setTimeout(() => {
+          ghostTimer.current = null;
+          flushGhost();
+        }, 40 - ghostElapsed);
+      }
+
       autoScroll(pageY);
-      remesureDropTargets(dropNodes, dropRects);
+
+      // Scroll already remesures; during move reuse cached rects mostly.
+      if (now - lastRemesureAt.current >= 100) {
+        lastRemesureAt.current = now;
+        remesureDropTargets(dropNodes, dropRects);
+      }
+
       const hit = targetAtPoint(pageX, pageY, dropRects.current, dropTargets);
-      setHoverKey(hit?.key ?? null);
+      const nextKey = hit?.key ?? null;
+      if (hoverKeyRef.current !== nextKey) {
+        hoverKeyRef.current = nextKey;
+        setHoverKey(nextKey);
+      }
     },
-    [autoScroll, dropTargets],
+    [autoScroll, clearGhostTimer, dropTargets, flushGhost],
   );
 
   const onTrackDragEnd = useCallback(
     (trackId: string, pageX: number, pageY: number) => {
+      clearGhostTimer();
+      latestGhost.current = null;
+      lastGhostAt.current = 0;
+      lastRemesureAt.current = 0;
       const hit = targetAtPoint(pageX, pageY, dropRects.current, dropTargets);
+      dragIdRef.current = null;
+      hoverKeyRef.current = null;
       setDragId(null);
       setHoverKey(null);
       setGhost(null);
@@ -246,7 +302,7 @@ export function HomeScreen() {
       }
       useLibraryStore.getState().addTracksToAlbum(hit.id, [trackId]);
     },
-    [dropTargets],
+    [clearGhostTimer, dropTargets],
   );
 
   const onHomeScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {

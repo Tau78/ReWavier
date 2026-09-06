@@ -52,6 +52,7 @@ import {
   loadLibrarySnapshot,
   saveLibrarySnapshot,
   sanitizeSnapshot,
+  waitForLibraryPersistIdle,
   type LibrarySnapshot,
 } from '../files/libraryPersist';
 import { setActiveLibraryOwner } from '../files/libraryOwner';
@@ -271,9 +272,11 @@ export async function flushLibraryPersist(): Promise<void> {
     persistTimer = undefined;
   }
   if (!persistReady) {
+    await waitForLibraryPersistIdle();
     return;
   }
   await saveLibrarySnapshot(snapshotFrom(useLibraryStore.getState()));
+  await waitForLibraryPersistIdle();
 }
 
 function importNameKey(track: { sourceFileName?: string; title: string }): string {

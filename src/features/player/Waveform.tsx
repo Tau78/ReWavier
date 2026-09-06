@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  AppState,
   Easing,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -33,6 +34,7 @@ import { shareMarkerClip } from '../../files/shareMarkerClip';
 import {
   beginWaveformScrub,
   endWaveformScrub,
+  resetWaveformScrubDepth,
   suppressPausePrompt,
   usePlayerStore,
 } from '../../store/playerStore';
@@ -51,18 +53,29 @@ const HANDLE_HIT = 28;
 const PLAYHEAD_HALF = 7;
 /** Cap native seeks during pan scrub; UI position updates every frame. */
 const SCRUB_NATIVE_INTERVAL_MS = 120;
+/** Hold scrub lock briefly after pan end so a stale status frame cannot snap back. */
+const SCRUB_LOCK_HOLD_MS = 100;
 
 type DetailCarouselPage = 'detail' | 'lyrics';
 
 let scrubNativeTimer: ReturnType<typeof setTimeout> | null = null;
 let scrubPendingMs: number | null = null;
 let scrubLastNativeAt = 0;
+/** Deferred endWaveformScrub timers (one per pan finalize); cleared only on force-release. */
+const scrubEndTimers = new Set<ReturnType<typeof setTimeout>>();
 
 function clearScrubNativeTimer() {
   if (scrubNativeTimer != null) {
     clearTimeout(scrubNativeTimer);
     scrubNativeTimer = null;
   }
+}
+
+function clearScrubEndTimers() {
+  for (const id of scrubEndTimers) {
+    clearTimeout(id);
+  }
+  scrubEndTimers.clear();
 }
 
 function flushScrubNativeSeek() {
@@ -89,6 +102,24 @@ function scheduleScrubNativeSeek(ms: number) {
       flushScrubNativeSeek();
     }, SCRUB_NATIVE_INTERVAL_MS - elapsed);
   }
+}
+
+function scheduleEndWaveformScrub() {
+  const id = setTimeout(() => {
+    scrubEndTimers.delete(id);
+    endWaveformScrub();
+  }, SCRUB_LOCK_HOLD_MS);
+  scrubEndTimers.add(id);
+}
+
+/**
+ * Flush pending seek and drop scrub lock immediately.
+ * Needed when Waveform unmounts or the app backgrounds mid-pan — onFinalize may never run.
+ */
+function releaseWaveformScrubLock() {
+  flushScrubNativeSeek();
+  clearScrubEndTimers();
+  resetWaveformScrubDepth();
 }
 function clampWindowMs(ms: number, durationMs: number): number {
   return Math.min(Math.max(durationMs, 1), Math.max(MIN_WINDOW_MS, ms));
@@ -200,9 +231,7 @@ function useWaveformGestures(
         flushScrubNativeSeek();
         // Hold scrub lock briefly so a stale status frame cannot snap the
         // playhead back before the native seek lands.
-        setTimeout(() => {
-          endWaveformScrub();
-        }, 100);
+        scheduleEndWaveformScrub();
       });
 
     const tap = Gesture.Tap()
@@ -790,6 +819,19 @@ export function Waveform() {
   }, [positionMs, isPlaying, zoomWidth, durationMs, detailSpan, translateX, playheadX]);
 
   useEffect(() => () => stopPlayheadAnim(), []);
+
+  // Unmount / background mid-pan: onFinalize may never run → scrub depth stuck → frozen UI.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next !== 'active') {
+        releaseWaveformScrubLock();
+      }
+    });
+    return () => {
+      sub.remove();
+      releaseWaveformScrubLock();
+    };
+  }, []);
 
   const overviewBars = useMemo(() => {
     const count = overviewWidth > 0 ? Math.max(48, Math.floor(overviewWidth / 3.4)) : 0;

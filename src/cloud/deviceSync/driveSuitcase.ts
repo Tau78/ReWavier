@@ -140,7 +140,7 @@ export async function syncDriveSuitcase(): Promise<SuitcaseResult> {
     }
   }
 
-  const remoteFiles = await listFolderChildren(audioId);
+  const remoteFiles = (await listFolderChildren(audioId)).files;
   const remoteByName = new Map(remoteFiles.map((file) => [file.name.toLowerCase(), file]));
   const localFiles = listLocalBagFiles();
   const localByName = new Map(localFiles.map((file) => [file.name.toLowerCase(), file]));

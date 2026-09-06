@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -21,47 +21,71 @@ import { BrandMark, ScreenAura } from '../../theme/graphics';
 function GoogleContinueButton({
   busy,
   setBusy,
+  mountedRef,
+  authInFlight,
 }: {
   busy: boolean;
   setBusy: (value: boolean) => void;
+  mountedRef: MutableRefObject<boolean>;
+  authInFlight: MutableRefObject<boolean>;
 }) {
   if (!isGoogleConfigured()) {
     return null;
   }
-  return <GoogleContinueButtonConfigured busy={busy} setBusy={setBusy} />;
+  return (
+    <GoogleContinueButtonConfigured
+      busy={busy}
+      setBusy={setBusy}
+      mountedRef={mountedRef}
+      authInFlight={authInFlight}
+    />
+  );
 }
 
 function GoogleContinueButtonConfigured({
   busy,
   setBusy,
+  mountedRef,
+  authInFlight,
 }: {
   busy: boolean;
   setBusy: (value: boolean) => void;
+  mountedRef: MutableRefObject<boolean>;
+  authInFlight: MutableRefObject<boolean>;
 }) {
   const google = useGoogleSignIn();
   return (
     <Pressable
       onPress={() => {
-        if (busy) {
+        if (busy || authInFlight.current) {
           return;
         }
-        // Do not flip busy before the Google window: that re-render used to
-        // rebuild the OAuth request and break the Drive code exchange.
+        // Lock with a ref (not busy state) before prompt: flipping busy here
+        // used to remount Google.useAuthRequest and break the Drive code exchange.
+        authInFlight.current = true;
         void (async () => {
           try {
             const result = await google.prompt();
             if (result.type === 'dismiss' || result.type === 'cancel') {
               return;
             }
-            setBusy(true);
+            if (mountedRef.current) {
+              setBusy(true);
+            }
             try {
               await google.completeGoogleSignIn(result);
             } finally {
-              setBusy(false);
+              if (mountedRef.current) {
+                setBusy(false);
+              }
             }
           } catch (error) {
-            setBusy(false);
+            if (mountedRef.current) {
+              setBusy(false);
+            }
             Alert.alert('Accesso', error instanceof Error ? error.message : 'Riprova');
+          } finally {
+            authInFlight.current = false;
           }
         })();
       }}
@@ -84,18 +108,33 @@ export function LoginScreen() {
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [busy, setBusy] = useState(false);
+  const mountedRef = useRef(true);
+  const authInFlight = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const run = async (work: () => Promise<void>) => {
-    if (busy) {
+    if (busy || authInFlight.current) {
       return;
     }
-    setBusy(true);
+    authInFlight.current = true;
+    if (mountedRef.current) {
+      setBusy(true);
+    }
     try {
       await work();
     } catch (error) {
       Alert.alert('Accesso', error instanceof Error ? error.message : 'Riprova');
     } finally {
-      setBusy(false);
+      authInFlight.current = false;
+      if (mountedRef.current) {
+        setBusy(false);
+      }
     }
   };
 
@@ -140,7 +179,12 @@ export function LoginScreen() {
             Entra con Google. Oppure Apple o email, su questo telefono.
           </Text>
 
-          <GoogleContinueButton busy={busy} setBusy={setBusy} />
+          <GoogleContinueButton
+            busy={busy}
+            setBusy={setBusy}
+            mountedRef={mountedRef}
+            authInFlight={authInFlight}
+          />
 
           {Platform.OS === 'ios' ? (
             <AppleAuthentication.AppleAuthenticationButton

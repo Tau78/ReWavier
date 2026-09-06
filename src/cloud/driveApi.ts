@@ -41,6 +41,19 @@ function driveErrorMessage(status: number): string {
   return 'Drive non ha aperto le cartelle. Riprova tra poco.';
 }
 
+/** Parse Drive JSON after HTTP ok. Never throws SyntaxError — sync/import can catch this. */
+async function safeJsonParse<T>(response: Response, context: string): Promise<T> {
+  const raw = (await response.text()).trim();
+  if (!raw) {
+    throw new Error(`Drive ${context}: risposta vuota dopo HTTP ok.`);
+  }
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw new Error(`Drive ${context}: risposta non JSON dopo HTTP ok.`);
+  }
+}
+
 async function driveGet<T>(path: string): Promise<T> {
   const call = async (access: string) =>
     fetch(`${DRIVE}${path}`, {
@@ -53,7 +66,7 @@ async function driveGet<T>(path: string): Promise<T> {
   if (!response.ok) {
     throw new Error(driveErrorMessage(response.status));
   }
-  return (await response.json()) as T;
+  return safeJsonParse<T>(response, `GET ${path}`);
 }
 
 export async function hasDriveToken(): Promise<boolean> {
@@ -184,7 +197,7 @@ export async function createDriveFolder(name: string, parentId?: string): Promis
   if (!response.ok) {
     throw new Error(driveErrorMessage(response.status));
   }
-  return (await response.json()) as DriveFile;
+  return safeJsonParse<DriveFile>(response, 'createFolder');
 }
 
 export async function findFolderByName(name: string): Promise<DriveFile | null> {
@@ -194,17 +207,26 @@ export async function findFolderByName(name: string): Promise<DriveFile | null> 
   return folders.find((folder) => folder.name.toLowerCase() === lower) ?? folders[0] ?? null;
 }
 
+/** Cap on Drive list pages per folder (100 files/page → 800 max). */
+const FOLDER_MAX_PAGES = 8;
+
+export type DriveFolderChildrenResult = {
+  files: DriveFile[];
+  /** True when listing stopped at FOLDER_MAX_PAGES with more pages left. */
+  truncated: boolean;
+};
+
 export async function listFolderChildren(
   folderId: string,
   options?: { sharedDriveId?: string },
-): Promise<DriveFile[]> {
+): Promise<DriveFolderChildrenResult> {
   const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
   const driveScope = options?.sharedDriveId
     ? `&corpora=drive&driveId=${encodeURIComponent(options.sharedDriveId)}`
     : '';
   const files: DriveFile[] = [];
   let page: string | undefined;
-  for (let i = 0; i < 8; i += 1) {
+  for (let i = 0; i < FOLDER_MAX_PAGES; i += 1) {
     const tokenParam = page ? `&pageToken=${encodeURIComponent(page)}` : '';
     const data = await driveGet<{ files?: DriveFile[]; nextPageToken?: string }>(
       `/files?q=${q}&pageSize=100&fields=nextPageToken,files(id,name,mimeType,modifiedTime,md5Checksum,size)&supportsAllDrives=true&includeItemsFromAllDrives=true${driveScope}${tokenParam}`,
@@ -215,10 +237,28 @@ export async function listFolderChildren(
       break;
     }
   }
-  return files;
+  // Still have nextPageToken after the page cap → incomplete folder listing.
+  return { files, truncated: Boolean(page) };
 }
 
 const TREE_MAX_NODES = 80;
+
+export type DriveFolderTreeNode = {
+  id: string;
+  parentId: string | null;
+  name: string;
+  children: DriveFile[];
+};
+
+export type DriveFolderTreeResult = {
+  nodes: DriveFolderTreeNode[];
+  /**
+   * True when the walk hit TREE_MAX_NODES with folders still queued, or any
+   * folder listing hit FOLDER_MAX_PAGES. Callers must not treat the remote
+   * view as complete (no surplus local deletes).
+   */
+  truncated: boolean;
+};
 
 /** Root first. `maxDepth` 0 = only this folder’s children. */
 export async function listDriveFolderTree(
@@ -226,29 +266,33 @@ export async function listDriveFolderTree(
   folderName: string,
   maxDepth: number,
   options?: { sharedDriveId?: string },
-): Promise<{ id: string; parentId: string | null; name: string; children: DriveFile[] }[]> {
-  const nodes: { id: string; parentId: string | null; name: string; children: DriveFile[] }[] = [];
+): Promise<DriveFolderTreeResult> {
+  const nodes: DriveFolderTreeNode[] = [];
   const queue: { id: string; parentId: string | null; name: string; depth: number }[] = [
     { id: folderId, parentId: null, name: folderName, depth: 0 },
   ];
   const seen = new Set<string>();
+  let truncated = false;
   while (queue.length > 0 && nodes.length < TREE_MAX_NODES) {
     const current = queue.shift();
     if (!current || seen.has(current.id)) {
       continue;
     }
     seen.add(current.id);
-    const children = await listFolderChildren(current.id, options);
+    const listed = await listFolderChildren(current.id, options);
+    if (listed.truncated) {
+      truncated = true;
+    }
     nodes.push({
       id: current.id,
       parentId: current.parentId,
       name: current.name,
-      children,
+      children: listed.files,
     });
     if (current.depth >= maxDepth) {
       continue;
     }
-    for (const child of children.filter(isDriveFolder)) {
+    for (const child of listed.files.filter(isDriveFolder)) {
       queue.push({
         id: child.id,
         parentId: current.id,
@@ -257,7 +301,11 @@ export async function listDriveFolderTree(
       });
     }
   }
-  return nodes;
+  // Stopped because of TREE_MAX_NODES while folders remain → incomplete tree.
+  if (queue.length > 0) {
+    truncated = true;
+  }
+  return { nodes, truncated };
 }
 
 function friendlyDownloadError(error: unknown): Error {
@@ -347,8 +395,8 @@ export async function getDriveFileParentId(fileId: string): Promise<string | und
 
 export async function findChildByName(folderId: string, name: string): Promise<DriveFile | null> {
   const lower = name.trim().toLowerCase();
-  const children = await listFolderChildren(folderId);
-  return children.find((file) => file.name.toLowerCase() === lower) ?? null;
+  const { files } = await listFolderChildren(folderId);
+  return files.find((file) => file.name.toLowerCase() === lower) ?? null;
 }
 
 export async function uploadDriveFile(params: {
@@ -456,7 +504,7 @@ export async function renameDriveFile(fileId: string, name: string): Promise<Dri
   if (!response.ok) {
     throw new Error(driveErrorMessage(response.status));
   }
-  return (await response.json()) as DriveFile;
+  return safeJsonParse<DriveFile>(response, 'rename');
 }
 
 export async function deleteDriveFile(fileId: string): Promise<void> {

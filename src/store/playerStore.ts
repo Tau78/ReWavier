@@ -142,6 +142,8 @@ const mockEngine = new MockAudioEngine(EMPTY_TRACK.durationMs);
 const fileEngine = new FileAudioEngine();
 let usingFile = false;
 let loadGeneration = 0;
+/** loadGeneration value set by releaseAudioForRecording; used to heal stuck loading. */
+let releasedAudioGen = 0;
 let loadChain: Promise<void> = Promise.resolve();
 let pendingPlay = false;
 let pendingSeekMs: number | null = null;
@@ -172,6 +174,11 @@ export function beginWaveformScrub() {
 
 export function endWaveformScrub() {
   waveformScrubDepth = Math.max(0, waveformScrubDepth - 1);
+}
+
+/** Drop scrub lock immediately (unmount / interrupted gesture / runtime reset). */
+export function resetWaveformScrubDepth() {
+  waveformScrubDepth = 0;
 }
 
 function clearHoleTimer() {
@@ -242,7 +249,7 @@ function resetPlayerRuntime() {
   clearHoleTimer();
   loopWrapPending = false;
   lastWrapAt = 0;
-  waveformScrubDepth = 0;
+  resetWaveformScrubDepth();
   suppressPausePrompt(2500);
   usingFile = false;
   mockEngine.reset(EMPTY_TRACK.durationMs);
@@ -350,14 +357,46 @@ export function refreshPlayingArtwork(trackId: string) {
 export async function releaseAudioForRecording(): Promise<void> {
   usePlayerStore.getState().pause();
   loadGeneration += 1;
+  releasedAudioGen = loadGeneration;
   fileEngine.cancelLoad();
-  if (!usingFile) {
+  usingFile = false;
+  try {
     await fileEngine.unload();
+  } catch {
+    // session already gone
+  }
+  // Always clear loading — even when usingFile was false (in-flight loadChain).
+  usePlayerStore.setState({ isPlaying: false, loadState: 'idle' });
+}
+
+/**
+ * After mic teardown, reload the dock track if unload left it idle but still playable.
+ * play() no-ops while loadState is idle with a file URI.
+ */
+export function reloadCurrentTrackIfNeeded(): void {
+  const state = usePlayerStore.getState();
+  if (!state.track.id || !playableUri(state.track)) {
     return;
   }
-  usingFile = false;
-  await fileEngine.unload();
-  usePlayerStore.setState({ isPlaying: false, loadState: 'idle' });
+  if (state.loadState === 'ready' || state.loadState === 'loading') {
+    return;
+  }
+  const { track, markers, queueIds, positionMs } = state;
+  state.loadTrack(track, markers, queueIds, { startAtMs: positionMs });
+}
+
+/**
+ * Stale/aborted loadChain after releaseAudio: if UI is still loading for this
+ * track, normalize to idle. Ignore superseding loadTrack (gen moved past release).
+ */
+function normalizeStaleLoading(trackId: string, gen: number): void {
+  if (gen === loadGeneration || loadGeneration !== releasedAudioGen) {
+    return;
+  }
+  const current = usePlayerStore.getState();
+  if (current.track.id === trackId && current.loadState === 'loading') {
+    usePlayerStore.setState({ isPlaying: false, loadState: 'idle' });
+  }
 }
 
 export const usePlayerStore = create<PlayerStore>((set, get) => ({
@@ -879,6 +918,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   loadTrack(track, markers = [], queueIds, options) {
+    // Stop previous native audio immediately — before async loadChain / before
+    // clearing usingFile — so track switch does not leave ghost playback.
+    pauseEngines(get());
     const gen = ++loadGeneration;
     // Cancel any native load already past the loadChain gate (orphaned chain
     // after releaseTrackFromPlayer, or a still-awaiting waitForDuration).
@@ -941,6 +983,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
       loadChain = loadChain.then(async () => {
         if (gen !== loadGeneration) {
+          normalizeStaleLoading(track.id, gen);
           return;
         }
         try {
@@ -950,6 +993,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
           if (gen !== loadGeneration || get().track.id !== track.id) {
             // Stale after await: engine load may have created a player for us —
             // only keep it if this generation still owns the session.
+            normalizeStaleLoading(track.id, gen);
             return;
           }
           usingFile = true;
@@ -982,6 +1026,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
           }
         } catch (error) {
           if (isLoadAborted(error) || gen !== loadGeneration || get().track.id !== track.id) {
+            normalizeStaleLoading(track.id, gen);
             return;
           }
           usingFile = false;

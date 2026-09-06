@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -72,6 +72,22 @@ export function useLibraryActions(
   const [pendingBundles, setPendingBundles] = useState<
     Awaited<ReturnType<typeof pickAndImportAudio>>
   >([]);
+  /** Sync lock: `busy` alone is too late / racy while the native picker is open. */
+  const importInFlight = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const setBusySafe = (next: boolean) => {
+    if (mountedRef.current) {
+      setBusy(next);
+    }
+  };
 
   const leaveIfViewing = (kind: CollectionKind, collectionId: string) => {
     const state = navigation.getState();
@@ -107,18 +123,19 @@ export function useLibraryActions(
     folderId: string | null = currentFolderId,
     albumId?: string,
   ) => {
-    if (busy) {
+    if (importInFlight.current || busy) {
       return;
     }
     if (albumId && refuseWrite({ albumId })) {
       return;
     }
+    importInFlight.current = true;
+    setBusySafe(true);
     try {
       const bundles = await pickAndImportAudio();
       if (bundles.length === 0) {
         return;
       }
-      setBusy(true);
       useLibraryStore.getState().importBundles(bundles, { folderId, albumId });
       for (const bundle of bundles) {
         void ensurePeaks(bundle.track).catch(() => undefined);
@@ -133,19 +150,21 @@ export function useLibraryActions(
     } catch (error) {
       Alert.alert('Import fallito', error instanceof Error ? error.message : 'Riprova');
     } finally {
-      setBusy(false);
+      importInFlight.current = false;
+      setBusySafe(false);
     }
   };
 
   const importDriveAlbum = async () => {
-    if (busy) {
+    if (importInFlight.current || busy) {
       return;
     }
     if (await hasDriveToken()) {
       navigation.navigate('DriveFolder', {});
       return;
     }
-    setBusy(true);
+    importInFlight.current = true;
+    setBusySafe(true);
     try {
       const linked = await runGoogleDriveConnect(googleDrive);
       if (!linked) {
@@ -155,7 +174,8 @@ export function useLibraryActions(
     } catch (error) {
       Alert.alert('Album Drive', error instanceof Error ? error.message : 'Riprova');
     } finally {
-      setBusy(false);
+      importInFlight.current = false;
+      setBusySafe(false);
     }
   };
 

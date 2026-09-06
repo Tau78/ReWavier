@@ -158,7 +158,7 @@ export function DriveFolderScreen() {
       25_000,
       'Drive ci ha messo troppo. Riprova.',
     )
-      .then(setChildren)
+      .then((result) => setChildren(result.files))
       .catch((error) => {
         Alert.alert('Drive', error instanceof Error ? error.message : 'Cartella non aperta. Riprova.');
         setStack((prev) => prev.slice(0, -1));
@@ -188,7 +188,7 @@ export function DriveFolderScreen() {
       25_000,
       'Drive ci ha messo troppo. Riprova.',
     )
-      .then(setChildren)
+      .then((result) => setChildren(result.files))
       .catch((error) => {
         Alert.alert('Drive', error instanceof Error ? error.message : 'Cartella non aperta. Riprova.');
       })
