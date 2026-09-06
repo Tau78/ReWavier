@@ -1,3 +1,7 @@
+import type { LyricAnnotation } from './lyrics';
+
+export type { LyricAnnotation, LyricAnnotationKind, LyricAnnotationStatus } from './lyrics';
+
 export type Track = {
   id: string;
   title: string;
@@ -21,8 +25,10 @@ export type Track = {
   exerciseCloseId?: string;
   practiceHoleId?: string;
   artworkUri?: string;
-  /** Song lyrics; empty or missing means none. */
+  /** Song lyrics (plain text); empty or missing means none. */
   lyrics?: string;
+  /** Notes / proposals on words in `lyrics` — not waveform markers. */
+  lyricAnnotations?: LyricAnnotation[];
   /** Chord chart; empty or missing means none. */
   chords?: string;
 };

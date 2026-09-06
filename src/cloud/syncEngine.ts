@@ -21,6 +21,7 @@ import {
 } from '../domain/driveMedia';
 import { canWriteWithRole, roleOfAlbum } from '../domain/folderRole';
 import { createId } from '../domain/library';
+import { mergeLyricAnnotations, type LyricAnnotation } from '../domain/lyrics';
 import type { Marker, Track } from '../domain/models';
 import { userHasUsage } from '../domain/session';
 import {
@@ -485,8 +486,24 @@ async function runCloudSyncBody(): Promise<void> {
         const scoreChanged =
           (parsed.lyrics !== undefined && parsed.lyrics !== track.lyrics) ||
           (parsed.chords !== undefined && parsed.chords !== track.chords);
+        const annotationsMerged = mergeLyricAnnotations(
+          track.lyricAnnotations ?? [],
+          parsed.lyricAnnotations ?? [],
+        );
+        const annotationsChanged =
+          annotationsMerged.length !== (track.lyricAnnotations ?? []).length ||
+          annotationsMerged.some((item, i) => {
+            const before = (track.lyricAnnotations ?? [])[i];
+            return !before || item.id !== before.id || item.updatedAt !== before.updatedAt;
+          });
 
-        if (!markersChanged && !boundsChanged && !practiceChanged && !scoreChanged) {
+        if (
+          !markersChanged &&
+          !boundsChanged &&
+          !practiceChanged &&
+          !scoreChanged &&
+          !annotationsChanged
+        ) {
           continue;
         }
 
@@ -519,6 +536,10 @@ async function runCloudSyncBody(): Promise<void> {
           if (parsed.chords !== undefined && parsed.chords !== track.chords) {
             store.setTrackChords(track.id, parsed.chords);
           }
+        }
+
+        if (annotationsChanged) {
+          store.setTrackLyricAnnotations(track.id, annotationsMerged);
         }
 
         if (boundsChanged || practiceChanged) {
@@ -1061,6 +1082,7 @@ async function importAudiosInFolder(
     }
     let markers: Marker[] = [];
     let lyrics: string | undefined;
+    let lyricAnnotations: LyricAnnotation[] | undefined;
     let chords: string | undefined;
     const sidecar = sidecars.find(
       (file) => audioMatchKey(file.name) === audioMatchKey(remote.name),
@@ -1074,6 +1096,7 @@ async function importAudiosInFolder(
           markers = parsed.markers;
         }
         lyrics = parsed?.lyrics;
+        lyricAnnotations = parsed?.lyricAnnotations;
         chords = parsed?.chords;
       } catch {
         // audio still imports; notes can arrive on the next sync
@@ -1097,6 +1120,7 @@ async function importAudiosInFolder(
             downloaded: true,
             downloadedAt: Date.now(),
             lyrics,
+            lyricAnnotations,
             chords,
             ...metaFrom(remote),
           },

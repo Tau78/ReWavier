@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Easing,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
   PanResponder,
   Platform,
   Pressable,
@@ -31,6 +33,7 @@ import { shareMarkerClip } from '../../files/shareMarkerClip';
 import { suppressPausePrompt, usePlayerStore } from '../../store/playerStore';
 import { colors } from '../../theme/colors';
 import { ActionMenu } from '../library/ActionMenu';
+import { DetailLyricsPanel } from './DetailLyricsPanel';
 
 const OVERVIEW_HEIGHT = 48;
 const ZOOM_HEIGHT = 120;
@@ -41,6 +44,8 @@ const LONG_PRESS_MS = 480;
 const PIN_HIT = 44;
 const HANDLE_HIT = 28;
 const PLAYHEAD_HALF = 7;
+
+type DetailCarouselPage = 'detail' | 'lyrics';
 
 function clampWindowMs(ms: number, durationMs: number): number {
   return Math.min(Math.max(durationMs, 1), Math.max(MIN_WINDOW_MS, ms));
@@ -583,6 +588,9 @@ export function Waveform() {
   const clearExercise = usePlayerStore((s) => s.clearExercise);
   const clearPracticeHole = usePlayerStore((s) => s.clearPracticeHole);
   const [menuMarkerId, setMenuMarkerId] = useState<string | null>(null);
+  const [detailPage, setDetailPage] = useState<DetailCarouselPage>('detail');
+  const [slotWidth, setSlotWidth] = useState(0);
+  const detailPagerRef = useRef<ScrollView>(null);
   const cuePoints = useMemo(
     () => [...visiblePins].sort((a, b) => a.timestampMs - b.timestampMs),
     [visiblePins],
@@ -624,7 +632,27 @@ export function Waveform() {
     setOverviewWindowMs(Number.MAX_SAFE_INTEGER);
     tapeStartRef.current = 0;
     setTapeStartMs(0);
+    setDetailPage('detail');
+    detailPagerRef.current?.scrollTo({ x: 0, animated: false });
   }, [track.id]);
+
+  const goDetailPage = (page: DetailCarouselPage) => {
+    setDetailPage(page);
+    if (slotWidth > 0) {
+      detailPagerRef.current?.scrollTo({
+        x: page === 'lyrics' ? slotWidth : 0,
+        animated: true,
+      });
+    }
+  };
+
+  const onDetailPagerScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    if (slotWidth <= 0) {
+      return;
+    }
+    const page = Math.round(event.nativeEvent.contentOffset.x / slotWidth) >= 1 ? 'lyrics' : 'detail';
+    setDetailPage(page);
+  };
 
   const tapeSpanMs = tapeSpanFor(detailSpan, durationMs);
   const scale = zoomWidth > 0 ? pxPerMs(zoomWidth, durationMs, detailSpan) : 0;
@@ -955,81 +983,144 @@ export function Waveform() {
 
       <View style={[styles.card, styles.zoomCard]}>
         <View style={styles.cardHeader}>
-          <Text style={styles.cardLabel}>Dettaglio · {formatWindowSeconds(detailSpan)}</Text>
-          <Text style={styles.cardMeta}>
-            {formatTimecode(window.startMs)} – {formatTimecode(window.endMs)}
-          </Text>
-        </View>
-        <GestureDetector gesture={detailGestures}>
-        <View style={styles.zoomBody}>
-          <View onLayout={onZoomLayout} style={styles.zoomTrack}>
-            <View
-              style={StyleSheet.absoluteFill}
-              accessibilityRole="adjustable"
-              accessibilityLabel="Forma d'onda ingrandita"
-              accessibilityHint="Trascina per scorrere. Tocca per andare a quel punto. Pizzica per ingrandire."
+          <View style={styles.carouselTabs}>
+            <Pressable
+              onPress={() => goDetailPage('detail')}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: detailPage === 'detail' }}
+              accessibilityLabel={`Dettaglio ${formatWindowSeconds(detailSpan)}`}
+              hitSlop={6}
             >
-              <Animated.View
-                pointerEvents="box-none"
-                style={[
-                  styles.zoomTape,
-                  {
-                    width: Math.max(tapeWidth, zoomWidth),
-                    transform: [{ translateX }],
-                  },
-                ]}
-              >
-                <PeakBars
-                  values={zoomBars}
-                  height={ZOOM_HEIGHT}
-                  playedRatio={zoomPlayed}
-                  barWidth={2.5}
-                  rowWidth={Math.max(tapeWidth, zoomWidth)}
-                />
-                {visiblePins.map((marker) => (
-                  <ZoomMarkerPin
-                    key={marker.id}
-                    marker={marker}
-                    tapeStartMs={tapeStartMs}
-                    tapeSpanMs={tapeSpanMs}
-                    tapeWidth={Math.max(tapeWidth, zoomWidth)}
-                    px={scale}
-                    durationMs={durationMs}
-                    onLongPress={setMenuMarkerId}
-                  />
-                ))}
-                <RangeHandle
-                  side="start"
-                  timeMs={range.startMs}
-                  durationMs={durationMs}
-                  trackWidth={Math.max(tapeWidth, 1)}
-                  windowStartMs={tapeStartMs}
-                  windowSpanMs={tapeSpanMs}
-                  seekWhileDrag={false}
-                  leftPx={(range.startMs - tapeStartMs) * scale}
-                />
-                <RangeHandle
-                  side="end"
-                  timeMs={range.endMs}
-                  durationMs={durationMs}
-                  trackWidth={Math.max(tapeWidth, 1)}
-                  windowStartMs={tapeStartMs}
-                  windowSpanMs={tapeSpanMs}
-                  seekWhileDrag={false}
-                  leftPx={(range.endMs - tapeStartMs) * scale}
-                />
-              </Animated.View>
-            </View>
-            <Animated.View
-              pointerEvents="none"
-              style={[styles.playhead, styles.playheadTall, { transform: [{ translateX: playheadX }] }]}
+              <Text style={[styles.cardLabel, detailPage === 'detail' && styles.carouselTabOn]}>
+                Dettaglio · {formatWindowSeconds(detailSpan)}
+              </Text>
+            </Pressable>
+            <Text style={styles.carouselSep}>·</Text>
+            <Pressable
+              onPress={() => goDetailPage('lyrics')}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: detailPage === 'lyrics' }}
+              accessibilityLabel="Lyrics"
+              hitSlop={6}
             >
-              <View style={styles.playheadNub} />
-              <View style={styles.playheadLine} />
-            </Animated.View>
+              <Text style={[styles.cardLabel, detailPage === 'lyrics' && styles.carouselTabOn]}>
+                Lyrics
+              </Text>
+            </Pressable>
           </View>
+          {detailPage === 'detail' ? (
+            <Text style={styles.cardMeta}>
+              {formatTimecode(window.startMs)} – {formatTimecode(window.endMs)}
+            </Text>
+          ) : (
+            <View style={styles.carouselDots} accessibilityElementsHidden>
+              <View style={styles.carouselDot} />
+              <View style={[styles.carouselDot, styles.carouselDotOn]} />
+            </View>
+          )}
         </View>
-        </GestureDetector>
+        <View
+          style={styles.zoomBody}
+          onLayout={(event) => {
+            const width = event.nativeEvent.layout.width;
+            if (width > 0 && Math.abs(width - slotWidth) > 0.5) {
+              setSlotWidth(width);
+              requestAnimationFrame(() => {
+                detailPagerRef.current?.scrollTo({
+                  x: detailPage === 'lyrics' ? width : 0,
+                  animated: false,
+                });
+              });
+            }
+          }}
+        >
+          <ScrollView
+            ref={detailPagerRef}
+            horizontal
+            pagingEnabled
+            nestedScrollEnabled
+            scrollEnabled={detailPage === 'lyrics'}
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={onDetailPagerScrollEnd}
+            scrollEventThrottle={16}
+            style={styles.detailPager}
+            contentContainerStyle={styles.detailPagerContent}
+          >
+            <View style={[styles.detailPage, slotWidth > 0 && { width: slotWidth }]}>
+              <GestureDetector gesture={detailGestures}>
+                <View onLayout={onZoomLayout} style={styles.zoomTrack}>
+                  <View
+                    style={StyleSheet.absoluteFill}
+                    accessibilityRole="adjustable"
+                    accessibilityLabel="Forma d'onda ingrandita"
+                    accessibilityHint="Trascina per scorrere. Tocca per andare a quel punto. Pizzica per ingrandire."
+                  >
+                    <Animated.View
+                      pointerEvents="box-none"
+                      style={[
+                        styles.zoomTape,
+                        {
+                          width: Math.max(tapeWidth, zoomWidth),
+                          transform: [{ translateX }],
+                        },
+                      ]}
+                    >
+                      <PeakBars
+                        values={zoomBars}
+                        height={ZOOM_HEIGHT}
+                        playedRatio={zoomPlayed}
+                        barWidth={2.5}
+                        rowWidth={Math.max(tapeWidth, zoomWidth)}
+                      />
+                      {visiblePins.map((marker) => (
+                        <ZoomMarkerPin
+                          key={marker.id}
+                          marker={marker}
+                          tapeStartMs={tapeStartMs}
+                          tapeSpanMs={tapeSpanMs}
+                          tapeWidth={Math.max(tapeWidth, zoomWidth)}
+                          px={scale}
+                          durationMs={durationMs}
+                          onLongPress={setMenuMarkerId}
+                        />
+                      ))}
+                      <RangeHandle
+                        side="start"
+                        timeMs={range.startMs}
+                        durationMs={durationMs}
+                        trackWidth={Math.max(tapeWidth, 1)}
+                        windowStartMs={tapeStartMs}
+                        windowSpanMs={tapeSpanMs}
+                        seekWhileDrag={false}
+                        leftPx={(range.startMs - tapeStartMs) * scale}
+                      />
+                      <RangeHandle
+                        side="end"
+                        timeMs={range.endMs}
+                        durationMs={durationMs}
+                        trackWidth={Math.max(tapeWidth, 1)}
+                        windowStartMs={tapeStartMs}
+                        windowSpanMs={tapeSpanMs}
+                        seekWhileDrag={false}
+                        leftPx={(range.endMs - tapeStartMs) * scale}
+                      />
+                    </Animated.View>
+                  </View>
+                  <Animated.View
+                    pointerEvents="none"
+                    style={[styles.playhead, styles.playheadTall, { transform: [{ translateX: playheadX }] }]}
+                  >
+                    <View style={styles.playheadNub} />
+                    <View style={styles.playheadLine} />
+                  </Animated.View>
+                </View>
+              </GestureDetector>
+            </View>
+            <View style={[styles.detailPage, styles.lyricsPage, slotWidth > 0 && { width: slotWidth }]}>
+              <DetailLyricsPanel trackId={track.id} />
+            </View>
+          </ScrollView>
+        </View>
       </View>
       <ActionMenu
         visible={menuMarker != null}
@@ -1261,6 +1352,47 @@ const styles = StyleSheet.create({
   zoomBody: {
     flex: 1,
     minHeight: ZOOM_HEIGHT,
+  },
+  detailPager: {
+    flex: 1,
+  },
+  detailPagerContent: {
+    flexGrow: 1,
+  },
+  detailPage: {
+    flex: 1,
+    minHeight: ZOOM_HEIGHT,
+  },
+  lyricsPage: {
+    paddingTop: 2,
+  },
+  carouselTabs: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexShrink: 1,
+  },
+  carouselSep: {
+    color: colors.textMuted,
+    fontSize: 11,
+    opacity: 0.5,
+  },
+  carouselTabOn: {
+    color: colors.text,
+  },
+  carouselDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  carouselDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: colors.border,
+  },
+  carouselDotOn: {
+    backgroundColor: colors.accent,
   },
   zoomTrack: {
     flex: 1,

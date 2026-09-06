@@ -1,4 +1,5 @@
 import { isAudioName as isAudioFileName } from './audioFormats';
+import { parseLyricAnnotations, type LyricAnnotation } from './lyrics';
 import { normalizeMarker } from './markers';
 import { optionalTrackText, type Marker, type Track } from './models';
 
@@ -19,6 +20,7 @@ export type SidecarFile = {
   exerciseCloseId?: string;
   practiceHoleId?: string;
   lyrics?: string;
+  lyricAnnotations?: LyricAnnotation[];
   chords?: string;
 };
 
@@ -120,6 +122,7 @@ export function sidecarNameForAudio(fileName: string, authorSlug?: string): stri
 }
 
 export function buildSidecar(track: Track, markers: Marker[]): SidecarFile {
+  const annotations = track.lyricAnnotations ?? [];
   return {
     version: SIDECAR_VERSION,
     app: 'rewavier',
@@ -134,6 +137,7 @@ export function buildSidecar(track: Track, markers: Marker[]): SidecarFile {
     exerciseCloseId: track.exerciseCloseId,
     practiceHoleId: track.practiceHoleId,
     lyrics: optionalTrackText(track.lyrics),
+    lyricAnnotations: annotations.length > 0 ? annotations : undefined,
     chords: optionalTrackText(track.chords),
   };
 }
@@ -144,6 +148,7 @@ export function parseSidecar(raw: string): SidecarFile | null {
     if (!Array.isArray(data.markers)) {
       return null;
     }
+    const lyricAnnotations = parseLyricAnnotations(data.lyricAnnotations);
     return {
       version: typeof data.version === 'number' ? data.version : 1,
       app: 'rewavier',
@@ -157,6 +162,7 @@ export function parseSidecar(raw: string): SidecarFile | null {
       exerciseCloseId: typeof data.exerciseCloseId === 'string' ? data.exerciseCloseId : undefined,
       practiceHoleId: typeof data.practiceHoleId === 'string' ? data.practiceHoleId : undefined,
       lyrics: optionalTrackText(typeof data.lyrics === 'string' ? data.lyrics : undefined),
+      lyricAnnotations: lyricAnnotations.length > 0 ? lyricAnnotations : undefined,
       chords: optionalTrackText(typeof data.chords === 'string' ? data.chords : undefined),
       markers: data.markers.map((marker) =>
         normalizeMarker({

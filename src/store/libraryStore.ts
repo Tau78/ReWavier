@@ -44,6 +44,7 @@ import {
   type FolderRole,
 } from '../domain/folderRole';
 import { optionalTrackText, type Marker, type Track } from '../domain/models';
+import type { LyricAnnotation } from '../domain/lyrics';
 import { withPractice, type PracticeIds } from '../domain/practice';
 import { isDemoUser } from '../auth/demoAccount';
 import {
@@ -145,6 +146,7 @@ export type LibraryActions = {
   setTrackArtwork: (id: string, artworkUri?: string) => void;
   setTrackBounds: (id: string, startMs: number, endMs: number) => void;
   setTrackLyrics: (id: string, lyrics?: string) => void;
+  setTrackLyricAnnotations: (id: string, annotations: LyricAnnotation[]) => void;
   setTrackChords: (id: string, chords?: string) => void;
   setTrackPractice: (id: string, practice: PracticeIds) => void;
   deleteTrack: (id: string, options?: { deleteFromDevice?: boolean }) => Promise<void>;
@@ -839,9 +841,35 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
 
   setTrackLyrics(id, lyrics) {
     const next = optionalTrackText(lyrics);
+    const len = next?.length ?? 0;
+    set((state) => ({
+      tracks: state.tracks.map((track) => {
+        if (track.id !== id) {
+          return track;
+        }
+        const kept = (track.lyricAnnotations ?? []).filter(
+          (item) => item.startChar < len && item.endChar <= len && item.endChar > item.startChar,
+        );
+        return {
+          ...track,
+          lyrics: next,
+          lyricAnnotations: kept.length > 0 ? kept : undefined,
+        };
+      }),
+    }));
+    persistSidecar(get().getTrack(id), get().markersByTrackId[id] ?? []);
+    void flushLibraryPersist();
+  },
+
+  setTrackLyricAnnotations(id, annotations) {
     set((state) => ({
       tracks: state.tracks.map((track) =>
-        track.id === id ? { ...track, lyrics: next } : track,
+        track.id === id
+          ? {
+              ...track,
+              lyricAnnotations: annotations.length > 0 ? annotations : undefined,
+            }
+          : track,
       ),
     }));
     persistSidecar(get().getTrack(id), get().markersByTrackId[id] ?? []);

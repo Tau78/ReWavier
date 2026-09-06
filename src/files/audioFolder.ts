@@ -5,6 +5,7 @@ import { createId } from '../domain/library';
 import { isAudioName } from '../domain/audioFormats';
 import { parseSidecar, sidecarNameForAudio, titleFromFileName } from '../domain/sidecar';
 import type { Marker, Track } from '../domain/models';
+import type { LyricAnnotation } from '../domain/lyrics';
 import { uniqueAudioFileName } from './downloads';
 import { decodeOverEncodedName } from './fileNames';
 import { audioRelativePrefix } from './libraryOwner';
@@ -209,6 +210,7 @@ export async function scanAudioFolder(
     let exerciseCloseId: string | undefined;
     let practiceHoleId: string | undefined;
     let lyrics: string | undefined;
+    let lyricAnnotations: LyricAnnotation[] | undefined;
     let chords: string | undefined;
     const sidecarFile = new File(dir, sidecarNameForAudio(name));
     if (sidecarFile.exists) {
@@ -225,6 +227,7 @@ export async function scanAudioFolder(
           exerciseCloseId = parsed.exerciseCloseId;
           practiceHoleId = parsed.practiceHoleId;
           lyrics = parsed.lyrics;
+          lyricAnnotations = parsed.lyricAnnotations;
           chords = parsed.chords;
         }
       } catch {
@@ -245,6 +248,7 @@ export async function scanAudioFolder(
         exerciseCloseId,
         practiceHoleId,
         lyrics,
+        lyricAnnotations,
         chords,
         downloaded: true,
         downloadedAt: Date.now(),

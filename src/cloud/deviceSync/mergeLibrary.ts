@@ -1,4 +1,5 @@
 import type { Album, AlbumDocument, Folder, Playlist, SmartPlaylist } from '../../domain/library';
+import { mergeLyricAnnotations } from '../../domain/lyrics';
 import { mergeMarkers } from '../mergeNotes';
 import { optionalTrackText, type Marker, type Track } from '../../domain/models';
 import type { LibrarySnapshot } from '../../files/libraryPersist';
@@ -55,6 +56,13 @@ function mergeTracks(local: Track[], remote: Track[]): { tracks: Track[]; idRema
       exerciseCloseId: existing.exerciseCloseId ?? incoming.exerciseCloseId,
       practiceHoleId: existing.practiceHoleId ?? incoming.practiceHoleId,
       lyrics: optionalTrackText(existing.lyrics) ?? optionalTrackText(incoming.lyrics),
+      lyricAnnotations: (() => {
+        const merged = mergeLyricAnnotations(
+          existing.lyricAnnotations ?? [],
+          incoming.lyricAnnotations ?? [],
+        );
+        return merged.length > 0 ? merged : undefined;
+      })(),
       chords: optionalTrackText(existing.chords) ?? optionalTrackText(incoming.chords),
       sourceFileName: existing.sourceFileName || incoming.sourceFileName,
       driveFileId: existing.driveFileId || incoming.driveFileId,
