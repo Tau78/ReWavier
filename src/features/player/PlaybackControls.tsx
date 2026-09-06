@@ -23,40 +23,36 @@ function StopIcon() {
 function ControlButton({
   onPress,
   accessibilityLabel,
-  label,
   emphasized,
   children,
 }: {
   onPress: () => void;
   accessibilityLabel: string;
-  label: string;
   emphasized?: boolean;
   children: ReactNode;
 }) {
   return (
-    <View style={styles.col}>
-      <Pressable
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel}
-        android_ripple={{
-          color: 'rgba(255,255,255,0.16)',
-          borderless: true,
-          radius: layout.controlSize / 2 + 6,
-        }}
-        style={({ pressed }) => [
-          styles.btn,
-          emphasized && styles.btnEmphasized,
-          pressed && styles.btnPressed,
-        ]}
-      >
-        {children}
-      </Pressable>
-      <Text style={styles.label}>{label}</Text>
-    </View>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      android_ripple={{
+        color: 'rgba(255,255,255,0.16)',
+        borderless: true,
+        radius: layout.controlSize / 2 + 6,
+      }}
+      style={({ pressed }) => [
+        styles.btn,
+        emphasized && styles.btnEmphasized,
+        pressed && styles.btnPressed,
+      ]}
+    >
+      {children}
+    </Pressable>
   );
 }
 
+/** One row only: −10 · Stop · Play · +10. Does not touch the orange + note button. */
 export function PlaybackControls() {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const play = usePlayerStore((s) => s.play);
@@ -66,32 +62,23 @@ export function PlaybackControls() {
 
   return (
     <View style={styles.row}>
-      <ControlButton
-        onPress={() => seekBy(-10_000)}
-        accessibilityLabel="Indietro 10s"
-        label="−10s"
-      >
+      <ControlButton onPress={() => seekBy(-10_000)} accessibilityLabel="Indietro 10s">
         <Text style={styles.skipText}>−10</Text>
       </ControlButton>
 
-      <ControlButton onPress={stop} accessibilityLabel="Stop" label="Stop">
+      <ControlButton onPress={stop} accessibilityLabel="Stop">
         <StopIcon />
       </ControlButton>
 
       <ControlButton
         onPress={() => (isPlaying ? pause() : play())}
         accessibilityLabel={isPlaying ? 'Pausa' : 'Play'}
-        label={isPlaying ? 'Pausa' : 'Play'}
         emphasized
       >
         <PlayIcon showPause={isPlaying} />
       </ControlButton>
 
-      <ControlButton
-        onPress={() => seekBy(10_000)}
-        accessibilityLabel="Avanti 10s"
-        label="+10s"
-      >
+      <ControlButton onPress={() => seekBy(10_000)} accessibilityLabel="Avanti 10s">
         <Text style={styles.skipText}>+10</Text>
       </ControlButton>
     </View>
@@ -101,21 +88,16 @@ export function PlaybackControls() {
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-    gap: 18,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  col: {
+    flexWrap: 'nowrap',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-evenly',
+    width: '100%',
+    paddingHorizontal: 12,
+    paddingTop: 8,
   },
   btn: {
     width: layout.controlSize,
     height: layout.controlSize,
-    minWidth: 56,
-    minHeight: 56,
     borderRadius: layout.controlSize / 2,
     backgroundColor: colors.surfaceRaised,
     borderWidth: StyleSheet.hairlineWidth,
@@ -135,12 +117,6 @@ const styles = StyleSheet.create({
   btnPressed: {
     opacity: 0.7,
     transform: [{ scale: 0.96 }],
-  },
-  label: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.2,
   },
   skipText: {
     color: colors.text,

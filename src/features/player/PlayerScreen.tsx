@@ -1,7 +1,8 @@
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Alert, Platform, Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import { formatTimecode } from '../../domain/models';
 import { markersNearTime } from '../../domain/practice';
@@ -12,6 +13,9 @@ import { AddNoteButton } from './AddNoteButton';
 import { PlaybackControls } from './PlaybackControls';
 import { PracticeBar } from './PracticeBar';
 import { Waveform } from './Waveform';
+
+/** Swipe down past this → collapse to the library linguetta. */
+const DISMISS_DY = 72;
 
 function usePauseNotePrompt() {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
@@ -70,36 +74,64 @@ export function PlayerScreen() {
   const canGoBack = navigation.canGoBack();
   usePauseNotePrompt();
 
+  const dismissToTab = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    }
+  };
+
+  const dismissGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .runOnJS(true)
+        .activeOffsetY(24)
+        .failOffsetX([-28, 28])
+        .onEnd((e) => {
+          if (e.translationY > DISMISS_DY && e.velocityY > -200) {
+            dismissToTab();
+          }
+        }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [navigation],
+  );
+
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="light" />
-      <View style={styles.header}>
-        {canGoBack ? (
-          <Pressable
-            onPress={() => navigation.goBack()}
-            hitSlop={layout.hitSlop}
-            accessibilityRole="button"
-            accessibilityLabel="Libreria"
-            style={styles.back}
-          >
-            <Text style={styles.backGlyph}>‹</Text>
-          </Pressable>
-        ) : null}
-        <View style={styles.headerText}>
-          <Text style={styles.title} numberOfLines={1}>
-            {track.title}
-          </Text>
-          <Text style={styles.artist} numberOfLines={1}>
-            {track.artist}
-          </Text>
-        </View>
-      </View>
+      <GestureDetector gesture={dismissGesture}>
+        <View>
+          <View style={styles.handleRow} pointerEvents="none">
+            <View style={styles.handle} />
+          </View>
+          <View style={styles.header}>
+            {canGoBack ? (
+              <Pressable
+                onPress={() => navigation.goBack()}
+                hitSlop={layout.hitSlop}
+                accessibilityRole="button"
+                accessibilityLabel="Libreria"
+                style={styles.back}
+              >
+                <Text style={styles.backGlyph}>‹</Text>
+              </Pressable>
+            ) : null}
+            <View style={styles.headerText}>
+              <Text style={styles.title} numberOfLines={1}>
+                {track.title}
+              </Text>
+              <Text style={styles.artist} numberOfLines={1}>
+                {track.artist}
+              </Text>
+            </View>
+          </View>
 
-      <View style={styles.timecodeRow}>
-        <Text style={styles.timecodeNow}>{formatTimecode(positionMs)}</Text>
-        <Text style={styles.timecodeSep}> / </Text>
-        <Text style={styles.timecodeTotal}>{formatTimecode(track.durationMs)}</Text>
-      </View>
+          <View style={styles.timecodeRow}>
+            <Text style={styles.timecodeNow}>{formatTimecode(positionMs)}</Text>
+            <Text style={styles.timecodeSep}> / </Text>
+            <Text style={styles.timecodeTotal}>{formatTimecode(track.durationMs)}</Text>
+          </View>
+        </View>
+      </GestureDetector>
 
       <PracticeBar />
 
@@ -120,6 +152,17 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  handleRow: {
+    alignItems: 'center',
+    paddingTop: 6,
+    paddingBottom: 2,
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.border,
   },
   header: {
     paddingHorizontal: 20,

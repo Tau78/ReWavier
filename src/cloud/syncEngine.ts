@@ -22,7 +22,7 @@ import {
   isPdfName,
 } from '../domain/driveMedia';
 import { canWriteWithRole, roleOfAlbum } from '../domain/folderRole';
-import { createId } from '../domain/library';
+import { createId, type Album } from '../domain/library';
 import { mergeLyricAnnotations, type LyricAnnotation } from '../domain/lyrics';
 import type { Marker, Track } from '../domain/models';
 import { userHasUsage } from '../domain/session';
@@ -291,10 +291,13 @@ export function runCloudSync(): Promise<void> {
   if (cloudSyncJob) {
     return cloudSyncJob;
   }
-  cloudSyncJob = runCloudSyncBody().finally(() => {
-    cloudSyncJob = null;
+  const job = runCloudSyncBody().finally(() => {
+    if (cloudSyncJob === job) {
+      cloudSyncJob = null;
+    }
   });
-  return cloudSyncJob;
+  cloudSyncJob = job;
+  return job;
 }
 
 /** Await the in-flight Drive pass (if any). Logout uses this after clearing the user. */
@@ -307,6 +310,486 @@ export async function settleCloudSync(): Promise<void> {
     await job;
   } catch {
     // caller only needs the job to finish
+  }
+}
+
+type SyncOneDriveAlbumResult = {
+  added: number;
+  removed: number;
+  versioned: number;
+  notesPulled: number;
+  needsFolderLink: boolean;
+  aborted: boolean;
+};
+
+/**
+ * Sync one Drive album: remotes, sidecars, media tree, order, notes.
+ * On user/logout abort, finishes the sync store and returns `aborted: true`.
+ */
+async function syncOneDriveAlbum(
+  album: Album,
+  expectedUserId: string,
+  selfSlug: string | undefined,
+): Promise<SyncOneDriveAlbumResult> {
+  const empty = {
+    added: 0,
+    removed: 0,
+    versioned: 0,
+    notesPulled: 0,
+    needsFolderLink: false,
+    aborted: false,
+  };
+  const sync = useSyncStore.getState();
+  const store = useLibraryStore.getState();
+
+  if (!isCloudSyncUserActive(expectedUserId)) {
+    sync.finish({ lastSyncedAt: Date.now(), message: null });
+    return { ...empty, aborted: true };
+  }
+  throwIfDownloadPaused();
+  let folderId = album.driveFolderId;
+  if (!folderId) {
+    const found = await findFolderByName(album.driveFolderName || album.name);
+    if (!isCloudSyncUserActive(expectedUserId)) {
+      sync.finish({ lastSyncedAt: Date.now(), message: null });
+      return { ...empty, aborted: true };
+    }
+    if (found) {
+      folderId = found.id;
+      store.linkAlbumDrive(album.id, found.id, found.name);
+    }
+  }
+  if (!folderId) {
+    return { ...empty, needsFolderLink: true };
+  }
+
+  await refreshAlbumDriveRole(album.id);
+  if (!isCloudSyncUserActive(expectedUserId)) {
+    sync.finish({ lastSyncedAt: Date.now(), message: null });
+    return { ...empty, aborted: true };
+  }
+
+  const { nodes: tree, truncated: treeTruncated } = await listDriveFolderTree(
+    folderId,
+    album.driveFolderName || album.name,
+    album.driveRecursive ? 8 : 0,
+    album.driveSharedDriveId ? { sharedDriveId: album.driveSharedDriveId } : undefined,
+  );
+  if (!isCloudSyncUserActive(expectedUserId)) {
+    sync.finish({ lastSyncedAt: Date.now(), message: null });
+    return { ...empty, aborted: true };
+  }
+  const children = tree[0]?.children ?? [];
+  const treeFolderIds = new Set(tree.map((node) => node.id));
+  const audios = uniqueRemotes(
+    tree.flatMap((node) => node.children.filter((file) => isAudioName(file.name))),
+  );
+  const sidecars = tree.flatMap((node) => node.children.filter((file) => isSidecarName(file.name)));
+  const importedRemotes = createRemoteClaimSet();
+  // One snapshot per album pass — refreshed after imports that add tracks.
+  let locals = albumLocalTracks(album.id, treeFolderIds);
+
+  let added = 0;
+  let removed = 0;
+  let versioned = 0;
+  let notesPulled = 0;
+
+  for (const remote of audios) {
+    if (!isCloudSyncUserActive(expectedUserId)) {
+      sync.finish({ lastSyncedAt: Date.now(), message: null });
+      return { ...empty, added, removed, versioned, notesPulled, aborted: true };
+    }
+    throwIfDownloadPaused();
+    if (remoteIsClaimed(importedRemotes, remote)) {
+      continue;
+    }
+    const existing = findBestLocalForRemote(locals, remote);
+    const onAlbum = new Set(
+      useLibraryStore.getState().tracksIn('album', album.id).map((track) => track.id),
+    );
+
+    if (!existing) {
+      const id = createId('track');
+      const fileUri = await saveAudio(remote, id, false);
+      if (!isCloudSyncUserActive(expectedUserId)) {
+        sync.finish({ lastSyncedAt: Date.now(), message: null });
+        return { ...empty, added, removed, versioned, notesPulled, aborted: true };
+      }
+      locals = albumLocalTracks(album.id, treeFolderIds);
+      const appeared = findBestLocalForRemote(locals, remote);
+      if (appeared) {
+        if (!onAlbum.has(appeared.id)) {
+          store.addTracksToAlbum(album.id, [appeared.id]);
+          added += 1;
+        }
+        claimRemote(importedRemotes, remote);
+        continue;
+      }
+      store.importBundles(
+        [
+          {
+            track: {
+              id,
+              title: titleFromFileName(remote.name),
+              artist: album.name,
+              durationMs: 0,
+              fileUri,
+              sourceFileName: remote.name,
+              downloaded: true,
+              downloadedAt: Date.now(),
+              ...metaFrom(remote),
+            },
+            markers: [],
+          },
+        ],
+        { albumId: album.id },
+      );
+      locals = albumLocalTracks(album.id, treeFolderIds);
+      added += 1;
+      claimRemote(importedRemotes, remote);
+      continue;
+    }
+
+    if (!onAlbum.has(existing.id)) {
+      store.addTracksToAlbum(album.id, [existing.id]);
+    }
+    claimRemote(importedRemotes, remote);
+
+    // Same name in a version folder: keep the local row, do not import another.
+    // Delete+reupload (old Drive id gone) adopts the new file id instead.
+    if (existing.driveFileId && existing.driveFileId !== remote.id) {
+      if (remoteReplacesLocalTrack(existing, remote, audios)) {
+        store.markTrackNeedsUpdate(existing.id, metaFrom(remote));
+        versioned += 1;
+      }
+      continue;
+    }
+
+    if (!remoteAudioChanged(existing, remote)) {
+      store.updateTrackRemote(existing.id, metaFrom(remote));
+      continue;
+    }
+    // Keep the file on the phone until the user taps Aggiorna — replacing it
+    // while it is playing can freeze the app.
+    store.markTrackNeedsUpdate(existing.id, metaFrom(remote));
+    versioned += 1;
+  }
+
+  // Incomplete Drive view (tree node cap or folder page cap): never surplus-delete.
+  // A truncated listing would look like missing remotes and wipe local tracks.
+  if (treeTruncated) {
+    if (__DEV__) {
+      console.warn(
+        `[sync] skip surplus delete for album ${album.id}: Drive tree truncated`,
+      );
+    }
+  } else {
+    const extras = surplusLocalTracks(locals, audios);
+    for (const track of extras) {
+      if (!isCloudSyncUserActive(expectedUserId)) {
+        sync.finish({ lastSyncedAt: Date.now(), message: null });
+        return { ...empty, added, removed, versioned, notesPulled, aborted: true };
+      }
+      await useLibraryStore.getState().deleteTrack(track.id, { deleteFromDevice: true });
+      removed += 1;
+    }
+  }
+
+  for (const remote of sidecars) {
+    if (!isCloudSyncUserActive(expectedUserId)) {
+      sync.finish({ lastSyncedAt: Date.now(), message: null });
+      return { ...empty, added, removed, versioned, notesPulled, aborted: true };
+    }
+    const slug = sidecarAuthorSlug(remote.name);
+    if (slug && slug === selfSlug) {
+      continue;
+    }
+    const dest = new File(inboxDirectory(), `sync-${remote.id}.json`);
+    await downloadDriveFile(remote.id, dest.uri);
+    if (!isCloudSyncUserActive(expectedUserId)) {
+      if (dest.exists) {
+        dest.delete();
+      }
+      sync.finish({ lastSyncedAt: Date.now(), message: null });
+      return { ...empty, added, removed, versioned, notesPulled, aborted: true };
+    }
+    const parsed = parseSidecar(await dest.text());
+    if (dest.exists) {
+      dest.delete();
+    }
+    if (!parsed) {
+      continue;
+    }
+    const track = locals.find(
+      (item) =>
+        audioMatchKey(item.sourceFileName ?? item.title) ===
+        audioMatchKey(parsed.audioFileName || remote.name),
+    );
+    if (!track) {
+      continue;
+    }
+    const before = store.markersByTrackId[track.id] ?? [];
+    const merged = mergeMarkers(before, parsed.markers);
+    const addedMarkers = merged.filter((marker) => !before.some((item) => item.id === marker.id)).length;
+    // Compare by marker id → updatedAt (mergeMarkers may reorder; index compare storms persist).
+    const beforeUpdatedAt = new Map(before.map((marker) => [marker.id, marker.updatedAt]));
+    const markersChanged =
+      addedMarkers > 0 ||
+      merged.length !== before.length ||
+      merged.some((marker) => beforeUpdatedAt.get(marker.id) !== marker.updatedAt);
+    const boundsChanged =
+      (parsed.startMs !== undefined && parsed.startMs !== track.startMs) ||
+      (parsed.endMs !== undefined && parsed.endMs !== track.endMs);
+    const practiceChanged =
+      parsed.exerciseOpenId !== track.exerciseOpenId ||
+      parsed.exerciseCloseId !== track.exerciseCloseId ||
+      parsed.practiceHoleId !== track.practiceHoleId;
+    const scoreChanged =
+      (parsed.lyrics !== undefined && parsed.lyrics !== track.lyrics) ||
+      (parsed.chords !== undefined && parsed.chords !== track.chords);
+    const annotationsMerged = mergeLyricAnnotations(
+      track.lyricAnnotations ?? [],
+      parsed.lyricAnnotations ?? [],
+    );
+    const annotationsChanged =
+      annotationsMerged.length !== (track.lyricAnnotations ?? []).length ||
+      annotationsMerged.some((item, i) => {
+        const beforeAnn = (track.lyricAnnotations ?? [])[i];
+        return !beforeAnn || item.id !== beforeAnn.id || item.updatedAt !== beforeAnn.updatedAt;
+      });
+
+    if (
+      !markersChanged &&
+      !boundsChanged &&
+      !practiceChanged &&
+      !scoreChanged &&
+      !annotationsChanged
+    ) {
+      continue;
+    }
+
+    if (markersChanged) {
+      notesPulled += addedMarkers;
+      store.setTrackMarkers(track.id, merged);
+      refreshMarkersIfPlaying(track.id, merged);
+    }
+
+    if (boundsChanged) {
+      store.setTrackBounds(
+        track.id,
+        parsed.startMs ?? track.startMs ?? 0,
+        parsed.endMs ?? track.endMs ?? track.durationMs,
+      );
+    }
+
+    if (practiceChanged) {
+      store.setTrackPractice(track.id, {
+        exerciseOpenId: parsed.exerciseOpenId,
+        exerciseCloseId: parsed.exerciseCloseId,
+        practiceHoleId: parsed.practiceHoleId,
+      });
+    }
+
+    if (scoreChanged) {
+      if (parsed.lyrics !== undefined && parsed.lyrics !== track.lyrics) {
+        store.setTrackLyrics(track.id, parsed.lyrics);
+      }
+      if (parsed.chords !== undefined && parsed.chords !== track.chords) {
+        store.setTrackChords(track.id, parsed.chords);
+      }
+    }
+
+    if (annotationsChanged) {
+      store.setTrackLyricAnnotations(track.id, annotationsMerged);
+    }
+
+    if (boundsChanged || practiceChanged) {
+      refreshTrackFieldsIfPlaying(track.id);
+    }
+  }
+
+  if (!isCloudSyncUserActive(expectedUserId)) {
+    sync.finish({ lastSyncedAt: Date.now(), message: null });
+    return { ...empty, added, removed, versioned, notesPulled, aborted: true };
+  }
+  await applyDriveMediaTree(album.id, tree, { skipSurplusDeletes: treeTruncated });
+  if (!isCloudSyncUserActive(expectedUserId)) {
+    sync.finish({ lastSyncedAt: Date.now(), message: null });
+    return { ...empty, added, removed, versioned, notesPulled, aborted: true };
+  }
+
+  const orderRemote = children.find((file) => isOrderManifestName(file.name));
+  if (orderRemote) {
+    const dest = new File(inboxDirectory(), `sync-order-${album.id}.json`);
+    await downloadDriveFile(orderRemote.id, dest.uri);
+    if (!isCloudSyncUserActive(expectedUserId)) {
+      if (dest.exists) {
+        dest.delete();
+      }
+      sync.finish({ lastSyncedAt: Date.now(), message: null });
+      return { ...empty, added, removed, versioned, notesPulled, aborted: true };
+    }
+    const parsed = parseAlbumOrder(await dest.text());
+    if (dest.exists) {
+      dest.delete();
+    }
+    const localStamp = useLibraryStore.getState().albums.find((item) => item.id === album.id)
+      ?.orderUpdatedAt ?? 0;
+    if (parsed && parsed.updatedAt > localStamp) {
+      const ordered = sortTracksByOrder(
+        useLibraryStore.getState().tracksIn('album', album.id),
+        parsed.files,
+      );
+      store.setCollectionOrder(
+        'album',
+        album.id,
+        ordered.map((track) => track.id),
+        { updatedAt: parsed.updatedAt, fromCloud: true },
+      );
+    } else if (localStamp > (parsed?.updatedAt ?? 0)) {
+      await pushAlbumOrder(album.id);
+    }
+  } else if ((useLibraryStore.getState().albums.find((item) => item.id === album.id)?.orderUpdatedAt ?? 0) > 0) {
+    await pushAlbumOrder(album.id);
+  }
+
+  if (!isCloudSyncUserActive(expectedUserId)) {
+    sync.finish({ lastSyncedAt: Date.now(), message: null });
+    return { ...empty, added, removed, versioned, notesPulled, aborted: true };
+  }
+  await syncAlbumNotes(album.id, children);
+
+  store.touchAlbumSync(album.id);
+  await refreshAlbumDriveRole(album.id);
+
+  return { added, removed, versioned, notesPulled, needsFolderLink: false, aborted: false };
+}
+
+/** Sync a single Drive album (Aggiorna). Skips device sync and other albums. */
+export type SyncDriveAlbumResult = {
+  added: number;
+  removed: number;
+  versioned: number;
+  notesPulled: number;
+  /** Why we did not sync (caller can show a clear message). */
+  skipped?: 'no-album' | 'no-google' | 'demo';
+};
+
+/**
+ * Align one Drive album: import new remotes, mark changed files, pull notes.
+ * Queued on `cloudSyncJob` so Aggiorna waits for any in-flight Drive pass
+ * instead of returning immediately with no UI feedback.
+ */
+export async function syncDriveAlbum(albumId: string): Promise<SyncDriveAlbumResult> {
+  let outcome: SyncDriveAlbumResult = { added: 0, removed: 0, versioned: 0, notesPulled: 0 };
+  const prev = cloudSyncJob;
+  const job = (async () => {
+    if (prev) {
+      try {
+        await prev;
+      } catch {
+        // previous pass failed — still try this album
+      }
+    }
+    outcome = await runSyncDriveAlbumBody(albumId);
+  })().finally(() => {
+    if (cloudSyncJob === job) {
+      cloudSyncJob = null;
+    }
+  });
+  cloudSyncJob = job;
+  await job;
+  return outcome;
+}
+
+async function runSyncDriveAlbumBody(albumId: string): Promise<SyncDriveAlbumResult> {
+  const empty: SyncDriveAlbumResult = { added: 0, removed: 0, versioned: 0, notesPulled: 0 };
+  await flushLibraryPersist();
+
+  const sync = useSyncStore.getState();
+  const user = useSessionStore.getState().user;
+  if (!user?.onboarded || shouldSkipCloudSync(user)) {
+    if (sync.status === 'syncing') {
+      sync.finish({ lastSyncedAt: Date.now(), message: null });
+    }
+    return { ...empty, skipped: 'demo' };
+  }
+  const expectedUserId = user.id;
+  const album = useLibraryStore
+    .getState()
+    .albums.find((item) => item.id === albumId && item.origin === 'drive');
+  if (!album) {
+    return { ...empty, skipped: 'no-album' };
+  }
+
+  sync.start();
+  const startedAt = useSyncStore.getState().startedAt;
+  const watchdog = setTimeout(() => {
+    const current = useSyncStore.getState();
+    if (current.status === 'syncing' && current.startedAt === startedAt) {
+      current.finish({ lastSyncedAt: Date.now(), message: null });
+    }
+  }, SYNC_STALE_MS);
+
+  try {
+    if (!isCloudSyncUserActive(expectedUserId)) {
+      sync.finish({ lastSyncedAt: Date.now(), message: null });
+      return empty;
+    }
+
+    const google = await hasDriveToken();
+    if (!isCloudSyncUserActive(expectedUserId)) {
+      sync.finish({ lastSyncedAt: Date.now(), message: null });
+      return empty;
+    }
+    if (!google) {
+      sync.finish({
+        lastSyncedAt: Date.now(),
+        needsFileRefresh: true,
+        message: 'Collega Google per aggiornare gli album da Drive.',
+      });
+      return { ...empty, skipped: 'no-google' };
+    }
+
+    try {
+      const result = await syncOneDriveAlbum(album, expectedUserId, user.authorSlug);
+      if (result.aborted) {
+        return empty;
+      }
+      if (!isCloudSyncUserActive(expectedUserId)) {
+        sync.finish({ lastSyncedAt: Date.now(), message: null });
+        return empty;
+      }
+      sync.finish({
+        lastSyncedAt: Date.now(),
+        pendingReviews: [],
+        notesPulled: result.notesPulled,
+        needsFolderLink: result.needsFolderLink,
+        needsFileRefresh: false,
+        message: syncAlbumMessage({
+          added: result.added,
+          removed: result.removed,
+          versioned: result.versioned,
+          notesPulled: result.notesPulled,
+          deviceMessage: '',
+        }),
+      });
+      return {
+        added: result.added,
+        removed: result.removed,
+        versioned: result.versioned,
+        notesPulled: result.notesPulled,
+      };
+    } catch (error) {
+      if (isDownloadPausedError(error)) {
+        sync.finish({ lastSyncedAt: Date.now(), message: null });
+        return empty;
+      }
+      sync.fail('Allineamento non riuscito. Riprova tra un attimo.');
+      throw error;
+    }
+  } finally {
+    clearTimeout(watchdog);
   }
 }
 
@@ -374,331 +857,27 @@ async function runCloudSyncBody(): Promise<void> {
       return;
     }
 
-  const selfSlug = user.authorSlug;
-  let notesPulled = 0;
-  let needsFolderLink = false;
-  let added = 0;
-  let removed = 0;
-  let versioned = 0;
+    const selfSlug = user.authorSlug;
+    let notesPulled = 0;
+    let needsFolderLink = false;
+    let added = 0;
+    let removed = 0;
+    let versioned = 0;
 
-  try {
-    const store = useLibraryStore.getState();
-    for (const album of albums) {
-      if (!isCloudSyncUserActive(expectedUserId)) {
-        sync.finish({ lastSyncedAt: Date.now(), message: null });
-        return;
-      }
-      throwIfDownloadPaused();
-      let folderId = album.driveFolderId;
-      if (!folderId) {
-        const found = await findFolderByName(album.driveFolderName || album.name);
-        if (!isCloudSyncUserActive(expectedUserId)) {
-          sync.finish({ lastSyncedAt: Date.now(), message: null });
+    try {
+      for (const album of albums) {
+        const result = await syncOneDriveAlbum(album, expectedUserId, selfSlug);
+        if (result.aborted) {
           return;
         }
-        if (found) {
-          folderId = found.id;
-          store.linkAlbumDrive(album.id, found.id, found.name);
+        added += result.added;
+        removed += result.removed;
+        versioned += result.versioned;
+        notesPulled += result.notesPulled;
+        if (result.needsFolderLink) {
+          needsFolderLink = true;
         }
       }
-      if (!folderId) {
-        needsFolderLink = true;
-        continue;
-      }
-
-      await refreshAlbumDriveRole(album.id);
-      if (!isCloudSyncUserActive(expectedUserId)) {
-        sync.finish({ lastSyncedAt: Date.now(), message: null });
-        return;
-      }
-
-      const { nodes: tree, truncated: treeTruncated } = await listDriveFolderTree(
-        folderId,
-        album.driveFolderName || album.name,
-        album.driveRecursive ? 8 : 0,
-        album.driveSharedDriveId ? { sharedDriveId: album.driveSharedDriveId } : undefined,
-      );
-      if (!isCloudSyncUserActive(expectedUserId)) {
-        sync.finish({ lastSyncedAt: Date.now(), message: null });
-        return;
-      }
-      const children = tree[0]?.children ?? [];
-      const treeFolderIds = new Set(tree.map((node) => node.id));
-      const audios = uniqueRemotes(
-        tree.flatMap((node) => node.children.filter((file) => isAudioName(file.name))),
-      );
-      const sidecars = tree.flatMap((node) => node.children.filter((file) => isSidecarName(file.name)));
-      const importedRemotes = createRemoteClaimSet();
-      // One snapshot per album pass — refreshed after imports that add tracks.
-      let locals = albumLocalTracks(album.id, treeFolderIds);
-
-      for (const remote of audios) {
-        if (!isCloudSyncUserActive(expectedUserId)) {
-          sync.finish({ lastSyncedAt: Date.now(), message: null });
-          return;
-        }
-        throwIfDownloadPaused();
-        if (remoteIsClaimed(importedRemotes, remote)) {
-          continue;
-        }
-        const existing = findBestLocalForRemote(locals, remote);
-        const onAlbum = new Set(
-          useLibraryStore.getState().tracksIn('album', album.id).map((track) => track.id),
-        );
-
-        if (!existing) {
-          const id = createId('track');
-          const fileUri = await saveAudio(remote, id, false);
-          if (!isCloudSyncUserActive(expectedUserId)) {
-            sync.finish({ lastSyncedAt: Date.now(), message: null });
-            return;
-          }
-          locals = albumLocalTracks(album.id, treeFolderIds);
-          const appeared = findBestLocalForRemote(locals, remote);
-          if (appeared) {
-            if (!onAlbum.has(appeared.id)) {
-              store.addTracksToAlbum(album.id, [appeared.id]);
-            }
-            claimRemote(importedRemotes, remote);
-            continue;
-          }
-          store.importBundles(
-            [
-              {
-                track: {
-                  id,
-                  title: titleFromFileName(remote.name),
-                  artist: album.name,
-                  durationMs: 0,
-                  fileUri,
-                  sourceFileName: remote.name,
-                  downloaded: true,
-                  downloadedAt: Date.now(),
-                  ...metaFrom(remote),
-                },
-                markers: [],
-              },
-            ],
-            { albumId: album.id },
-          );
-          locals = albumLocalTracks(album.id, treeFolderIds);
-          added += 1;
-          claimRemote(importedRemotes, remote);
-          continue;
-        }
-
-        if (!onAlbum.has(existing.id)) {
-          store.addTracksToAlbum(album.id, [existing.id]);
-        }
-        claimRemote(importedRemotes, remote);
-
-        // Same name in a version folder: keep the local row, do not import another.
-        // Delete+reupload (old Drive id gone) adopts the new file id instead.
-        if (existing.driveFileId && existing.driveFileId !== remote.id) {
-          if (remoteReplacesLocalTrack(existing, remote, audios)) {
-            store.markTrackNeedsUpdate(existing.id, metaFrom(remote));
-            versioned += 1;
-          }
-          continue;
-        }
-
-        if (!remoteAudioChanged(existing, remote)) {
-          store.updateTrackRemote(existing.id, metaFrom(remote));
-          continue;
-        }
-        // Keep the file on the phone until the user taps Aggiorna — replacing it
-        // while it is playing can freeze the app.
-        store.markTrackNeedsUpdate(existing.id, metaFrom(remote));
-        versioned += 1;
-      }
-
-      // Incomplete Drive view (tree node cap or folder page cap): never surplus-delete.
-      // A truncated listing would look like missing remotes and wipe local tracks.
-      if (treeTruncated) {
-        if (__DEV__) {
-          console.warn(
-            `[sync] skip surplus delete for album ${album.id}: Drive tree truncated`,
-          );
-        }
-      } else {
-        const extras = surplusLocalTracks(locals, audios);
-        for (const track of extras) {
-          if (!isCloudSyncUserActive(expectedUserId)) {
-            sync.finish({ lastSyncedAt: Date.now(), message: null });
-            return;
-          }
-          await useLibraryStore.getState().deleteTrack(track.id, { deleteFromDevice: true });
-          removed += 1;
-        }
-      }
-
-      for (const remote of sidecars) {
-        if (!isCloudSyncUserActive(expectedUserId)) {
-          sync.finish({ lastSyncedAt: Date.now(), message: null });
-          return;
-        }
-        const slug = sidecarAuthorSlug(remote.name);
-        if (slug && slug === selfSlug) {
-          continue;
-        }
-        const dest = new File(inboxDirectory(), `sync-${remote.id}.json`);
-        await downloadDriveFile(remote.id, dest.uri);
-        if (!isCloudSyncUserActive(expectedUserId)) {
-          if (dest.exists) {
-            dest.delete();
-          }
-          sync.finish({ lastSyncedAt: Date.now(), message: null });
-          return;
-        }
-        const parsed = parseSidecar(await dest.text());
-        if (dest.exists) {
-          dest.delete();
-        }
-        if (!parsed) {
-          continue;
-        }
-        const track = locals.find(
-          (item) =>
-            audioMatchKey(item.sourceFileName ?? item.title) ===
-            audioMatchKey(parsed.audioFileName || remote.name),
-        );
-        if (!track) {
-          continue;
-        }
-        const before = store.markersByTrackId[track.id] ?? [];
-        const merged = mergeMarkers(before, parsed.markers);
-        const added = merged.filter((marker) => !before.some((item) => item.id === marker.id)).length;
-        // Compare by marker id → updatedAt (mergeMarkers may reorder; index compare storms persist).
-        const beforeUpdatedAt = new Map(before.map((marker) => [marker.id, marker.updatedAt]));
-        const markersChanged =
-          added > 0 ||
-          merged.length !== before.length ||
-          merged.some((marker) => beforeUpdatedAt.get(marker.id) !== marker.updatedAt);
-        const boundsChanged =
-          (parsed.startMs !== undefined && parsed.startMs !== track.startMs) ||
-          (parsed.endMs !== undefined && parsed.endMs !== track.endMs);
-        const practiceChanged =
-          parsed.exerciseOpenId !== track.exerciseOpenId ||
-          parsed.exerciseCloseId !== track.exerciseCloseId ||
-          parsed.practiceHoleId !== track.practiceHoleId;
-        const scoreChanged =
-          (parsed.lyrics !== undefined && parsed.lyrics !== track.lyrics) ||
-          (parsed.chords !== undefined && parsed.chords !== track.chords);
-        const annotationsMerged = mergeLyricAnnotations(
-          track.lyricAnnotations ?? [],
-          parsed.lyricAnnotations ?? [],
-        );
-        const annotationsChanged =
-          annotationsMerged.length !== (track.lyricAnnotations ?? []).length ||
-          annotationsMerged.some((item, i) => {
-            const before = (track.lyricAnnotations ?? [])[i];
-            return !before || item.id !== before.id || item.updatedAt !== before.updatedAt;
-          });
-
-        if (
-          !markersChanged &&
-          !boundsChanged &&
-          !practiceChanged &&
-          !scoreChanged &&
-          !annotationsChanged
-        ) {
-          continue;
-        }
-
-        if (markersChanged) {
-          notesPulled += added;
-          store.setTrackMarkers(track.id, merged);
-          refreshMarkersIfPlaying(track.id, merged);
-        }
-
-        if (boundsChanged) {
-          store.setTrackBounds(
-            track.id,
-            parsed.startMs ?? track.startMs ?? 0,
-            parsed.endMs ?? track.endMs ?? track.durationMs,
-          );
-        }
-
-        if (practiceChanged) {
-          store.setTrackPractice(track.id, {
-            exerciseOpenId: parsed.exerciseOpenId,
-            exerciseCloseId: parsed.exerciseCloseId,
-            practiceHoleId: parsed.practiceHoleId,
-          });
-        }
-
-        if (scoreChanged) {
-          if (parsed.lyrics !== undefined && parsed.lyrics !== track.lyrics) {
-            store.setTrackLyrics(track.id, parsed.lyrics);
-          }
-          if (parsed.chords !== undefined && parsed.chords !== track.chords) {
-            store.setTrackChords(track.id, parsed.chords);
-          }
-        }
-
-        if (annotationsChanged) {
-          store.setTrackLyricAnnotations(track.id, annotationsMerged);
-        }
-
-        if (boundsChanged || practiceChanged) {
-          refreshTrackFieldsIfPlaying(track.id);
-        }
-      }
-
-      if (!isCloudSyncUserActive(expectedUserId)) {
-        sync.finish({ lastSyncedAt: Date.now(), message: null });
-        return;
-      }
-      await applyDriveMediaTree(album.id, tree, { skipSurplusDeletes: treeTruncated });
-      if (!isCloudSyncUserActive(expectedUserId)) {
-        sync.finish({ lastSyncedAt: Date.now(), message: null });
-        return;
-      }
-
-      const orderRemote = children.find((file) => isOrderManifestName(file.name));
-      if (orderRemote) {
-        const dest = new File(inboxDirectory(), `sync-order-${album.id}.json`);
-        await downloadDriveFile(orderRemote.id, dest.uri);
-        if (!isCloudSyncUserActive(expectedUserId)) {
-          if (dest.exists) {
-            dest.delete();
-          }
-          sync.finish({ lastSyncedAt: Date.now(), message: null });
-          return;
-        }
-        const parsed = parseAlbumOrder(await dest.text());
-        if (dest.exists) {
-          dest.delete();
-        }
-        const localStamp = useLibraryStore.getState().albums.find((item) => item.id === album.id)
-          ?.orderUpdatedAt ?? 0;
-        if (parsed && parsed.updatedAt > localStamp) {
-          const ordered = sortTracksByOrder(
-            useLibraryStore.getState().tracksIn('album', album.id),
-            parsed.files,
-          );
-          store.setCollectionOrder(
-            'album',
-            album.id,
-            ordered.map((track) => track.id),
-            { updatedAt: parsed.updatedAt, fromCloud: true },
-          );
-        } else if (localStamp > (parsed?.updatedAt ?? 0)) {
-          await pushAlbumOrder(album.id);
-        }
-      } else if ((useLibraryStore.getState().albums.find((item) => item.id === album.id)?.orderUpdatedAt ?? 0) > 0) {
-        await pushAlbumOrder(album.id);
-      }
-
-      if (!isCloudSyncUserActive(expectedUserId)) {
-        sync.finish({ lastSyncedAt: Date.now(), message: null });
-        return;
-      }
-      await syncAlbumNotes(album.id, children);
-
-      store.touchAlbumSync(album.id);
-      await refreshAlbumDriveRole(album.id);
-    }
 
       if (!isCloudSyncUserActive(expectedUserId)) {
         sync.finish({ lastSyncedAt: Date.now(), message: null });

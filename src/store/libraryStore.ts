@@ -1312,21 +1312,35 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           : 'Non c’è nessun brano da scaricare.',
       );
     }
+    const { usePlayerStore } = await import('./playerStore');
+    const playingId = usePlayerStore.getState().track.id;
+    // Never replace the file currently loaded in the player — that freezes playback.
+    const toFetch = playingId ? fetchable.filter((track) => track.id !== playingId) : fetchable;
+    const skippedPlaying = Boolean(playingId && fetchable.some((track) => track.id === playingId));
+    if (toFetch.length === 0) {
+      if (reuseSession) {
+        return;
+      }
+      if (skippedPlaying) {
+        return;
+      }
+      throw new Error(
+        pending.length > 0
+          ? 'Questi brani non sono ancora arrivati. Riprova.'
+          : 'Non c’è nessun brano da scaricare.',
+      );
+    }
     if (!reuseSession) {
-      progress.beginCollection(fetchable.map((track) => track.id));
+      progress.beginCollection(toFetch.map((track) => track.id));
     }
     try {
-      const { releaseTrackFromPlayer, usePlayerStore } = await import('./playerStore');
-      const playingId = usePlayerStore.getState().track.id;
-      if (playingId && fetchable.some((track) => track.id === playingId)) {
-        await releaseTrackFromPlayer(playingId);
-      }
-      for (const track of fetchable) {
+      for (const track of toFetch) {
         if (useDownloadProgressStore.getState().pauseRequested) {
           break;
         }
         try {
           await get().downloadTrack(track.id, { replace: track.pendingRemoteUpdate === true });
+          await new Promise((resolve) => setTimeout(resolve, 0));
         } catch (error) {
           if (isDownloadPausedError(error)) {
             break;

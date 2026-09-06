@@ -18,11 +18,13 @@ La schermata player è **approvata dal product owner**. Non modificarne estetica
 
 Layout vincolato, dall’alto in basso:
 
-1. Titolo + artista (niente icone extra in header)
+1. Maniglia discreta + titolo + artista (niente icone extra in header; back "‹" se c’è lo stack)
 2. Timecode `mm:ss.mmm / mm:ss.mmm`
 3. Waveform panoramica + dettaglio
-4. Controlli circolari
-5. FAB + centrale
+4. Controlli circolari **su una sola riga**: −10 · Stop · Play · +10 (56pt)
+5. FAB + centrale (72pt, non ridurre / non spostare)
+
+**Linguetta:** swipe in basso sul player (zona titolo/timecode) → `goBack` e resta la linguetta in libreria/home. Tap sulla linguetta → riapre `Player`. Controlli e + solo sul player grande, non sulla linguetta.
 
 Niente tab bar, drawer, gear, cartelle o settings **sopra** questa schermata.
 

@@ -20,6 +20,14 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Ripeti un pezzo',
         body: 'Sull’ascolto tocca A dove ricominciare e B dove fermarti. Quel pezzo si ripete da solo.',
       },
+      {
+        title: 'Player a linguetta',
+        body: 'Scorri in basso sul titolo: resta una barra sottile e l’ascolto continua. Toccala per riaprire il player.',
+      },
+      {
+        title: 'Aggiorna l’album',
+        body: 'In un album Drive, Aggiorna cerca i brani nuovi e te lo dice. Se stai ascoltando, non interrompe il pezzo.',
+      },
     ],
   },
 ];
