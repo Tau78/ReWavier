@@ -80,6 +80,7 @@ async function writeClipWav(
   startMs: number,
   durationMs: number,
   fileName: string,
+  trackDurationMs = 0,
 ): Promise<string> {
   const native = await sliceLocalWavFile(fileUri, startMs, durationMs);
   if (native && native.byteLength > 44) {
@@ -91,6 +92,7 @@ async function writeClipWav(
     uri: fileUri,
     startMs,
     durationMs,
+    sourceDurationMs: trackDurationMs,
   });
   if (!extracted.wavBase64) {
     throw new Error('Clip vuota');
@@ -166,7 +168,13 @@ async function shareMarkerClipUnsafe(input: ShareMarkerClipInput): Promise<void>
 
   if (uri && clip.durationMs > 0) {
     try {
-      const wavUri = await writeClipWav(uri, clip.startMs, clip.durationMs, `${clipBaseName(title, timestampMs)}.wav`);
+      const wavUri = await writeClipWav(
+        uri,
+        clip.startMs,
+        clip.durationMs,
+        `${clipBaseName(title, timestampMs)}.wav`,
+        track.durationMs,
+      );
       writeCompanionTxt(wavUri, noteMessage);
       await presentAudioShare(wavUri, noteMessage, dialogTitle, 'audio/wav', 'public.wav');
       return;

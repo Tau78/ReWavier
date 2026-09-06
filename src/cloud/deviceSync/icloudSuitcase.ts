@@ -140,8 +140,6 @@ export async function syncICloudSuitcase(): Promise<SuitcaseResult> {
     if (!syncStillForOwner(owner)) {
       return { pushed: 0, pulled, message: '' };
     }
-    await api.downloadFileAsync(`${root}/${AUDIO_DIR}/${name}`, audioDirectory().uri);
-    pulled += 1;
   }
 
   if (!syncStillForOwner(owner)) {

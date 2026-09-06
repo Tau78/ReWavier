@@ -477,6 +477,7 @@ export function HomeScreen() {
                         .length
                     }
                     downloading={downloadingIds[track.id] != null}
+                    swipeEnabled={dragId == null}
                     onPress={() => play(track.id)}
                     onArtwork={() => actions.pickTrackArtwork(track)}
                     onMenu={() => actions.openTrackMenu(track)}

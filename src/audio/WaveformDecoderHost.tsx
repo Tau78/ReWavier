@@ -8,6 +8,7 @@ import { normalizePeaks } from './pcmPeaks';
 import {
   MAX_WAVEFORM_DECODE_BYTES,
   MAX_WAVEFORM_DECODE_DURATION_MS,
+  registerWaveformCancel,
   registerWaveformDecoder,
   type WaveformJob,
 } from './waveformBridge';
@@ -193,7 +194,24 @@ export function WaveformDecoderHost() {
       });
     });
 
+    registerWaveformCancel((jobId) => {
+      if (currentRef.current?.job.id === jobId) {
+        clearTimeout(currentRef.current.timer);
+        currentRef.current.reject(new Error('Decodifica waveform annullata'));
+        currentRef.current = null;
+        kick();
+        return;
+      }
+      const idx = queueRef.current.findIndex((w) => w.job.id === jobId);
+      if (idx >= 0) {
+        const [waiter] = queueRef.current.splice(idx, 1);
+        clearTimeout(waiter.timer);
+        waiter.reject(new Error('Decodifica waveform annullata'));
+      }
+    });
+
     return () => {
+      registerWaveformCancel(null);
       registerWaveformDecoder(null);
       readyRef.current = false;
       const pending = queueRef.current.splice(0, queueRef.current.length);

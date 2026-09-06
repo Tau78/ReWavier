@@ -30,7 +30,12 @@ import {
   resolveExerciseRange,
 } from '../../domain/practice';
 import { shareMarkerClip } from '../../files/shareMarkerClip';
-import { suppressPausePrompt, usePlayerStore } from '../../store/playerStore';
+import {
+  beginWaveformScrub,
+  endWaveformScrub,
+  suppressPausePrompt,
+  usePlayerStore,
+} from '../../store/playerStore';
 import { colors } from '../../theme/colors';
 import { ActionMenu } from '../library/ActionMenu';
 import { DetailLyricsPanel } from './DetailLyricsPanel';
@@ -44,9 +49,47 @@ const LONG_PRESS_MS = 480;
 const PIN_HIT = 44;
 const HANDLE_HIT = 28;
 const PLAYHEAD_HALF = 7;
+/** Cap native seeks during pan scrub; UI position updates every frame. */
+const SCRUB_NATIVE_INTERVAL_MS = 120;
 
 type DetailCarouselPage = 'detail' | 'lyrics';
 
+let scrubNativeTimer: ReturnType<typeof setTimeout> | null = null;
+let scrubPendingMs: number | null = null;
+let scrubLastNativeAt = 0;
+
+function clearScrubNativeTimer() {
+  if (scrubNativeTimer != null) {
+    clearTimeout(scrubNativeTimer);
+    scrubNativeTimer = null;
+  }
+}
+
+function flushScrubNativeSeek() {
+  clearScrubNativeTimer();
+  if (scrubPendingMs == null) {
+    return;
+  }
+  const ms = scrubPendingMs;
+  scrubPendingMs = null;
+  scrubLastNativeAt = Date.now();
+  usePlayerStore.getState().seekTo(ms);
+}
+
+function scheduleScrubNativeSeek(ms: number) {
+  scrubPendingMs = ms;
+  const elapsed = Date.now() - scrubLastNativeAt;
+  if (elapsed >= SCRUB_NATIVE_INTERVAL_MS) {
+    flushScrubNativeSeek();
+    return;
+  }
+  if (scrubNativeTimer == null) {
+    scrubNativeTimer = setTimeout(() => {
+      scrubNativeTimer = null;
+      flushScrubNativeSeek();
+    }, SCRUB_NATIVE_INTERVAL_MS - elapsed);
+  }
+}
 function clampWindowMs(ms: number, durationMs: number): number {
   return Math.min(Math.max(durationMs, 1), Math.max(MIN_WINDOW_MS, ms));
 }
@@ -108,6 +151,7 @@ function useWaveformGestures(
   const widthRef = useRef(width);
   const viewStartRef = useRef(viewStartMs);
   const scrubOrigin = useRef(0);
+  const scrubActive = useRef(false);
   spanRef.current = viewSpanMs;
   minRef.current = minMs;
   maxRef.current = maxMs;
@@ -131,6 +175,11 @@ function useWaveformGestures(
       .failOffsetY([-24, 24])
       .onStart(() => {
         scrubOrigin.current = usePlayerStore.getState().positionMs;
+        scrubActive.current = true;
+        scrubLastNativeAt = 0;
+        scrubPendingMs = null;
+        clearScrubNativeTimer();
+        beginWaveformScrub();
       })
       .onUpdate((event) => {
         const w = widthRef.current;
@@ -138,7 +187,22 @@ function useWaveformGestures(
         if (w <= 0 || span <= 0) {
           return;
         }
-        usePlayerStore.getState().seekTo(scrubOrigin.current - (event.translationX / w) * span);
+        const next = scrubOrigin.current - (event.translationX / w) * span;
+        // UI every frame; native seek throttled (~120ms) + flush on end.
+        usePlayerStore.getState().seekTo(next, { engine: false });
+        scheduleScrubNativeSeek(next);
+      })
+      .onFinalize(() => {
+        if (!scrubActive.current) {
+          return;
+        }
+        scrubActive.current = false;
+        flushScrubNativeSeek();
+        // Hold scrub lock briefly so a stale status frame cannot snap the
+        // playhead back before the native seek lands.
+        setTimeout(() => {
+          endWaveformScrub();
+        }, 100);
       });
 
     const tap = Gesture.Tap()

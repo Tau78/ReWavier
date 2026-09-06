@@ -23,6 +23,7 @@ export function TrackRow({
   onMenu,
   onArtwork,
   onSwipeDelete,
+  swipeEnabled = true,
 }: {
   track: Track;
   noteCount: number;
@@ -36,6 +37,8 @@ export function TrackRow({
   onArtwork?: () => void;
   /** Swipe left → Elimina; opens the same delete confirm as the ⋯ menu. */
   onSwipeDelete?: () => void;
+  /** False while reorder/drag is active so swipe does not compete with Pan. */
+  swipeEnabled?: boolean;
 }) {
   const downloaded = isDownloaded(track);
   const playerDurationMs = usePlayerStore((state) =>
@@ -163,7 +166,11 @@ export function TrackRow({
   );
 
   if (onSwipeDelete) {
-    return <SwipeableRow onDelete={onSwipeDelete}>{row}</SwipeableRow>;
+    return (
+      <SwipeableRow onDelete={onSwipeDelete} swipeEnabled={swipeEnabled}>
+        {row}
+      </SwipeableRow>
+    );
   }
   return row;
 }

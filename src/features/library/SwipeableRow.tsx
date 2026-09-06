@@ -27,14 +27,21 @@ export function SwipeableRow({
   onDelete,
   onLeading,
   leadingLabel = 'Condividi',
+  swipeEnabled = true,
 }: {
   children: ReactNode;
   onDelete?: () => void;
   onLeading?: () => void;
   leadingLabel?: string;
+  /** False while a long-press reorder/drag is active so Pan and swipe do not fight. */
+  swipeEnabled?: boolean;
 }) {
   const ref = useRef<Swipeable>(null);
   const close = () => ref.current?.close();
+
+  if (!swipeEnabled) {
+    return <>{children}</>;
+  }
 
   return (
     <Swipeable

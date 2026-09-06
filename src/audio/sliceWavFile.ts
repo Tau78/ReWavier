@@ -1,5 +1,7 @@
 import { File } from 'expo-file-system';
 
+import { MAX_WAVEFORM_DECODE_BYTES } from './waveformBridge';
+
 function readFourCC(view: DataView, offset: number): string {
   return String.fromCharCode(
     view.getUint8(offset),
@@ -115,7 +117,13 @@ export async function sliceLocalWavFile(
     if (!file.exists) {
       return null;
     }
+    if (typeof file.size === 'number' && file.size > MAX_WAVEFORM_DECODE_BYTES) {
+      return null;
+    }
     const bytes = await file.bytes();
+    if (bytes.byteLength > MAX_WAVEFORM_DECODE_BYTES) {
+      return null;
+    }
     const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
     return sliceWavBuffer(buffer, startMs, durationMs);
   } catch {

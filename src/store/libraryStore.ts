@@ -943,6 +943,10 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     const deleteFromDevice = options?.deleteFromDevice === true;
     const track = get().getTrack(id);
     const fileNames = track ? audioFileNamesForTrack(track) : [];
+    // Unload before removing files — sync surplus / delete-while-listening must not
+    // delete the URI while the native player still holds it.
+    const { releaseTrackFromPlayer } = await import('./playerStore');
+    await releaseTrackFromPlayer(id);
     if (deleteFromDevice && track) {
       removeSidecarFromLibrary(track.sourceFileName ?? track.title, sidecarSlug());
       await removeUri(track.fileUri);
@@ -988,8 +992,6 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         keptAudioNames: [...kept],
       };
     });
-    const { clearPlayerIfTrackDeleted } = require('./playerStore') as typeof import('./playerStore');
-    clearPlayerIfTrackDeleted(id);
   },
 
   moveTrack(trackId, folderId) {
@@ -1545,12 +1547,17 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           peaksByTrackId: {},
           downloadingIds: {},
         });
-        persistReady = true;
         if (isDemoUser(user)) {
+          // Demo has no finishLibraryHydrate — safe to persist the snapshot as-is.
+          persistReady = true;
           useSyncStore.getState().reset();
           return;
         }
+        // Keep persistReady false through migrate/scan so subscribers cannot write a
+        // partial library.json mid-hydrate.
         await finishLibraryHydrate(snapshot != null);
+        persistReady = true;
+        schedulePersist();
       } finally {
         set({ libraryHydrated: true });
         libraryHydratePromise = undefined;
@@ -1604,15 +1611,26 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   folderDescendants(id) {
     const { folders } = get();
     const result = new Set<string>();
-    const visit = (parent: string) => {
+    const visiting = new Set<string>();
+    const MAX_DEPTH = 64;
+    const visit = (parent: string, depth: number) => {
+      if (depth > MAX_DEPTH || visiting.has(parent)) {
+        return;
+      }
+      visiting.add(parent);
       for (const folder of folders) {
+        // Skip self-parent and already-collected nodes (cycles / corrupt data).
+        if (folder.id === folder.parentId) {
+          continue;
+        }
         if (folder.parentId === parent && !result.has(folder.id)) {
           result.add(folder.id);
-          visit(folder.id);
+          visit(folder.id, depth + 1);
         }
       }
+      visiting.delete(parent);
     };
-    visit(id);
+    visit(id, 0);
     return result;
   },
 }));

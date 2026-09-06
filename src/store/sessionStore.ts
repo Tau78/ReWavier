@@ -85,6 +85,22 @@ async function reloadLibrary() {
   await useLibraryStore.getState().hydrate();
 }
 
+/** Stop Drive sync + native audio before swapping library user data. */
+async function releaseSessionRuntime() {
+  try {
+    const { settleCloudSync } = await import('../cloud/syncEngine');
+    await settleCloudSync();
+  } catch {
+    // sync already gone
+  }
+  try {
+    const { unloadPlayerForSessionEnd } = await import('./playerStore');
+    await unloadPlayerForSessionEnd();
+  } catch {
+    // player already gone
+  }
+}
+
 function makeUser(input: {
   id: string;
   email: string;
@@ -394,6 +410,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     await clearGoogleToken().catch(() => undefined);
     set({ user: null });
     persist(get());
+    await releaseSessionRuntime();
     await reloadLibrary();
   },
 
@@ -411,6 +428,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     await clearGoogleToken().catch(() => undefined);
     set({ user: null });
     persist(get());
+    await releaseSessionRuntime();
     await reloadLibrary();
   },
 }));

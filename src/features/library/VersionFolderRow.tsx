@@ -14,6 +14,7 @@ export function VersionFolderRow({
   downloadingOf,
   blockedOf,
   embedChildren = true,
+  swipeEnabled = true,
   onToggle,
   onPlayChosen,
   onPlayVersion,
@@ -30,6 +31,8 @@ export function VersionFolderRow({
   blockedOf?: (trackId: string) => boolean;
   /** When false, children are separate reorderable rows in the parent list. */
   embedChildren?: boolean;
+  /** False while reorder/drag is active so swipe does not compete with Pan. */
+  swipeEnabled?: boolean;
   onToggle: () => void;
   onPlayChosen: () => void;
   onPlayVersion: (track: Track) => void;
@@ -92,6 +95,7 @@ export function VersionFolderRow({
                 noteCount={noteCountOf(track.id)}
                 downloading={downloadingOf(track.id)}
                 blocked={blockedOf?.(track.id) === true}
+                swipeEnabled={swipeEnabled}
                 onPress={() => onPlayVersion(track)}
                 onMenu={() => onVersionMenu(track)}
                 onSwipeDelete={

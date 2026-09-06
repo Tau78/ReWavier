@@ -14,6 +14,7 @@ export type WaveformJob = {
 };
 
 type DecoderFn = (job: WaveformJob) => Promise<DecodedPeaks>;
+type CancelFn = (jobId: string) => void;
 
 type WaitingItem = {
   job: WaveformJob;
@@ -23,6 +24,7 @@ type WaitingItem = {
 };
 
 let decoder: DecoderFn | null = null;
+let cancelHandler: CancelFn | null = null;
 const waiting: WaitingItem[] = [];
 
 const WAIT_FOR_DECODER_MS = 45_000;
@@ -46,6 +48,22 @@ export function registerWaveformDecoder(next: DecoderFn | null): void {
     clearWaitingTimer(item);
     next(item.job).then(item.resolve, item.reject);
   }
+}
+
+/** Host registers this so timed-out ensurePeaks can drop queued / current jobs. */
+export function registerWaveformCancel(next: CancelFn | null): void {
+  cancelHandler = next;
+}
+
+/** Reject waiting work and ask the host to drop the job (late results ignored). */
+export function cancelWaveformJob(jobId: string): void {
+  const idx = waiting.findIndex((item) => item.job.id === jobId);
+  if (idx >= 0) {
+    const [item] = waiting.splice(idx, 1);
+    clearWaitingTimer(item);
+    item.reject(new Error('Decodifica waveform annullata'));
+  }
+  cancelHandler?.(jobId);
 }
 
 export function decodeViaWebView(job: WaveformJob): Promise<DecodedPeaks> {

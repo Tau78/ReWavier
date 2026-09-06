@@ -168,6 +168,13 @@ export function CollectionScreen() {
   const [peeking, setPeeking] = useState(false);
   const peekJobRef = useRef<Promise<DriveAlbumPeek> | null>(null);
   const heldFileUriRef = useRef<Map<string, string>>(new Map());
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const downloadActive = useDownloadProgressStore((s) => s.active);
   const downloadMode = useDownloadProgressStore((s) => s.mode);
   const downloadQueueIds = useDownloadProgressStore((s) => s.queueIds);
@@ -186,13 +193,17 @@ export function CollectionScreen() {
       return peekJobRef.current;
     }
     const job = (async () => {
-      setPeeking(true);
+      if (mountedRef.current) {
+        setPeeking(true);
+      }
       try {
         await flushLibraryPersist();
         useLibraryStore.getState().reattachLocalAudio();
         return await peekDriveAlbum(id);
       } finally {
-        setPeeking(false);
+        if (mountedRef.current) {
+          setPeeking(false);
+        }
       }
     })();
     peekJobRef.current = job;
@@ -279,6 +290,13 @@ export function CollectionScreen() {
         void refreshAlbumDriveRole(id);
         void refreshFromDrive();
       }
+      return () => {
+        // Drop in-flight UI flags if the user leaves before peek/pull finishes.
+        if (mountedRef.current) {
+          setPeeking(false);
+          setPulling(false);
+        }
+      };
     }, [isDriveAlbum, id, refreshFromDrive]),
   );
   const displayTracks = useMemo(() => {
@@ -573,8 +591,15 @@ export function CollectionScreen() {
             <RefreshControl
               refreshing={pulling}
               onRefresh={() => {
+                if (!mountedRef.current) {
+                  return;
+                }
                 setPulling(true);
-                void refreshFromDrive().finally(() => setPulling(false));
+                void refreshFromDrive().finally(() => {
+                  if (mountedRef.current) {
+                    setPulling(false);
+                  }
+                });
               }}
               tintColor={colors.accent}
               colors={[colors.accent]}
@@ -691,6 +716,7 @@ export function CollectionScreen() {
                       .filter((track): track is Track => track != null)}
                     open={openVersionIds[item.folder.id] === true}
                     embedChildren={false}
+                    swipeEnabled={!dragging}
                     playerTrackId={playerTrackId}
                     noteCountOf={(trackId) =>
                       (markersByTrackId[trackId] ?? []).filter((marker) => marker.hidden !== true).length
@@ -745,6 +771,7 @@ export function CollectionScreen() {
                       }
                       downloading={downloadingIds[item.track.id] != null}
                       blocked={blockedIds.has(item.track.id)}
+                      swipeEnabled={!dragging}
                       onPress={() => {
                         if (blockedIds.has(item.track.id)) {
                           warnBlocked();
@@ -785,6 +812,7 @@ export function CollectionScreen() {
                     }
                     downloading={downloadingIds[item.track.id] != null}
                     blocked={blockedIds.has(item.track.id)}
+                    swipeEnabled={!dragging}
                     onPress={() => {
                       if (blockedIds.has(item.track.id)) {
                         warnBlocked();

@@ -74,7 +74,7 @@ export type PlayerActions = {
   pause: () => void;
   stop: () => void;
   seekBy: (deltaMs: number) => void;
-  seekTo: (ms: number) => void;
+  seekTo: (ms: number, options?: { engine?: boolean }) => void;
   playFrom: (ms: number) => void;
   pressAddNote: () => void;
   openMarker: (id: string) => void;
@@ -152,6 +152,11 @@ let aroundUntilMs: number | null = null;
 let holeTimer: ReturnType<typeof setTimeout> | null = null;
 let holeBusy = false;
 let suppressPausePromptUntil = 0;
+/** One-shot A–B / exercise wrap: avoid native seek spam while still near end. */
+let loopWrapPending = false;
+let lastWrapAt = 0;
+/** Waveform pan scrub: keep UI positionMs while throttling native seeks. */
+let waveformScrubDepth = 0;
 
 export function suppressPausePrompt(ms = 2000) {
   suppressPausePromptUntil = Math.max(suppressPausePromptUntil, Date.now() + ms);
@@ -159,6 +164,14 @@ export function suppressPausePrompt(ms = 2000) {
 
 export function isPausePromptSuppressed(): boolean {
   return Date.now() < suppressPausePromptUntil;
+}
+
+export function beginWaveformScrub() {
+  waveformScrubDepth += 1;
+}
+
+export function endWaveformScrub() {
+  waveformScrubDepth = Math.max(0, waveformScrubDepth - 1);
 }
 
 function clearHoleTimer() {
@@ -227,6 +240,9 @@ function resetPlayerRuntime() {
   lastAdvanceKey = '';
   aroundUntilMs = null;
   clearHoleTimer();
+  loopWrapPending = false;
+  lastWrapAt = 0;
+  waveformScrubDepth = 0;
   suppressPausePrompt(2500);
   usingFile = false;
   mockEngine.reset(EMPTY_TRACK.durationMs);
@@ -246,6 +262,30 @@ export function clearPlayerIfTrackDeleted(trackId: string): void {
     isPlaying: false,
     bubble: { ...HIDDEN_BUBBLE },
     loadState: 'idle',
+  });
+}
+
+/**
+ * Drop native audio and clear the dock with no queue advance.
+ * Call before logout / account switch so hydrate cannot overlap an open file.
+ */
+export async function unloadPlayerForSessionEnd(): Promise<void> {
+  resetPlayerRuntime();
+  loadChain = Promise.resolve();
+  try {
+    await fileEngine.unload();
+  } catch {
+    // session already gone
+  }
+  usePlayerStore.setState({
+    track: EMPTY_TRACK,
+    peaks: [],
+    markers: [],
+    positionMs: 0,
+    isPlaying: false,
+    bubble: { ...HIDDEN_BUBBLE },
+    loadState: 'idle',
+    queueIds: [],
   });
 }
 
@@ -399,15 +439,25 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     get().seekTo(readPositionMs(get()) + deltaMs);
   },
 
-  seekTo(ms) {
+  seekTo(ms, options) {
     const state = get();
     const range = activePlayRange(state.track, state.markers);
     const next = Math.min(range.endMs, Math.max(range.startMs, ms));
+    const wantEngine = options?.engine !== false;
     suppressPausePrompt(800);
+    loopWrapPending = false;
+    lastWrapAt = 0;
     const uri = playableUri(state.track);
 
     if (uri && (state.loadState === 'loading' || state.loadState === 'error')) {
       pendingSeekMs = next;
+      set({ positionMs: next });
+      return;
+    }
+
+    // Preview (scrub): UI only. Full seek: native engine; position follows status
+    // (or stays on the preview value until the next frame while scrubDepth > 0).
+    if (!wantEngine) {
       set({ positionMs: next });
       return;
     }
@@ -420,6 +470,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     const range = activePlayRange(state.track, state.markers);
     const next = Math.min(range.endMs, Math.max(range.startMs, ms));
     const uri = playableUri(state.track);
+    loopWrapPending = false;
+    lastWrapAt = 0;
 
     if (uri && state.loadState === 'loading') {
       pendingSeekMs = next;
@@ -522,6 +574,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     }
     const state = get();
     suppressPausePrompt(4000);
+    clearHoleTimer();
     resumeAfterBubble = mockDrivesPlayback(state)
       ? engine().isPlaying()
       : state.isPlaying;
@@ -547,6 +600,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     if (!marker) {
       return;
     }
+    clearHoleTimer();
     resumeAfterBubble = false;
     pendingPlay = false;
     pauseEngines(state);
@@ -783,6 +837,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     }
     const state = get();
     suppressPausePrompt(4000);
+    clearHoleTimer();
     resumeAfterBubble = false;
     pendingPlay = false;
     pauseEngines(state);
@@ -832,6 +887,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     lastAdvanceKey = '';
     aroundUntilMs = null;
     clearHoleTimer();
+    loopWrapPending = false;
+    lastWrapAt = 0;
     suppressPausePrompt(2500);
     pendingPlay = options?.autoPlay === true;
     pendingSeekMs = null;
@@ -1018,6 +1075,13 @@ function persistKnownDuration(trackId: string, durationMs: number) {
 
 function onEngineFrame(positionMs: number, playing: boolean) {
   const state = usePlayerStore.getState();
+  // During waveform scrub, store positionMs is the source of truth for the UI.
+  if (waveformScrubDepth > 0) {
+    if (state.isPlaying !== playing) {
+      usePlayerStore.setState({ isPlaying: playing });
+    }
+    return;
+  }
   const { markers } = state;
   let { track } = state;
   if (usingFile) {
@@ -1083,8 +1147,26 @@ function onEngineFrame(positionMs: number, playing: boolean) {
 
   if (playing && playRange.endMs > playRange.startMs && positionMs >= playRange.endMs - 25) {
     if (exercise || isCustomRange(fileRange, track.durationMs)) {
-      engine().seekTo(playRange.startMs);
+      // One-shot wrap: native seek is async; position can sit near end for many
+      // ~50ms frames. Guard so we do not spam seekTo(start) every tick.
+      const wrapStuckMs = 1500;
+      const now = Date.now();
+      const allowWrap =
+        !loopWrapPending || (lastWrapAt > 0 && now - lastWrapAt >= wrapStuckMs);
+      if (allowWrap) {
+        loopWrapPending = true;
+        lastWrapAt = now;
+        engine().seekTo(playRange.startMs);
+      }
+      usePlayerStore.setState({ positionMs, isPlaying: true });
       return;
+    }
+  }
+  if (loopWrapPending) {
+    const nearStartSlack = Math.min(400, Math.max(80, (playRange.endMs - playRange.startMs) * 0.15));
+    if (!playing || positionMs <= playRange.startMs + nearStartSlack) {
+      loopWrapPending = false;
+      lastWrapAt = 0;
     }
   }
   const finished =

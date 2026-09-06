@@ -3,18 +3,24 @@ import { StyleSheet, View } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 import { WebView, type WebViewMessageEvent } from 'react-native-webview';
 
-import { ensureLibraryDirectory, libraryDirectory } from '../files/libraryPaths';
+import { ensureLibraryDirectory } from '../files/libraryPaths';
 import {
   registerClipExtractor,
   type ClipJob,
   type ExtractedClip,
 } from './clipBridge';
+import {
+  MAX_WAVEFORM_DECODE_BYTES,
+  MAX_WAVEFORM_DECODE_DURATION_MS,
+} from './waveformBridge';
 
 const EXTRACTOR_HTML = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8" /><style>html,body{margin:0;background:transparent}</style></head>
 <body>
 <script>
+var MAX_BYTES = ${MAX_WAVEFORM_DECODE_BYTES};
+var MAX_DURATION_SEC = ${MAX_WAVEFORM_DECODE_DURATION_MS / 1000};
 function encodeWav(channelData, sampleRate) {
   var numChannels = channelData.length;
   var numFrames = channelData[0].length;
@@ -82,14 +88,35 @@ function postChunks(id, wavBase64, meta) {
   }
 }
 window.__extractClip = function (job) {
+  if (job.sourceDurationMs && job.sourceDurationMs > ${MAX_WAVEFORM_DECODE_DURATION_MS}) {
+    window.ReactNativeWebView.postMessage(JSON.stringify({
+      id: job.id,
+      ok: false,
+      error: 'File troppo lungo per preparare la clip'
+    }));
+    return;
+  }
   fetch('./' + job.fileName)
     .catch(function () { return fetch(job.fileName); })
     .catch(function () { return fetch(job.uri); })
-    .then(function (res) { return res.arrayBuffer(); })
+    .then(function (res) {
+      var len = Number(res.headers.get('content-length') || 0);
+      if (len > MAX_BYTES) {
+        throw new Error('File troppo grande per preparare la clip');
+      }
+      return res.arrayBuffer();
+    })
     .then(function (ab) {
+      if (ab.byteLength > MAX_BYTES) {
+        throw new Error('File troppo grande per preparare la clip');
+      }
       var Ctx = window.AudioContext || window.webkitAudioContext;
       var ctx = new Ctx();
       return ctx.decodeAudioData(ab.slice(0)).then(function (buf) {
+        if (buf.duration > MAX_DURATION_SEC) {
+          ctx.close();
+          throw new Error('File troppo lungo per preparare la clip');
+        }
         var startSec = Math.max(0, (job.startMs || 0) / 1000);
         var durSec = Math.max(0, (job.durationMs || 0) / 1000);
         var startFrame = Math.max(0, Math.floor(startSec * buf.sampleRate));
@@ -133,6 +160,37 @@ type Waiter = {
   meta: Omit<ExtractedClip, 'wavBase64'> | null;
 };
 
+function fileByteSize(uri: string): number | null {
+  try {
+    const file = new File(uri);
+    if (!file.exists) {
+      return null;
+    }
+    return typeof file.size === 'number' ? file.size : null;
+  } catch {
+    return null;
+  }
+}
+
+function refuseOversizedJob(job: ClipJob): Error | null {
+  const sourceDurationMs = job.sourceDurationMs ?? 0;
+  if (sourceDurationMs > MAX_WAVEFORM_DECODE_DURATION_MS) {
+    return new Error('File troppo lungo per preparare la clip');
+  }
+  const size = fileByteSize(job.uri);
+  if (size != null && size > MAX_WAVEFORM_DECODE_BYTES) {
+    return new Error('File troppo grande per preparare la clip');
+  }
+  return null;
+}
+
+function rejectWaiters(waiters: Waiter[], message: string): void {
+  for (const waiter of waiters) {
+    clearTimeout(waiter.timer);
+    waiter.reject(new Error(message));
+  }
+}
+
 export function ClipExtractorHost() {
   const webViewRef = useRef<WebView>(null);
   const [sourceUri, setSourceUri] = useState<string | null>(null);
@@ -148,6 +206,13 @@ export function ClipExtractorHost() {
     if (!next) {
       return;
     }
+    const oversized = refuseOversizedJob(next.job);
+    if (oversized) {
+      clearTimeout(next.timer);
+      next.reject(oversized);
+      kick();
+      return;
+    }
     currentRef.current = next;
     const payload = JSON.stringify({
       id: next.job.id,
@@ -155,6 +220,7 @@ export function ClipExtractorHost() {
       uri: next.job.uri,
       startMs: next.job.startMs,
       durationMs: next.job.durationMs,
+      sourceDurationMs: next.job.sourceDurationMs ?? 0,
     });
     webViewRef.current.injectJavaScript(`window.__extractClip(${payload}); true;`);
   };
@@ -172,10 +238,17 @@ export function ClipExtractorHost() {
 
     registerClipExtractor((job) => {
       return new Promise<ExtractedClip>((resolve, reject) => {
+        const oversized = refuseOversizedJob(job);
+        if (oversized) {
+          reject(oversized);
+          return;
+        }
         const timer = setTimeout(() => {
           if (currentRef.current?.job.id === job.id) {
             currentRef.current = null;
             kick();
+          } else {
+            queueRef.current = queueRef.current.filter((w) => w.job.id !== job.id);
           }
           reject(new Error('Timeout preparazione clip'));
         }, 60_000);
@@ -196,6 +269,13 @@ export function ClipExtractorHost() {
       cancelled = true;
       registerClipExtractor(null);
       readyRef.current = false;
+      const pending = queueRef.current.splice(0, queueRef.current.length);
+      const current = currentRef.current;
+      currentRef.current = null;
+      if (current) {
+        pending.push(current);
+      }
+      rejectWaiters(pending, 'Preparazione clip interrotta');
     };
   }, []);
 

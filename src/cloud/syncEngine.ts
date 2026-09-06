@@ -17,6 +17,8 @@ import { isAudioName, playableUri } from '../domain/audioFormats';
 import {
   findAlbumCoverFile,
   findTrackCoverFile,
+  isAlbumCoverName,
+  isImageName,
   isPdfName,
 } from '../domain/driveMedia';
 import { canWriteWithRole, roleOfAlbum } from '../domain/folderRole';
@@ -25,6 +27,7 @@ import { mergeLyricAnnotations, type LyricAnnotation } from '../domain/lyrics';
 import type { Marker, Track } from '../domain/models';
 import { userHasUsage } from '../domain/session';
 import {
+  audioBasename,
   audioMatchKey,
   isSidecarName,
   parseSidecar,
@@ -272,6 +275,17 @@ async function saveAudio(remote: DriveFile, trackId: string, _downloaded: boolea
 
 let cloudSyncJob: Promise<void> | null = null;
 
+/** True while the same onboarded user that started this sync is still signed in. */
+function isCloudSyncUserActive(expectedUserId: string): boolean {
+  const current = useSessionStore.getState().user;
+  return Boolean(
+    current &&
+      current.id === expectedUserId &&
+      current.onboarded &&
+      !shouldSkipCloudSync(current),
+  );
+}
+
 /** One Drive pass at a time. A second caller waits for the one already running. */
 export function runCloudSync(): Promise<void> {
   if (cloudSyncJob) {
@@ -281,6 +295,19 @@ export function runCloudSync(): Promise<void> {
     cloudSyncJob = null;
   });
   return cloudSyncJob;
+}
+
+/** Await the in-flight Drive pass (if any). Logout uses this after clearing the user. */
+export async function settleCloudSync(): Promise<void> {
+  const job = cloudSyncJob;
+  if (!job) {
+    return;
+  }
+  try {
+    await job;
+  } catch {
+    // caller only needs the job to finish
+  }
 }
 
 async function runCloudSyncBody(): Promise<void> {
@@ -296,6 +323,7 @@ async function runCloudSyncBody(): Promise<void> {
     }
     return;
   }
+  const expectedUserId = user.id;
   const albums = useLibraryStore.getState().albums.filter((album) => album.origin === 'drive');
 
   sync.start();
@@ -315,7 +343,7 @@ async function runCloudSyncBody(): Promise<void> {
       deviceMessage = '';
     }
 
-    if (shouldSkipCloudSync(useSessionStore.getState().user)) {
+    if (!isCloudSyncUserActive(expectedUserId)) {
       sync.finish({ lastSyncedAt: Date.now(), message: null });
       return;
     }
@@ -329,6 +357,10 @@ async function runCloudSyncBody(): Promise<void> {
     }
 
     const google = await hasDriveToken();
+    if (!isCloudSyncUserActive(expectedUserId)) {
+      sync.finish({ lastSyncedAt: Date.now(), message: null });
+      return;
+    }
     if (!google) {
       sync.finish({
         lastSyncedAt: Date.now(),
@@ -352,10 +384,18 @@ async function runCloudSyncBody(): Promise<void> {
   try {
     const store = useLibraryStore.getState();
     for (const album of albums) {
+      if (!isCloudSyncUserActive(expectedUserId)) {
+        sync.finish({ lastSyncedAt: Date.now(), message: null });
+        return;
+      }
       throwIfDownloadPaused();
       let folderId = album.driveFolderId;
       if (!folderId) {
         const found = await findFolderByName(album.driveFolderName || album.name);
+        if (!isCloudSyncUserActive(expectedUserId)) {
+          sync.finish({ lastSyncedAt: Date.now(), message: null });
+          return;
+        }
         if (found) {
           folderId = found.id;
           store.linkAlbumDrive(album.id, found.id, found.name);
@@ -367,6 +407,10 @@ async function runCloudSyncBody(): Promise<void> {
       }
 
       await refreshAlbumDriveRole(album.id);
+      if (!isCloudSyncUserActive(expectedUserId)) {
+        sync.finish({ lastSyncedAt: Date.now(), message: null });
+        return;
+      }
 
       const tree = await listDriveFolderTree(
         folderId,
@@ -374,6 +418,10 @@ async function runCloudSyncBody(): Promise<void> {
         album.driveRecursive ? 8 : 0,
         album.driveSharedDriveId ? { sharedDriveId: album.driveSharedDriveId } : undefined,
       );
+      if (!isCloudSyncUserActive(expectedUserId)) {
+        sync.finish({ lastSyncedAt: Date.now(), message: null });
+        return;
+      }
       const children = tree[0]?.children ?? [];
       const treeFolderIds = new Set(tree.map((node) => node.id));
       const audios = uniqueRemotes(
@@ -383,6 +431,10 @@ async function runCloudSyncBody(): Promise<void> {
       const importedRemotes = createRemoteClaimSet();
 
       for (const remote of audios) {
+        if (!isCloudSyncUserActive(expectedUserId)) {
+          sync.finish({ lastSyncedAt: Date.now(), message: null });
+          return;
+        }
         throwIfDownloadPaused();
         if (remoteIsClaimed(importedRemotes, remote)) {
           continue;
@@ -396,6 +448,10 @@ async function runCloudSyncBody(): Promise<void> {
         if (!existing) {
           const id = createId('track');
           const fileUri = await saveAudio(remote, id, false);
+          if (!isCloudSyncUserActive(expectedUserId)) {
+            sync.finish({ lastSyncedAt: Date.now(), message: null });
+            return;
+          }
           const appeared = findBestLocalForRemote(albumLocalTracks(album.id, treeFolderIds), remote);
           if (appeared) {
             if (!onAlbum.has(appeared.id)) {
@@ -456,17 +512,32 @@ async function runCloudSyncBody(): Promise<void> {
       const localTracks = albumLocalTracks(album.id, treeFolderIds);
       const extras = surplusLocalTracks(localTracks, audios);
       for (const track of extras) {
+        if (!isCloudSyncUserActive(expectedUserId)) {
+          sync.finish({ lastSyncedAt: Date.now(), message: null });
+          return;
+        }
         await useLibraryStore.getState().deleteTrack(track.id, { deleteFromDevice: true });
         removed += 1;
       }
 
       for (const remote of sidecars) {
+        if (!isCloudSyncUserActive(expectedUserId)) {
+          sync.finish({ lastSyncedAt: Date.now(), message: null });
+          return;
+        }
         const slug = sidecarAuthorSlug(remote.name);
         if (slug && slug === selfSlug) {
           continue;
         }
         const dest = new File(inboxDirectory(), `sync-${remote.id}.json`);
         await downloadDriveFile(remote.id, dest.uri);
+        if (!isCloudSyncUserActive(expectedUserId)) {
+          if (dest.exists) {
+            dest.delete();
+          }
+          sync.finish({ lastSyncedAt: Date.now(), message: null });
+          return;
+        }
         const parsed = parseSidecar(await dest.text());
         if (dest.exists) {
           dest.delete();
@@ -558,12 +629,27 @@ async function runCloudSyncBody(): Promise<void> {
         }
       }
 
+      if (!isCloudSyncUserActive(expectedUserId)) {
+        sync.finish({ lastSyncedAt: Date.now(), message: null });
+        return;
+      }
       await applyDriveMediaTree(album.id, tree);
+      if (!isCloudSyncUserActive(expectedUserId)) {
+        sync.finish({ lastSyncedAt: Date.now(), message: null });
+        return;
+      }
 
       const orderRemote = children.find((file) => isOrderManifestName(file.name));
       if (orderRemote) {
         const dest = new File(inboxDirectory(), `sync-order-${album.id}.json`);
         await downloadDriveFile(orderRemote.id, dest.uri);
+        if (!isCloudSyncUserActive(expectedUserId)) {
+          if (dest.exists) {
+            dest.delete();
+          }
+          sync.finish({ lastSyncedAt: Date.now(), message: null });
+          return;
+        }
         const parsed = parseAlbumOrder(await dest.text());
         if (dest.exists) {
           dest.delete();
@@ -588,12 +674,20 @@ async function runCloudSyncBody(): Promise<void> {
         await pushAlbumOrder(album.id);
       }
 
+      if (!isCloudSyncUserActive(expectedUserId)) {
+        sync.finish({ lastSyncedAt: Date.now(), message: null });
+        return;
+      }
       await syncAlbumNotes(album.id, children);
 
       store.touchAlbumSync(album.id);
       await refreshAlbumDriveRole(album.id);
     }
 
+      if (!isCloudSyncUserActive(expectedUserId)) {
+        sync.finish({ lastSyncedAt: Date.now(), message: null });
+        return;
+      }
       sync.finish({
         lastSyncedAt: Date.now(),
         pendingReviews: [],
@@ -909,15 +1003,7 @@ async function downloadDriveTemp(remote: DriveFile, prefix: string): Promise<str
   }
 }
 
-async function applyTrackCover(
-  trackId: string,
-  audioName: string,
-  children: DriveFile[],
-): Promise<void> {
-  const cover = findTrackCoverFile(audioName, children);
-  if (!cover) {
-    return;
-  }
+async function applyTrackCover(trackId: string, cover: DriveFile): Promise<void> {
   const temp = await downloadDriveTemp(cover, 'art');
   if (!temp) {
     finishDriveItem();
@@ -934,6 +1020,25 @@ async function applyTrackCover(
     }
     finishDriveItem();
   }
+}
+
+/** One cover image per audio basename across the tree (last folder wins). */
+function buildTrackCoverByAudioBase(
+  tree: { children: DriveFile[] }[],
+): Map<string, DriveFile> {
+  const coverByBase = new Map<string, DriveFile>();
+  for (const node of tree) {
+    for (const file of node.children) {
+      if (!isImageName(file.name) || isAlbumCoverName(file.name)) {
+        continue;
+      }
+      const base = audioBasename(file.name).toLowerCase();
+      if (base) {
+        coverByBase.set(base, file);
+      }
+    }
+  }
+  return coverByBase;
 }
 
 async function applyAlbumCoverFromFiles(albumId: string, children: DriveFile[]): Promise<void> {
@@ -1026,6 +1131,7 @@ async function applyDriveMediaTree(
     await applyAlbumCoverFromFiles(albumId, root.children);
   }
   const tracks = useLibraryStore.getState().tracksIn('album', albumId);
+  const coverByAudioBase = buildTrackCoverByAudioBase(tree);
   const keepPdfIds = new Set<string>();
   for (const node of tree) {
     const folderPath = node.parentId ? node.name : undefined;
@@ -1033,9 +1139,14 @@ async function applyDriveMediaTree(
       keepPdfIds.add(pdf.id);
     }
     await applyPdfsFromFiles(albumId, node.children, folderPath);
-    for (const track of tracks) {
-      const audioName = track.sourceFileName ?? `${track.title}.m4a`;
-      await applyTrackCover(track.id, audioName, node.children);
+  }
+  // One download per track (not per tree node × track).
+  for (const track of tracks) {
+    const audioName = track.sourceFileName ?? `${track.title}.m4a`;
+    const base = audioBasename(audioName).toLowerCase();
+    const cover = base ? coverByAudioBase.get(base) : undefined;
+    if (cover) {
+      await applyTrackCover(track.id, cover);
     }
   }
   const album = useLibraryStore.getState().albums.find((item) => item.id === albumId);
