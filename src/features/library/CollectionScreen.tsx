@@ -204,16 +204,75 @@ export function CollectionScreen() {
       }
     }
   }, [isDriveAlbum, id]);
+  const autoUpdateJobRef = useRef<Promise<void> | null>(null);
+  const downloadPendingUpdates = useCallback(async (trackIds: string[]) => {
+    const ids = [...new Set(trackIds.filter(Boolean))];
+    if (ids.length === 0 || isCollectionDownloadBusy()) {
+      return;
+    }
+    const progress = useDownloadProgressStore.getState();
+    progress.beginCollection(ids);
+    try {
+      const playingId = usePlayerStore.getState().track.id;
+      if (playingId && ids.includes(playingId)) {
+        await releaseTrackFromPlayer(playingId);
+      }
+      for (const trackId of ids) {
+        if (useDownloadProgressStore.getState().pauseRequested) {
+          break;
+        }
+        await useLibraryStore.getState().downloadTrack(trackId, { replace: true });
+      }
+    } finally {
+      progress.end();
+    }
+  }, []);
   const refreshFromDrive = useCallback(async () => {
     try {
-      await peekAlbum();
+      const peek = await peekAlbum();
+      const albumTrackIds = new Set(
+        useLibraryStore.getState().tracksIn(kind === 'folder' ? 'folder' : 'album', id).map((track) => track.id),
+      );
+      const pendingIds = [
+        ...peek.changedTrackIds,
+        ...useLibraryStore
+          .getState()
+          .tracks.filter((track) => track.pendingRemoteUpdate === true && albumTrackIds.has(track.id))
+          .map((track) => track.id),
+      ];
+      const uniquePending = [...new Set(pendingIds)];
+      if (uniquePending.length === 0 || autoUpdateJobRef.current) {
+        return;
+      }
+      const job = (async () => {
+        try {
+          await downloadPendingUpdates(uniquePending);
+        } catch (error) {
+          if (!isDownloadPausedError(error)) {
+            Alert.alert(
+              'Download',
+              error instanceof Error ? error.message : 'Download non riuscito',
+            );
+          }
+        } finally {
+          if (isDriveAlbum) {
+            void peekDriveAlbum(id).catch(() => undefined);
+          }
+        }
+      })().finally(() => {
+        if (autoUpdateJobRef.current === job) {
+          autoUpdateJobRef.current = null;
+        }
+      });
+      autoUpdateJobRef.current = job;
+      await job;
     } catch (error) {
       Alert.alert(
         'Drive',
         error instanceof Error ? error.message : 'Non riesco a ricontrollare la cartella.',
       );
     }
-  }, [peekAlbum]);
+  }, [peekAlbum, downloadPendingUpdates, kind, isDriveAlbum, id]);
   useFocusEffect(
     useCallback(() => {
       if (isDriveAlbum) {
@@ -299,32 +358,48 @@ export function CollectionScreen() {
       progress.requestPause();
       return;
     }
-    const pending = displayTracks.filter(
-      (track) => !isDownloaded(track) || track.pendingRemoteUpdate === true,
-    );
-    progress.beginCollection(pending.map((track) => track.id));
     void (async () => {
       try {
-        const playingId = usePlayerStore.getState().track.id;
-        if (playingId && pending.some((track) => track.id === playingId)) {
-          await releaseTrackFromPlayer(playingId);
-        }
+        // Sync first (new remotes), then lock the UI only for the download pass.
         if (isDriveAlbum) {
           await runCloudSync();
         }
         if (useDownloadProgressStore.getState().pauseRequested) {
           return;
         }
-        await useLibraryStore.getState().downloadCollection(downloadKind, id, {
-          reuseSession: true,
-        });
-      } catch (error) {
-        reportCollectionError(error);
-      } finally {
-        progress.end();
+        const latestTracks = useLibraryStore.getState().tracks.filter((track) =>
+          displayTracks.some((row) => row.id === track.id),
+        );
+        const pending = latestTracks.filter(
+          (track) => !isDownloaded(track) || track.pendingRemoteUpdate === true,
+        );
+        if (pending.length === 0) {
+          if (isDriveAlbum) {
+            void peekDriveAlbum(id).catch(() => undefined);
+          }
+          return;
+        }
+        progress.beginCollection(pending.map((track) => track.id));
+        try {
+          const playingId = usePlayerStore.getState().track.id;
+          if (playingId && pending.some((track) => track.id === playingId)) {
+            await releaseTrackFromPlayer(playingId);
+          }
+          if (useDownloadProgressStore.getState().pauseRequested) {
+            return;
+          }
+          await useLibraryStore.getState().downloadCollection(downloadKind, id, {
+            reuseSession: true,
+          });
+        } finally {
+          progress.end();
+        }
         if (isDriveAlbum) {
           void peekDriveAlbum(id).catch(() => undefined);
         }
+      } catch (error) {
+        useDownloadProgressStore.getState().end();
+        reportCollectionError(error);
       }
     })();
   };
