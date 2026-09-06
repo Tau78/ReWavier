@@ -14,12 +14,13 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { canWriteWithRole, FOLDER_READ_ONLY_MESSAGE } from '../../domain/folderRole';
 import { albumTrackCount, type CollectionKind } from '../../domain/library';
 import { resolveLibraryUri } from '../../files/libraryUris';
 import type { RootStackParamList } from '../../navigation/types';
 import { isDemoUser } from '../../auth/demoAccount';
 import { runCloudSync } from '../../cloud/syncEngine';
-import { useLibraryStore } from '../../store/libraryStore';
+import { albumRoleForAlbumId, useLibraryStore } from '../../store/libraryStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { libraryNeedsBanner, useSyncStore } from '../../store/syncStore';
 import { colors, DeepBackdrop, GlassCard, layout } from '../../theme';
@@ -298,6 +299,10 @@ export function HomeScreen() {
         if (result === 'exists') {
           Alert.alert('Già presente', `${title} è già in ${hit.name}.`);
         }
+        return;
+      }
+      if (!canWriteWithRole(albumRoleForAlbumId(hit.id))) {
+        Alert.alert(FOLDER_READ_ONLY_MESSAGE);
         return;
       }
       useLibraryStore.getState().addTracksToAlbum(hit.id, [trackId]);

@@ -685,6 +685,7 @@ export function CollectionScreen() {
         )}
       </View>
 
+      <View style={styles.scrollHost}>
       <ScrollView
         contentContainerStyle={styles.scroll}
         scrollEnabled={!dragging}
@@ -971,7 +972,8 @@ export function CollectionScreen() {
           <CollectionMarkers tracks={tracks} markersByTrackId={markersByTrackId} />
         ) : null}
       </ScrollView>
-      {kind === 'album' || kind === 'folder' ? <CollectionPlayer trackIds={trackIds} /> : null}
+      </View>
+      <CollectionPlayer />
       {actions.modals}
     </SafeAreaView>
   );
@@ -1103,9 +1105,12 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     textTransform: 'uppercase',
   },
+  scrollHost: {
+    flex: 1,
+  },
   scroll: {
     paddingHorizontal: 16,
-    paddingBottom: 32,
+    paddingBottom: 100,
   },
   card: {
     backgroundColor: colors.surface,

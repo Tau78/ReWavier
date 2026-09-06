@@ -34,6 +34,7 @@ import { shareMarkerClip } from '../../files/shareMarkerClip';
 import {
   beginWaveformScrub,
   endWaveformScrub,
+  registerWaveformScrubSideEffectClearer,
   resetWaveformScrubDepth,
   suppressPausePrompt,
   usePlayerStore,
@@ -121,6 +122,15 @@ function releaseWaveformScrubLock() {
   clearScrubEndTimers();
   resetWaveformScrubDepth();
 }
+
+// Track switch / runtime reset calls resetWaveformScrubDepth — cancel timers without seeking
+// so a deferred scrub cannot freeze UI or seek the new track to the old scrub ms.
+registerWaveformScrubSideEffectClearer(() => {
+  clearScrubNativeTimer();
+  scrubPendingMs = null;
+  clearScrubEndTimers();
+});
+
 function clampWindowMs(ms: number, durationMs: number): number {
   return Math.min(Math.max(durationMs, 1), Math.max(MIN_WINDOW_MS, ms));
 }

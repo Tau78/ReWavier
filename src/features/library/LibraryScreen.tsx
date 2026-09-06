@@ -60,52 +60,55 @@ export function LibraryScreen() {
 
       <LibrarySearch value={query} onChangeText={setQuery} />
 
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <GlassCard style={styles.card}>
-          {tracks.length === 0 ? (
-            <Pressable
-              onPress={() => {
-                void actions.importAudio(null);
-              }}
-              style={({ pressed }) => [styles.emptyImport, pressed && styles.pressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Carica audio"
-            >
-              <EmptyGraphic />
-              <Text style={styles.emptyTitle}>Nessun audio in libreria</Text>
-              <Text style={styles.emptyHint}>
-                Tocca Carica audio, oppure metti i file in File → ReWavier → Audio.
-              </Text>
-              <Text style={styles.emptyAction}>Carica audio</Text>
-            </Pressable>
-          ) : searching && visibleTracks.length === 0 ? (
-            <Text style={styles.emptyHint}>Nessun risultato. Prova un altro nome.</Text>
-          ) : (
-            visibleTracks.map((track) => (
-              <TrackRow
-                key={track.id}
-                track={track}
-                noteCount={
-                  (markersByTrackId[track.id] ?? []).filter((marker) => marker.hidden !== true).length
-                }
-                downloading={downloadingIds[track.id] != null}
-                onPress={() => play(track.id)}
-                onArtwork={() => actions.pickTrackArtwork(track)}
-                onMenu={() => actions.openTrackMenu(track)}
-                onSwipeDelete={() => actions.confirmDeleteTrack(track)}
-                onDownload={() => {
-                  void useLibraryStore.getState().downloadTrack(track.id).catch((error) => {
-                    Alert.alert(
-                      'Download',
-                      error instanceof Error ? error.message : 'Download non riuscito',
-                    );
-                  });
+      <View style={styles.scrollHost}>
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          <GlassCard style={styles.card}>
+            {tracks.length === 0 ? (
+              <Pressable
+                onPress={() => {
+                  void actions.importAudio(null);
                 }}
-              />
-            ))
-          )}
-        </GlassCard>
-      </ScrollView>
+                style={({ pressed }) => [styles.emptyImport, pressed && styles.pressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Carica audio"
+              >
+                <EmptyGraphic />
+                <Text style={styles.emptyTitle}>Nessun audio in libreria</Text>
+                <Text style={styles.emptyHint}>
+                  Tocca Carica audio, oppure metti i file in File → ReWavier → Audio.
+                </Text>
+                <Text style={styles.emptyAction}>Carica audio</Text>
+              </Pressable>
+            ) : searching && visibleTracks.length === 0 ? (
+              <Text style={styles.emptyHint}>Nessun risultato. Prova un altro nome.</Text>
+            ) : (
+              visibleTracks.map((track) => (
+                <TrackRow
+                  key={track.id}
+                  track={track}
+                  noteCount={
+                    (markersByTrackId[track.id] ?? []).filter((marker) => marker.hidden !== true)
+                      .length
+                  }
+                  downloading={downloadingIds[track.id] != null}
+                  onPress={() => play(track.id)}
+                  onArtwork={() => actions.pickTrackArtwork(track)}
+                  onMenu={() => actions.openTrackMenu(track)}
+                  onSwipeDelete={() => actions.confirmDeleteTrack(track)}
+                  onDownload={() => {
+                    void useLibraryStore.getState().downloadTrack(track.id).catch((error) => {
+                      Alert.alert(
+                        'Download',
+                        error instanceof Error ? error.message : 'Download non riuscito',
+                      );
+                    });
+                  }}
+                />
+              ))
+            )}
+          </GlassCard>
+        </ScrollView>
+      </View>
       <CollectionPlayer />
       {actions.modals}
     </SafeAreaView>
@@ -143,10 +146,13 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 14,
   },
+  scrollHost: {
+    flex: 1,
+  },
   scroll: {
     paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 24,
+    paddingBottom: 100,
   },
   card: {
     paddingBottom: 4,

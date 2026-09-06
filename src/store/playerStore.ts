@@ -177,9 +177,18 @@ export function endWaveformScrub() {
   waveformScrubDepth = Math.max(0, waveformScrubDepth - 1);
 }
 
-/** Drop scrub lock immediately (unmount / interrupted gesture / runtime reset). */
+/** Clears Waveform module scrub timers (registered from Waveform.tsx). */
+let clearWaveformScrubSideEffects: (() => void) | null = null;
+
+/** Waveform registers timer/pending clear so track switch can cancel without importing UI. */
+export function registerWaveformScrubSideEffectClearer(clearer: (() => void) | null) {
+  clearWaveformScrubSideEffects = clearer;
+}
+
+/** Drop scrub lock immediately (unmount / interrupted gesture / runtime reset / track switch). */
 export function resetWaveformScrubDepth() {
   waveformScrubDepth = 0;
+  clearWaveformScrubSideEffects?.();
 }
 
 function clearHoleTimer() {
@@ -429,6 +438,13 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     if (uri && loadState === 'error') {
       return;
     }
+    // Idle after mic teardown / unload: reload then play when ready.
+    if (uri && loadState === 'idle') {
+      reloadCurrentTrackIfNeeded();
+      pendingPlay = true;
+      set({ isPlaying: true });
+      return;
+    }
     if (uri && loadState !== 'ready') {
       return;
     }
@@ -521,6 +537,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     }
     if (uri && state.loadState === 'error') {
       set({ positionMs: next });
+      return;
+    }
+    if (uri && state.loadState === 'idle') {
+      set({ positionMs: next });
+      reloadCurrentTrackIfNeeded();
+      pendingSeekMs = next;
+      pendingPlay = true;
+      set({ positionMs: next, isPlaying: true });
       return;
     }
 
@@ -646,6 +670,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     pendingPlay = false;
     pauseEngines(state);
     if (trackHasPlayableUri(state.track) && state.loadState !== 'ready') {
+      pendingSeekMs = marker.timestampMs;
       set({ positionMs: marker.timestampMs, isPlaying: false });
     } else {
       engine().seekTo(marker.timestampMs);
@@ -854,7 +879,11 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       return;
     }
     const practice = practiceFromTrack(track);
-    practice.practiceHoleId = practice.practiceHoleId === markerId ? undefined : markerId;
+    const nextHoleId = practice.practiceHoleId === markerId ? undefined : markerId;
+    if (nextHoleId !== practice.practiceHoleId) {
+      clearHoleTimer();
+    }
+    practice.practiceHoleId = nextHoleId;
     persistPractice(track, practice);
     set({ track: withPractice(track, practice) });
   },
@@ -877,6 +906,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     if (refuseFolderWrite()) {
       return;
     }
+    clearHoleTimer();
     const { track } = get();
     const practice = { ...practiceFromTrack(track), practiceHoleId: undefined };
     persistPractice(track, practice);
@@ -935,6 +965,9 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     // Stop previous native audio immediately — before async loadChain / before
     // clearing usingFile — so track switch does not leave ghost playback.
     pauseEngines(get());
+    // Drop scrub lock + Waveform timers so depth/pending seeks cannot freeze
+    // UI or seek the new track to the previous scrub position.
+    resetWaveformScrubDepth();
     const gen = ++loadGeneration;
     // Cancel any native load already past the loadChain gate (orphaned chain
     // after releaseTrackFromPlayer, or a still-awaiting waitForDuration).
@@ -1175,6 +1208,7 @@ function onEngineFrame(positionMs: number, playing: boolean) {
       pauseEngines(state);
       const gen = loadGeneration;
       const trackId = track.id;
+      const holeId = holeMarker.id;
       holeTimer = setTimeout(() => {
         holeTimer = null;
         holeBusy = false;
@@ -1183,6 +1217,9 @@ function onEngineFrame(positionMs: number, playing: boolean) {
         }
         const current = usePlayerStore.getState();
         if (current.track.id !== trackId) {
+          return;
+        }
+        if (current.track.practiceHoleId !== holeId) {
           return;
         }
         if (current.loadState === 'ready' && usingFile) {

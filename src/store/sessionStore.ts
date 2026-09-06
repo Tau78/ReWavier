@@ -85,6 +85,15 @@ async function reloadLibrary() {
   await useLibraryStore.getState().hydrate();
 }
 
+async function flushLibraryBeforeOwnerChange() {
+  try {
+    const { flushLibraryPersist } = await import('./libraryStore');
+    await flushLibraryPersist();
+  } catch {
+    // persist already idle
+  }
+}
+
 /** Stop Drive sync + native audio before swapping library user data. */
 async function releaseSessionRuntime() {
   try {
@@ -100,6 +109,9 @@ async function releaseSessionRuntime() {
     // player already gone
   }
 }
+
+/** Bumps on every account transition so a stale hydrate/logout tail cannot win. */
+let sessionOpGeneration = 0;
 
 function makeUser(input: {
   id: string;
@@ -140,18 +152,36 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   reservedColors: [],
 
   async hydrate() {
+    const op = ++sessionOpGeneration;
     try {
       const snapshot = await loadSessionSnapshot();
+      // Fast login while disk hydrate was in flight: keep the live session.
+      if (op !== sessionOpGeneration) {
+        return;
+      }
+      if (get().user != null && snapshot.user && get().user!.id !== snapshot.user.id) {
+        return;
+      }
+      if (get().user != null && !snapshot.user) {
+        return;
+      }
       set({
         user: snapshot.user ? normalizeSessionUser(snapshot.user) : null,
         reservedColors: snapshot.reservedColors,
       });
     } catch {
+      if (op !== sessionOpGeneration) {
+        return;
+      }
+      if (get().user != null) {
+        return;
+      }
       set({ user: null, reservedColors: [] });
     }
   },
 
   async signInEmail(email, password) {
+    sessionOpGeneration += 1;
     const normalized = email.trim().toLowerCase();
     if (isDemoAccount(normalized, password)) {
       await clearGoogleToken().catch(() => undefined);
@@ -203,6 +233,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   async registerEmail(email, password, displayName) {
+    sessionOpGeneration += 1;
     const normalized = email.trim().toLowerCase();
     if (isDemoAccount(normalized, password) || normalized === DEMO_ACCOUNT.email) {
       await get().signInEmail(DEMO_ACCOUNT.email, DEMO_ACCOUNT.password);
@@ -234,6 +265,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   async signInSocial(input) {
+    sessionOpGeneration += 1;
     const driveOk =
       input.provider === 'google' && input.driveConnected === true && Boolean(input.accessToken);
     if (driveOk && input.accessToken) {
@@ -407,16 +439,27 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
   },
 
   async logout() {
+    const op = ++sessionOpGeneration;
+    await flushLibraryBeforeOwnerChange();
+    await releaseSessionRuntime();
+    if (op !== sessionOpGeneration) {
+      return;
+    }
     await clearGoogleToken().catch(() => undefined);
     set({ user: null });
     persist(get());
-    await releaseSessionRuntime();
     await reloadLibrary();
   },
 
   async deleteAccount(opts) {
     const { user } = get();
     if (!user) {
+      return;
+    }
+    const op = ++sessionOpGeneration;
+    await flushLibraryBeforeOwnerChange();
+    await releaseSessionRuntime();
+    if (op !== sessionOpGeneration) {
       return;
     }
     if (opts?.purgeLibrary === true) {
@@ -426,9 +469,11 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const accounts = await loadLocalAccounts();
     await saveLocalAccounts(accountsWithoutUser(accounts, user));
     await clearGoogleToken().catch(() => undefined);
+    if (op !== sessionOpGeneration) {
+      return;
+    }
     set({ user: null });
     persist(get());
-    await releaseSessionRuntime();
     await reloadLibrary();
   },
 }));

@@ -273,7 +273,10 @@ async function saveAudio(remote: DriveFile, trackId: string, _downloaded: boolea
   return stored;
 }
 
+type CloudSyncJobKind = 'full' | 'album';
+
 let cloudSyncJob: Promise<void> | null = null;
+let cloudSyncJobKind: CloudSyncJobKind | null = null;
 
 /** True while the same onboarded user that started this sync is still signed in. */
 function isCloudSyncUserActive(expectedUserId: string): boolean {
@@ -286,30 +289,48 @@ function isCloudSyncUserActive(expectedUserId: string): boolean {
   );
 }
 
-/** One Drive pass at a time. A second caller waits for the one already running. */
+/**
+ * One Drive pass at a time. Album-only jobs are not a full sync: wait for them,
+ * then run `runCloudSyncBody`. Concurrent full callers share the same full job.
+ */
 export function runCloudSync(): Promise<void> {
-  if (cloudSyncJob) {
+  if (cloudSyncJob && cloudSyncJobKind === 'full') {
     return cloudSyncJob;
   }
-  const job = runCloudSyncBody().finally(() => {
+  const prev = cloudSyncJob;
+  const job = (async () => {
+    if (prev) {
+      try {
+        await prev;
+      } catch {
+        // previous pass failed — still run full sync
+      }
+    }
+    await runCloudSyncBody();
+  })().finally(() => {
     if (cloudSyncJob === job) {
       cloudSyncJob = null;
+      cloudSyncJobKind = null;
     }
   });
   cloudSyncJob = job;
+  cloudSyncJobKind = 'full';
   return job;
 }
 
-/** Await the in-flight Drive pass (if any). Logout uses this after clearing the user. */
+/** Await every in-flight Drive pass (full or album), including jobs chained after. */
 export async function settleCloudSync(): Promise<void> {
-  const job = cloudSyncJob;
-  if (!job) {
-    return;
-  }
-  try {
-    await job;
-  } catch {
-    // caller only needs the job to finish
+  while (cloudSyncJob) {
+    const job = cloudSyncJob;
+    try {
+      await job;
+    } catch {
+      // caller only needs the job to finish
+    }
+    if (cloudSyncJob === job) {
+      // finally should have cleared; avoid spinning if not
+      return;
+    }
   }
 }
 
@@ -490,9 +511,19 @@ async function syncOneDriveAlbum(
         sync.finish({ lastSyncedAt: Date.now(), message: null });
         return { ...empty, added, removed, versioned, notesPulled, aborted: true };
       }
+      // Version-folder twins are a product feature — never hard-delete as surplus.
+      const liveAlbum =
+        useLibraryStore.getState().albums.find((item) => item.id === album.id) ?? album;
+      if (
+        (liveAlbum.versionFolders ?? []).some((folder) => folder.trackIds.includes(track.id))
+      ) {
+        continue;
+      }
       await useLibraryStore.getState().deleteTrack(track.id, { deleteFromDevice: true });
       removed += 1;
     }
+    // Sidecar apply must not revive deleted IDs via setTrackMarkers on a stale snapshot.
+    locals = albumLocalTracks(album.id, treeFolderIds);
   }
 
   for (const remote of sidecars) {
@@ -695,9 +726,11 @@ export async function syncDriveAlbum(albumId: string): Promise<SyncDriveAlbumRes
   })().finally(() => {
     if (cloudSyncJob === job) {
       cloudSyncJob = null;
+      cloudSyncJobKind = null;
     }
   });
   cloudSyncJob = job;
+  cloudSyncJobKind = 'album';
   await job;
   return outcome;
 }

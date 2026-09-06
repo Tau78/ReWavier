@@ -234,9 +234,9 @@ export async function loadLibrarySnapshot(opts?: {
         opts?.requireOwnerKey === true,
       )
     ) {
-      const empty = emptyLibrarySnapshot();
-      await saveLibrarySnapshot(empty);
-      return empty;
+      // Never wipe disk on mismatch — wrong activeOwner during account switch
+      // used to overwrite library.json with an empty snapshot.
+      return null;
     }
     return sanitized;
   } catch {

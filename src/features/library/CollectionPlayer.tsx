@@ -13,17 +13,15 @@ type Nav = NativeStackNavigationProp<RootStackParamList>;
 /**
  * Linguetta in basso: titolo + tempo. Tap → apre il player grande.
  * Controlli e + restano solo sul PlayerScreen.
+ * Mostrata quando c’è un brano in riproduzione, anche se non è nella raccolta aperta.
  */
-export function CollectionPlayer({ trackIds }: { trackIds?: string[] }) {
+export function CollectionPlayer() {
   const navigation = useNavigation<Nav>();
   const track = usePlayerStore((s) => s.track);
   const positionMs = usePlayerStore((s) => s.positionMs);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
 
   if (!track.id) {
-    return null;
-  }
-  if (trackIds && (trackIds.length === 0 || !trackIds.includes(track.id))) {
     return null;
   }
 

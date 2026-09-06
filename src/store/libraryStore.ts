@@ -248,13 +248,27 @@ function snapshotFrom(state: LibraryState): LibrarySnapshot {
 let persistReady = false;
 let persistTimer: ReturnType<typeof setTimeout> | undefined;
 let libraryHydratePromise: Promise<void> | undefined;
+let libraryHydrateExpectedUserId: string | null | undefined;
+let libraryHydrateGeneration = 0;
+
+function isHydrateStillCurrent(generation: number, expectedUserId: string | null): boolean {
+  if (generation !== libraryHydrateGeneration) {
+    return false;
+  }
+  return (useSessionStore.getState().user?.id ?? null) === expectedUserId;
+}
 
 export function waitForLibraryHydrated(): Promise<void> {
   if (useLibraryStore.getState().libraryHydrated) {
     return Promise.resolve();
   }
   if (libraryHydratePromise) {
-    return libraryHydratePromise;
+    return libraryHydratePromise.then(() => {
+      if (useLibraryStore.getState().libraryHydrated) {
+        return;
+      }
+      return waitForLibraryHydrated();
+    });
   }
   return new Promise((resolve) => {
     const unsub = useLibraryStore.subscribe((state) => {
@@ -1171,8 +1185,12 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     if (!replace && isDownloaded(track)) {
       return;
     }
-    const { releaseTrackFromPlayer } = await import('./playerStore');
-    await releaseTrackFromPlayer(trackId);
+    // Only unload when swapping the file. Background / first-time cache must not
+    // kill playback started by openTrack (streaming continues until next load).
+    if (replace) {
+      const { releaseTrackFromPlayer } = await import('./playerStore');
+      await releaseTrackFromPlayer(trackId);
+    }
     const progress = useDownloadProgressStore.getState();
     const ownsSession = !progress.active;
     if (ownsSession) {
@@ -1533,9 +1551,12 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   async hydrate() {
-    if (libraryHydratePromise) {
+    const expectedUserId = useSessionStore.getState().user?.id ?? null;
+    if (libraryHydratePromise && libraryHydrateExpectedUserId === expectedUserId) {
       return libraryHydratePromise;
     }
+    const generation = ++libraryHydrateGeneration;
+    libraryHydrateExpectedUserId = expectedUserId;
     libraryHydratePromise = (async () => {
       try {
         persistReady = false;
@@ -1544,6 +1565,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           persistTimer = undefined;
         }
         set({ libraryHydrated: false });
+        if (!isHydrateStillCurrent(generation, expectedUserId)) {
+          return;
+        }
         const user = useSessionStore.getState().user;
         if (!user) {
           get().unload();
@@ -1553,7 +1577,13 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         if (!isDemoUser(user)) {
           await adoptLegacyLibraryIfNeeded(user.id);
         }
+        if (!isHydrateStillCurrent(generation, expectedUserId)) {
+          return;
+        }
         const snapshot = await loadLibrarySnapshot({ requireOwnerKey: isDemoUser(user) });
+        if (!isHydrateStillCurrent(generation, expectedUserId)) {
+          return;
+        }
         set({
           tracks: snapshot?.tracks ?? [],
           folders: snapshot?.folders ?? [],
@@ -1566,18 +1596,26 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         });
         if (isDemoUser(user)) {
           // Demo has no finishLibraryHydrate — safe to persist the snapshot as-is.
+          if (!isHydrateStillCurrent(generation, expectedUserId)) {
+            return;
+          }
           persistReady = true;
           useSyncStore.getState().reset();
           return;
         }
         // Keep persistReady false through migrate/scan so subscribers cannot write a
         // partial library.json mid-hydrate.
-        await finishLibraryHydrate(snapshot != null);
+        await finishLibraryHydrate(snapshot != null, generation, expectedUserId);
+        if (!isHydrateStillCurrent(generation, expectedUserId)) {
+          return;
+        }
         persistReady = true;
         schedulePersist();
       } finally {
-        set({ libraryHydrated: true });
-        libraryHydratePromise = undefined;
+        if (generation === libraryHydrateGeneration) {
+          set({ libraryHydrated: true });
+          libraryHydratePromise = undefined;
+        }
       }
     })();
     return libraryHydratePromise;
@@ -1654,8 +1692,15 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
 
 useLibraryStore.subscribe(schedulePersist);
 
-async function finishLibraryHydrate(hadSnapshot: boolean) {
+async function finishLibraryHydrate(
+  hadSnapshot: boolean,
+  generation: number,
+  expectedUserId: string | null,
+) {
   try {
+    if (!isHydrateStillCurrent(generation, expectedUserId)) {
+      return;
+    }
     const cleaned = sanitizeSnapshot(snapshotFrom(useLibraryStore.getState()));
     useLibraryStore.setState({
       tracks: cleaned.tracks,
@@ -1668,7 +1713,13 @@ async function finishLibraryHydrate(hadSnapshot: boolean) {
     });
     const { tracks, markersByTrackId: currentMarkers } = useLibraryStore.getState();
     const migrated = await migrateTracksToAudioFolder(tracks);
+    if (!isHydrateStillCurrent(generation, expectedUserId)) {
+      return;
+    }
     const extras = await scanAudioFolder(migrated, useLibraryStore.getState().keptAudioNames);
+    if (!isHydrateStillCurrent(generation, expectedUserId)) {
+      return;
+    }
     const markersByTrackId = { ...currentMarkers };
     for (const bundle of extras) {
       markersByTrackId[bundle.track.id] = bundle.markers;
