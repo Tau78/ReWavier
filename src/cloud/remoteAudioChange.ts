@@ -168,3 +168,21 @@ export function remoteAudioChanged(track: LocalRemoteTrack, remote: RemoteAudioM
   }
   return Boolean(remote.modifiedTime && !track.remoteModifiedAt);
 }
+
+/**
+ * Delete+reupload on Drive keeps the same file name but creates a new file id.
+ * Version folders keep both ids in the tree — those must not count as a replace.
+ */
+export function remoteReplacesLocalTrack(
+  track: LocalRemoteTrack,
+  remote: RemoteAudioMeta,
+  remotes: readonly RemoteAudioMeta[],
+): boolean {
+  if (!track.driveFileId || track.driveFileId === remote.id) {
+    return false;
+  }
+  if (!trackMatchesRemote(track, remote)) {
+    return false;
+  }
+  return !remotes.some((item) => item.id === track.driveFileId);
+}
