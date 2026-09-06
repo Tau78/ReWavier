@@ -15,6 +15,7 @@ import { RecordSketchScreen } from '../features/library/RecordSketchScreen';
 import { ReplaceFileScreen } from '../features/library/ReplaceFileScreen';
 import { PlayerScreen } from '../features/player/PlayerScreen';
 import { DiscoveryScreen } from '../features/discovery/DiscoveryScreen';
+import { HelpScreen } from '../features/help/HelpScreen';
 import { PrivacyScreen } from '../features/settings/PrivacyScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { colors } from '../theme/colors';
@@ -50,6 +51,7 @@ export function AppStack() {
         <Stack.Screen name="Collection" component={CollectionScreen} />
         <Stack.Screen name="Conditions" component={ConditionsScreen} />
         <Stack.Screen name="Settings" component={SettingsScreen} />
+        <Stack.Screen name="Help" component={HelpScreen} />
         <Stack.Screen name="Privacy" component={PrivacyScreen} />
         <Stack.Screen name="Discovery" component={DiscoveryScreen} />
         <Stack.Screen name="ReplaceFile" component={ReplaceFileScreen} />

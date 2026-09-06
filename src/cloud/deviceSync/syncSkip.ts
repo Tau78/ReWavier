@@ -6,6 +6,7 @@ export const SYNC_SKIP_NAMES = new Set([
   'Come usare questa cartella.txt',
   '.DS_Store',
   'library.json',
+  'help.json',
   'icloud-library.json',
   'icloud-telefoni.json',
 ]);

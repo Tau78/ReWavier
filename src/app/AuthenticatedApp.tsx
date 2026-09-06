@@ -4,6 +4,7 @@ import { AppState } from 'react-native';
 import { ClipExtractorHost } from '../audio/ClipExtractorHost';
 import { WaveformDecoderHost } from '../audio/WaveformDecoderHost';
 import { runCloudSync } from '../cloud/syncEngine';
+import { GuidedTour } from '../features/help/GuidedTour';
 import { AppStack } from '../navigation/AppStack';
 import { flushLibraryPersist, waitForLibraryHydrated } from '../store/libraryStore';
 
@@ -35,6 +36,7 @@ export function AuthenticatedApp() {
   return (
     <>
       <AppStack />
+      <GuidedTour />
       <WaveformDecoderHost />
       <ClipExtractorHost />
     </>

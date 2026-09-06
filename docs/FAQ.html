@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Domande frequenti — ReWavier</title>
+  <meta name="description" content="Risposte semplici su ReWavier: come aggiungere un brano, scrivere un appunto, usare il loop, registrare una bozza e ritrovare i file su un altro telefono.">
+  <meta name="theme-color" content="#0D0D0F">
+  <link rel="icon" href="img/favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="img/icon-180.png">
+  <link rel="canonical" href="https://eventi.musicproeventi.it/ReWavier/FAQ.html">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Domande frequenti — ReWavier">
+  <meta property="og:description" content="Come si usa ReWavier, in parole piane. Appunti sul momento esatto, loop, bozza e album.">
+  <meta property="og:image" content="img/player.png">
+  <meta property="og:locale" content="it_IT">
+  <meta property="og:url" content="https://eventi.musicproeventi.it/ReWavier/FAQ.html">
+  <style>
+    :root {
+      --bg: #0D0D0F;
+      --surface: #1A1A1E;
+      --text: #F5F5F7;
+      --muted: #8E8E93;
+      --accent: #FF6B35;
+      --border: #2C2C31;
+      --max: 72rem;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; overflow-x: hidden; }
+    body {
+      margin: 0;
+      overflow-x: hidden;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    img { max-width: 100%; height: auto; display: block; }
+
+    .skip {
+      position: absolute;
+      left: -999px;
+      top: 0;
+    }
+    .skip:focus {
+      left: 1rem;
+      top: 1rem;
+      z-index: 20;
+      background: var(--accent);
+      color: #fff;
+      padding: 0.5rem 0.8rem;
+      border-radius: 0.5rem;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(13, 13, 15, 0.92);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+    .top {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 0.75rem 1.15rem;
+      padding-left: max(1.15rem, env(safe-area-inset-left));
+      padding-right: max(1.15rem, env(safe-area-inset-right));
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      min-width: 0;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      min-width: 0;
+      color: var(--text);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      text-decoration: none;
+    }
+    .brand:hover { text-decoration: none; }
+    .mark { width: 28px; height: 28px; flex: 0 0 28px; }
+    nav {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 0.85rem;
+      flex: 0 0 auto;
+      min-width: 0;
+      flex-wrap: wrap;
+    }
+    nav a { color: var(--muted); font-size: 0.95rem; white-space: nowrap; }
+    nav a:hover { color: var(--text); }
+    nav a[aria-current="page"] { color: var(--text); }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      border-radius: 999px;
+      padding: 0.85rem 1.35rem;
+      text-decoration: none;
+      border: 0;
+    }
+    .btn-sm {
+      padding: 0.45rem 0.85rem;
+      font-size: 0.88rem;
+    }
+    .btn:hover { text-decoration: none; filter: brightness(1.08); }
+
+    main { overflow: hidden; }
+    .wrap { max-width: var(--max); margin: 0 auto; }
+    section { padding: 3.2rem 1.25rem 1.2rem; }
+
+    .kicker {
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0.55rem 0 0;
+      font-size: clamp(2.1rem, 5vw, 3.2rem);
+      line-height: 1.08;
+      letter-spacing: -0.045em;
+    }
+    .lede {
+      margin: 1rem 0 0;
+      color: var(--muted);
+      font-size: 1.15rem;
+      max-width: 36rem;
+    }
+
+    .toc {
+      margin: 2rem 0 0;
+      padding: 1.2rem 1.25rem 1.3rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 1.15rem;
+    }
+    .toc h2 {
+      margin: 0;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+    }
+    .toc ol {
+      margin: 0.7rem 0 0;
+      padding-left: 1.2rem;
+    }
+    .toc li { margin: 0.35rem 0; color: var(--muted); }
+    .toc a { color: var(--text); }
+
+    .qa {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 0 1.25rem 1.15rem;
+    }
+    .qa article {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 1.15rem;
+      padding: 1.45rem 1.35rem 1.55rem;
+      margin-bottom: 1rem;
+    }
+    .qa h2 {
+      margin: 0;
+      font-size: clamp(1.25rem, 2.6vw, 1.55rem);
+      letter-spacing: -0.03em;
+      scroll-margin-top: 5.2rem;
+    }
+    .qa p {
+      margin: 0.7rem 0 0;
+      color: var(--muted);
+    }
+    .qa p:first-of-type { margin-top: 0.75rem; }
+
+    figure { margin: 1.15rem 0 0; }
+    figcaption {
+      margin-top: 0.7rem;
+      color: var(--muted);
+      font-size: 0.92rem;
+      text-align: center;
+    }
+    .frame {
+      background: #111114;
+      border: 1px solid var(--border);
+      border-radius: 1.25rem;
+      padding: 0.55rem;
+    }
+    .frame img { border-radius: 0.9rem; }
+    .shot { max-width: 22rem; }
+    .pair {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.1rem;
+      margin-top: 1.15rem;
+    }
+    .pair figure { margin-top: 0; }
+
+    .cta {
+      text-align: center;
+      padding: 3.2rem 1.25rem 5rem;
+    }
+    .cta h2 {
+      margin: 0.55rem 0 0;
+      font-size: clamp(1.6rem, 3vw, 2.2rem);
+      letter-spacing: -0.035em;
+    }
+    .cta .lede {
+      margin-left: auto;
+      margin-right: auto;
+    }
+    .cta .btn { margin-top: 1.5rem; }
+
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 1.4rem 1.25rem 2.2rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    .foot {
+      max-width: var(--max);
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .foot a { color: var(--muted); }
+    .foot a:hover { color: var(--text); }
+
+    @media (max-width: 860px) {
+      .pair { grid-template-columns: 1fr; }
+      .shot { max-width: 100%; }
+      .top { padding-top: 0.7rem; padding-bottom: 0.7rem; }
+      section, .qa { padding-left: 1.15rem; padding-right: 1.15rem; }
+      .qa article { padding: 1.25rem 1.1rem 1.35rem; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#contenuto">Vai al contenuto</a>
+  <header>
+    <div class="top">
+      <a class="brand" href="index.html" aria-label="ReWavier, vai alla home">
+        <svg class="mark" viewBox="0 0 28 28" aria-hidden="true">
+          <rect x="1" y="16" width="2.4" height="7" rx="1.2" fill="#4A9EFF"/>
+          <rect x="5" y="12" width="2.4" height="11" rx="1.2" fill="#4A9EFF"/>
+          <rect x="9" y="8" width="2.4" height="15" rx="1.2" fill="#4A9EFF"/>
+          <rect x="13" y="4" width="2.4" height="19" rx="1.2" fill="#4A9EFF"/>
+          <rect x="17" y="9" width="2.4" height="14" rx="1.2" fill="#4A9EFF"/>
+          <rect x="21" y="13" width="2.4" height="10" rx="1.2" fill="#4A9EFF"/>
+          <rect x="25" y="17" width="2.4" height="6" rx="1.2" fill="#4A9EFF"/>
+          <circle cx="22.2" cy="8.2" r="1.7" fill="#FF6B35"/>
+        </svg>
+        ReWavier
+      </a>
+      <nav>
+        <a href="Privacy.html">Privacy</a>
+        <a href="FAQ.html" aria-current="page">Domande frequenti</a>
+        <a class="btn btn-sm" href="https://apps.apple.com/it/app/rewavier/id6803983715">Scarica</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="contenuto">
+    <section>
+      <div class="wrap">
+        <p class="kicker">Aiuto</p>
+        <h1>Domande frequenti</h1>
+        <p class="lede">Risposte brevi per chi apre ReWavier la prima volta. Se non trovi quello che cerchi, vai ad <a href="Supporto.html">Assistenza</a>.</p>
+        <nav class="toc" aria-label="Elenco delle domande">
+          <h2>Le domande</h2>
+          <ol>
+            <li><a href="#cosa">Cos’è ReWavier?</a></li>
+            <li><a href="#aggiungere">Come aggiungo un brano?</a></li>
+            <li><a href="#appunto">Come scrivo un appunto sul momento esatto?</a></li>
+            <li><a href="#dopo">Cosa posso fare con un appunto?</a></li>
+            <li><a href="#piu">Cosa fa il pulsante arancione +?</a></li>
+            <li><a href="#loop">Come riascolto solo un pezzo?</a></li>
+            <li><a href="#bozza">Posso registrare un’idea al volo?</a></li>
+            <li><a href="#organizzare">Come organizzo i brani?</a></li>
+            <li><a href="#telefono">I brani restano sul telefono?</a></li>
+            <li><a href="#altro-telefono">Come li ritrovo su un altro telefono?</a></li>
+            <li><a href="#accedi">Come entro?</a></li>
+            <li><a href="#account">Come tolgo l’account?</a></li>
+            <li><a href="#aiuto">Come chiedo aiuto?</a></li>
+            <li><a href="#guida">Come rivedo la guida nell’app?</a></li>
+          </ol>
+        </nav>
+      </div>
+    </section>
+
+    <div class="qa">
+      <article id="cosa">
+        <h2>Cos’è ReWavier?</h2>
+        <p>ReWavier è un’app per iPhone e iPad.</p>
+        <p>Ascolti un audio e scrivi un appunto sul momento esatto.</p>
+        <p>Il segnalino resta sull’onda del brano, così lo ritrovi.</p>
+        <p>Va bene per musica, lezione o lavoro. Non è un social e non è un programma da studio.</p>
+      </article>
+
+      <article id="aggiungere">
+        <h2>Come aggiungo un brano?</h2>
+        <p>In Home, in alto a destra, tocca +.</p>
+        <p>Scegli «Carica audio» e prendi un file dal telefono.</p>
+        <p>Puoi anche aprire l’app File e mettere gli audio nella cartella ReWavier.</p>
+        <p>La libreria parte vuota: carichi tu i brani.</p>
+        <figure class="shot">
+          <div class="frame">
+            <img src="img/libreria.png" alt="Libreria di ReWavier ancora vuota, con il tasto Carica audio." width="509" height="1100">
+          </div>
+          <figcaption>La libreria è vuota finché non carichi un audio.</figcaption>
+        </figure>
+      </article>
+
+      <article id="appunto">
+        <h2>Come scrivo un appunto sul momento esatto?</h2>
+        <p>Apri un brano.</p>
+        <p>Quando senti il punto da segnare, tocca il + arancione.</p>
+        <p>L’audio va in pausa e si apre un fumetto con l’orario già scritto.</p>
+        <p>Scrivi e salva: il segnalino resta sull’onda del brano.</p>
+        <div class="pair">
+          <figure>
+            <div class="frame">
+              <img src="img/player.png" alt="Schermata del brano: titolo, orario, onda e pulsante Aggiungi nota." width="509" height="1100">
+            </div>
+            <figcaption>Ascolti. Poi tocca + sul momento giusto.</figcaption>
+          </figure>
+          <figure>
+            <div class="frame">
+              <img src="img/appunto.png" alt="Fumetto Nuovo appunto, con l’orario già scritto e lo spazio per il testo." width="509" height="1100">
+            </div>
+            <figcaption>L’orario è già lì. Tu scrivi la nota.</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <article id="dopo">
+        <h2>Cosa posso fare con un appunto?</h2>
+        <p>Tocca il segnalino sull’onda.</p>
+        <p>Puoi riascoltare intorno a quel punto, oppure inviare quei 12 secondi a qualcuno.</p>
+        <figure class="shot">
+          <div class="frame">
+            <img src="img/menu-appunto.png" alt="Menu di un appunto: ascolta intorno, invia 12 secondi, apri." width="509" height="1100">
+          </div>
+          <figcaption>Ascolta intorno o invia quei 12 secondi.</figcaption>
+        </figure>
+      </article>
+
+      <article id="piu">
+        <h2>Cosa fa il pulsante arancione +?</h2>
+        <p>Mette in pausa l’audio e apre un nuovo appunto.</p>
+        <p>L’orario del momento è già scritto nel fumetto.</p>
+        <p>Tu scrivi cosa succede in quel punto e salvi.</p>
+        <p>Lo trovi in basso al centro, sulla schermata del brano.</p>
+      </article>
+
+      <article id="loop">
+        <h2>Come riascolto solo un pezzo?</h2>
+        <p>Sull’onda del brano ci sono due maniglie.</p>
+        <p>Spostale all’inizio e alla fine del passaggio.</p>
+        <p>L’app ripete solo quel pezzo, finché vuoi.</p>
+        <p>Quando hai finito, tocca «Togli loop».</p>
+      </article>
+
+      <article id="bozza">
+        <h2>Posso registrare un’idea al volo?</h2>
+        <p>Sì. In Home tocca + e scegli «Registra bozza».</p>
+        <p>Registri un’idea, un riff o una melodia.</p>
+        <p>Mentre registri puoi già scrivere un appunto: il microfono non si ferma.</p>
+        <p>Poi salvi e la bozza arriva in libreria.</p>
+        <figure class="shot">
+          <div class="frame">
+            <img src="img/bozza.png" alt="Registrazione di una bozza, con un appunto sul momento." width="509" height="1100">
+          </div>
+          <figcaption>Registra. Se serve, un appunto senza fermare il microfono.</figcaption>
+        </figure>
+      </article>
+
+      <article id="organizzare">
+        <h2>Come organizzo i brani?</h2>
+        <p>In Home tocca + e crea un album o una cartella.</p>
+        <p>Metti i brani dentro. Puoi aggiungere una copertina e delle note.</p>
+        <p>Se colleghi Google, puoi aprire una cartella Drive: sono i file che tieni nell’account Google.</p>
+        <p>All’apertura arrivano audio e note di chi condivide quella cartella.</p>
+        <figure class="shot">
+          <div class="frame">
+            <img src="img/album.png" alt="Un album in ReWavier, con copertina, note e lista dei brani." width="509" height="1100">
+          </div>
+          <figcaption>Un album tiene insieme i brani, le note e la copertina.</figcaption>
+        </figure>
+      </article>
+
+      <article id="telefono">
+        <h2>I brani restano sul telefono?</h2>
+        <p>Sì. I brani e gli appunti restano sul telefono.</p>
+        <p>Non li teniamo noi su un sito. Non c’è pubblicità.</p>
+        <p>Se togli l’app, spariscono da lì.</p>
+        <p>Restano solo i file che avevi già nella cartella ReWavier, nell’app File.</p>
+        <p>Di più nella <a href="Privacy.html">informativa sulla privacy</a>.</p>
+      </article>
+
+      <article id="altro-telefono">
+        <h2>Come li ritrovo su un altro telefono?</h2>
+        <p>Se hai due iPhone con lo stesso account Apple, la copia passa da iCloud.</p>
+        <p>Se colleghi Google, la copia passa da Drive: le cartelle dei file di Google.</p>
+        <p>Funziona anche verso un telefono Android.</p>
+        <p>I brani restano sul telefono. La nuvola serve solo a ritrovarli sull’altro dispositivo.</p>
+      </article>
+
+      <article id="accedi">
+        <h2>Come entro?</h2>
+        <p>Apri l’app e tocca Accedi.</p>
+        <p>Puoi entrare con Apple, Google o email.</p>
+        <p>Se scegli Google, puoi collegare anche Drive per le cartelle condivise.</p>
+        <figure class="shot">
+          <div class="frame">
+            <img src="img/accedi.png" alt="Schermata Accedi di ReWavier, con Google, Apple e email." width="509" height="1100">
+          </div>
+          <figcaption>Entra con Google, Apple o email.</figcaption>
+        </figure>
+      </article>
+
+      <article id="account">
+        <h2>Come tolgo l’account?</h2>
+        <p>In Home, in alto a destra, tocca l’ingranaggio.</p>
+        <p>Poi tocca «Elimina account».</p>
+        <p>Puoi togliere solo l’accesso: i brani restano nella cartella ReWavier, nell’app File.</p>
+        <p>Oppure cancelli anche brani e appunti di quell’account su quel telefono.</p>
+        <p>Questa scelta non si può annullare.</p>
+      </article>
+
+      <article id="aiuto">
+        <h2>Come chiedo aiuto?</h2>
+        <p>Apri la pagina <a href="Supporto.html">Assistenza</a>.</p>
+        <p>Puoi anche scrivere allo sviluppatore dalla scheda di ReWavier sull’App Store.</p>
+        <p>In app, in Home, in alto a destra c’è il tasto ?.</p>
+      </article>
+
+      <article id="guida">
+        <h2>Come rivedo la guida nell’app?</h2>
+        <p>Nella Home, in alto a destra, tocca ?.</p>
+        <p>Si apre la guida con le schermate. Puoi anche rivedere i tre passi del tour.</p>
+        <p>Da Impostazioni puoi aprire questa pagina di domande frequenti.</p>
+      </article>
+    </div>
+
+    <section class="cta">
+      <div class="wrap">
+        <p class="kicker">iPhone e iPad</p>
+        <h2>Scarica ReWavier.</h2>
+        <p class="lede">Carichi un audio o registri una bozza. Poi tocca + per un appunto sul momento esatto.</p>
+        <a class="btn" href="https://apps.apple.com/it/app/rewavier/id6803983715">Apri sull’App Store</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="foot">
+      <span>© 2026 ReWavier</span>
+      <span>
+        <a href="Privacy.html">Privacy</a>
+        ·
+        <a href="Supporto.html">Assistenza</a>
+        ·
+        <a href="FAQ.html">Domande frequenti</a>
+      </span>
+    </div>
+  </footer>
+</body>
+</html>

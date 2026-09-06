@@ -331,6 +331,14 @@ export function HomeScreen() {
         </View>
         <View style={styles.headerActions}>
           <Pressable
+            onPress={() => navigation.navigate('Help')}
+            style={({ pressed }) => [styles.gear, pressed && styles.pressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Guida"
+          >
+            <Text style={styles.gearGlyph}>?</Text>
+          </Pressable>
+          <Pressable
             onPress={() => actions.openCreateMenu()}
             style={({ pressed }) => [styles.gear, pressed && styles.pressed]}
             accessibilityRole="button"

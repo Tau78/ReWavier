@@ -7,6 +7,7 @@ export type RootStackParamList = {
   Collection: { kind: CollectionKind; id: string };
   Conditions: { id?: string };
   Settings: undefined;
+  Help: undefined;
   Privacy: undefined;
   Discovery: undefined;
   ReplaceFile: { trackId?: string; albumId?: string };

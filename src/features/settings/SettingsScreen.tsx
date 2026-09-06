@@ -3,9 +3,11 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Constants from 'expo-constants';
+import * as WebBrowser from 'expo-web-browser';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { BAND_COLORS } from '../../domain/bandColors';
+import { FAQ_URL } from '../../legal/urls';
 import { isDemoUser } from '../../auth/demoAccount';
 import { runGoogleDriveConnect, useGoogleDriveConnect } from '../../auth/useGoogleSignIn';
 import { LinkedDevicesCard } from './LinkedDevicesCard';
@@ -301,6 +303,27 @@ export function SettingsScreen() {
             telefono.
           </Text>
         </View>
+        <Pressable
+          onPress={() => navigation.navigate('Help')}
+          style={styles.card}
+          accessibilityRole="button"
+          accessibilityLabel="Guida"
+        >
+          <Text style={styles.rowLabel}>Guida</Text>
+          <Text style={styles.rowValue}>I passi per iniziare, con le foto.</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => {
+            void WebBrowser.openBrowserAsync(FAQ_URL);
+          }}
+          style={styles.card}
+          accessibilityRole="link"
+          accessibilityLabel="Domande frequenti"
+        >
+          <Text style={styles.rowLabel}>Domande frequenti</Text>
+          <Text style={styles.rowValue}>Apri la guida con le schermate</Text>
+          <Text style={styles.rowHint}>Si apre nel browser. Stesse risposte del tour, più dettagli.</Text>
+        </Pressable>
         <Pressable onPress={() => navigation.navigate('Privacy')} style={styles.card}>
           <Text style={styles.rowLabel}>Privacy</Text>
           <Text style={styles.rowValue}>Nessun tracker · file solo sul dispositivo</Text>
