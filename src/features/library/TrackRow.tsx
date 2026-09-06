@@ -1,11 +1,15 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { isDownloaded } from '../../domain/audioFormats';
 import { formatTimecode, type Track } from '../../domain/models';
+import { fileCreatedAtMs, formatFileCreatedAt } from '../../files/fileCreatedAt';
 import { resolveLibraryUri } from '../../files/libraryUris';
 import { usePlayerStore } from '../../store/playerStore';
 import { colors } from '../../theme/colors';
 import { SwipeableRow } from './SwipeableRow';
+
+type MetaMode = 'duration' | 'created';
 
 export function TrackRow({
   track,
@@ -40,6 +44,16 @@ export function TrackRow({
   const durationMs = track.durationMs > 0 ? track.durationMs : playerDurationMs;
   const letter = (track.title.trim()[0] || '?').toUpperCase();
   const artworkUri = resolveLibraryUri(track.artworkUri);
+  const [metaMode, setMetaMode] = useState<MetaMode>('duration');
+  const createdLabel = useMemo(() => {
+    const ms = fileCreatedAtMs(track);
+    return ms != null ? formatFileCreatedAt(ms) : null;
+  }, [track.id, track.fileUri, track.inboxUri, track.downloadedAt, track.sourceFileName, track.remoteUri]);
+  const showCreated = metaMode === 'created' && createdLabel != null;
+
+  useEffect(() => {
+    setMetaMode('duration');
+  }, [track.id, track.fileUri, track.inboxUri, track.downloadedAt]);
 
   const row = (
     <Pressable
@@ -94,7 +108,27 @@ export function TrackRow({
         </Text>
       </View>
       <View style={styles.aside}>
-        <Text style={styles.time}>{formatTimecode(durationMs)}</Text>
+        <Pressable
+          onPress={() => {
+            if (!createdLabel) {
+              return;
+            }
+            setMetaMode((mode) => (mode === 'duration' ? 'created' : 'duration'));
+          }}
+          hitSlop={6}
+          accessibilityRole="button"
+          accessibilityLabel={
+            showCreated
+              ? `Creato il ${createdLabel}. Tocca per la durata`
+              : createdLabel
+                ? `Durata ${formatTimecode(durationMs)}. Tocca per la data del file`
+                : `Durata ${formatTimecode(durationMs)}`
+          }
+        >
+          <Text style={styles.time} numberOfLines={1}>
+            {showCreated ? createdLabel : formatTimecode(durationMs)}
+          </Text>
+        </Pressable>
         <Text style={styles.notes}>
           {noteCount === 0 ? 'Nessun appunto' : `${noteCount} appunti`}
         </Text>
