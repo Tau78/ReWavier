@@ -149,6 +149,18 @@ function remoteAudioChanged(track, remote) {
   return Boolean(remote.modifiedTime && !track.remoteModifiedAt);
 }
 
+
+function remoteReplacesLocalTrack(track, remote, remotes) {
+  if (!track.driveFileId || track.driveFileId === remote.id) {
+    return false;
+  }
+  if (!trackMatchesRemote(track, remote)) {
+    return false;
+  }
+  return !remotes.some((item) => item.id === track.driveFileId);
+}
+
+
 // Hash wins: newer mtime with same hash is NOT a new version
 assert.equal(
   remoteAudioChanged(
@@ -295,6 +307,29 @@ assert.deepEqual(
     { id: 'drv', name: original },
   ]).map((remote) => remote.id),
   ['drv'],
+);
+
+
+// Delete+reupload: same name, new id, old id gone
+assert.equal(
+  remoteReplacesLocalTrack(
+    { driveFileId: 'old', sourceFileName: original },
+    { id: 'new', name: original },
+    [{ id: 'new', name: original }],
+  ),
+  true,
+);
+// Version folder twin: both ids still present
+assert.equal(
+  remoteReplacesLocalTrack(
+    { driveFileId: 'a', sourceFileName: original },
+    { id: 'b', name: original },
+    [
+      { id: 'a', name: original },
+      { id: 'b', name: original },
+    ],
+  ),
+  false,
 );
 
 console.log('ok remote audio change prefers hash/size; missing remotes are pruned; names match across encoding');

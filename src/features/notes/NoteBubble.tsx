@@ -37,6 +37,25 @@ function hapticSuccess() {
   }
 }
 
+/** Ora (e giorno se serve) in cui hai scritto l’appunto. */
+export function formatNoteAddedAt(ms: number, nowMs = Date.now()): string {
+  const date = new Date(ms);
+  const time = date.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+  const startToday = new Date(nowMs);
+  startToday.setHours(0, 0, 0, 0);
+  const startDay = new Date(date);
+  startDay.setHours(0, 0, 0, 0);
+  const dayDiff = Math.round((startToday.getTime() - startDay.getTime()) / 86_400_000);
+  if (dayDiff === 0) {
+    return `oggi · ${time}`;
+  }
+  if (dayDiff === 1) {
+    return `ieri · ${time}`;
+  }
+  const day = date.toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
+  return `${day} · ${time}`;
+}
+
 export function NoteBubble() {
   const bubble = usePlayerStore((s) => s.bubble);
   const markers = usePlayerStore((s) => s.markers);
@@ -63,6 +82,19 @@ export function NoteBubble() {
     folderReadOnly || (isEditing && current != null && !canEditMarkerInAlbum(current, user, folderRole));
   const canSave = !readOnly && bubble.draft.trim().length > 0;
   const canReply = !folderReadOnly && (isEditing || thread.length > 0);
+  const addedLabel =
+    isEditing && current?.createdAt
+      ? formatNoteAddedAt(current.createdAt)
+      : isEditing
+        ? null
+        : 'adesso';
+  const title = readOnly
+    ? `Sola lettura${current?.authorName ? ` · ${current.authorName}` : ''}`
+    : isEditing
+      ? current?.hidden
+        ? 'Storico · nascosto'
+        : 'Modifica appunto'
+      : 'Nuovo appunto';
 
   const persistNote = () => {
     if (!canSave) {
@@ -114,18 +146,20 @@ export function NoteBubble() {
 
           <View style={styles.cardWrap} pointerEvents="box-none">
             <View style={styles.card}>
-              <Text style={styles.timecode} accessibilityRole="text">
-                {formatTimecode(bubble.timestampMs)}
-              </Text>
-              <Text style={styles.subtitle}>
-                {readOnly
-                  ? `Sola lettura${current?.authorName ? ` · ${current.authorName}` : ''}`
-                  : isEditing
-                    ? current?.hidden
-                      ? 'Storico · nascosto'
-                      : 'Modifica appunto'
-                    : 'Nuovo appunto'}
-              </Text>
+              <View style={styles.header}>
+                <View style={styles.headerMain}>
+                  <Text style={styles.timecode} accessibilityRole="text">
+                    {formatTimecode(bubble.timestampMs)}
+                  </Text>
+                  <Text style={styles.subtitle}>{title}</Text>
+                </View>
+                {addedLabel ? (
+                  <View style={styles.addedPill} accessibilityLabel={`Aggiunto ${addedLabel}`}>
+                    <Text style={styles.addedLabel}>Aggiunto</Text>
+                    <Text style={styles.addedValue}>{addedLabel}</Text>
+                  </View>
+                ) : null}
+              </View>
 
               {thread.length > 0 ? (
                 <View style={styles.thread} accessibilityLabel="Altri appunti sullo stesso momento">
@@ -170,33 +204,34 @@ export function NoteBubble() {
                 </View>
               ) : null}
 
-              {canReply ? (
+              <View style={styles.chipRow}>
+                {canReply ? (
+                  <Pressable
+                    onPress={() => replyAt(bubble.timestampMs)}
+                    hitSlop={layout.hitSlop}
+                    accessibilityRole="button"
+                    accessibilityLabel="Rispondi sullo stesso momento"
+                    style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
+                  >
+                    <Text style={styles.chipLabel}>Rispondi</Text>
+                  </Pressable>
+                ) : null}
                 <Pressable
-                  onPress={() => replyAt(bubble.timestampMs)}
+                  onPress={onShareClip}
                   hitSlop={layout.hitSlop}
                   accessibilityRole="button"
-                  accessibilityLabel="Rispondi sullo stesso momento"
-                  style={styles.replyHit}
+                  accessibilityLabel="Invia 12 secondi"
+                  style={({ pressed }) => [styles.chip, pressed && styles.chipPressed]}
                 >
-                  <Text style={styles.replyLabel}>Rispondi</Text>
+                  <Text style={styles.chipLabel}>Invia 12 secondi</Text>
                 </Pressable>
-              ) : null}
-
-              <Pressable
-                onPress={onShareClip}
-                hitSlop={layout.hitSlop}
-                accessibilityRole="button"
-                accessibilityLabel="Invia 12 secondi"
-                style={styles.replyHit}
-              >
-                <Text style={styles.replyLabel}>Invia 12 secondi</Text>
-              </Pressable>
+              </View>
 
               <TextInput
                 style={styles.input}
                 value={bubble.draft}
                 onChangeText={setDraft}
-                placeholder="Scrivi il tuo appunto…"
+                placeholder="Scrivi qui il tuo appunto…"
                 placeholderTextColor={colors.textMuted}
                 multiline
                 autoFocus={!readOnly}
@@ -212,6 +247,7 @@ export function NoteBubble() {
                   hitSlop={layout.hitSlop}
                   accessibilityRole="button"
                   accessibilityLabel="Annulla"
+                  style={({ pressed }) => [styles.ghostHit, pressed && styles.ghostHitPressed]}
                 >
                   <Text style={styles.cancelLabel}>Annulla</Text>
                 </Pressable>
@@ -227,6 +263,7 @@ export function NoteBubble() {
                       hitSlop={layout.hitSlop}
                       accessibilityRole="button"
                       accessibilityLabel={current?.hidden ? 'Mostra appunto' : 'Nascondi appunto'}
+                      style={({ pressed }) => [styles.ghostHit, pressed && styles.ghostHitPressed]}
                     >
                       <Text style={styles.hideLabel}>{current?.hidden ? 'Mostra' : 'Nascondi'}</Text>
                     </Pressable>
@@ -238,25 +275,26 @@ export function NoteBubble() {
                       hitSlop={layout.hitSlop}
                       accessibilityRole="button"
                       accessibilityLabel="Elimina appunto"
+                      style={({ pressed }) => [styles.ghostHit, pressed && styles.ghostHitPressed]}
                     >
                       <Text style={styles.deleteLabel}>Elimina</Text>
                     </Pressable>
                   ) : null}
 
                   {readOnly ? null : (
-                  <Pressable
-                    onPress={persistNote}
-                    disabled={!canSave}
-                    accessibilityRole="button"
-                    accessibilityLabel="Salva appunto"
-                    style={({ pressed }) => [
-                      styles.saveButton,
-                      !canSave && styles.saveButtonDisabled,
-                      pressed && canSave && styles.saveButtonPressed,
-                    ]}
-                  >
-                    <Text style={styles.saveLabel}>Salva</Text>
-                  </Pressable>
+                    <Pressable
+                      onPress={persistNote}
+                      disabled={!canSave}
+                      accessibilityRole="button"
+                      accessibilityLabel="Salva appunto"
+                      style={({ pressed }) => [
+                        styles.saveButton,
+                        !canSave && styles.saveButtonDisabled,
+                        pressed && canSave && styles.saveButtonPressed,
+                      ]}
+                    >
+                      <Text style={styles.saveLabel}>Salva</Text>
+                    </Pressable>
                   )}
                 </View>
               </View>
@@ -284,22 +322,25 @@ const styles = StyleSheet.create({
   },
   cardWrap: {
     marginTop: 'auto',
-    paddingHorizontal: 16,
-    paddingBottom: 28,
+    paddingHorizontal: 14,
+    paddingBottom: 22,
     alignItems: 'center',
   },
   card: {
     width: '100%',
+    maxWidth: 440,
     backgroundColor: colors.surfaceRaised,
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 24,
+    paddingTop: 18,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.45,
-    shadowRadius: 18,
-    elevation: 14,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.4,
+    shadowRadius: 20,
+    elevation: 16,
   },
   tail: {
     width: 14,
@@ -311,17 +352,51 @@ const styles = StyleSheet.create({
     borderRightWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  headerMain: {
+    flex: 1,
+    minWidth: 0,
+  },
   timecode: {
     fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
-    fontSize: 15,
+    fontSize: 22,
+    fontWeight: '700',
     fontVariant: ['tabular-nums'],
-    letterSpacing: 0.4,
+    letterSpacing: 0.2,
     color: colors.accent,
   },
   subtitle: {
     marginTop: 4,
     fontSize: 13,
+    fontWeight: '500',
     color: colors.textMuted,
+  },
+  addedPill: {
+    alignItems: 'flex-end',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  addedLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    color: colors.textMuted,
+  },
+  addedValue: {
+    marginTop: 2,
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.text,
   },
   thread: {
     marginTop: 14,
@@ -368,59 +443,84 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: colors.text,
   },
-  replyHit: {
-    alignSelf: 'flex-start',
-    marginTop: 10,
+  chipRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
-  replyLabel: {
-    fontSize: 15,
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 107, 53, 0.14)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 107, 53, 0.35)',
+  },
+  chipPressed: {
+    opacity: 0.75,
+  },
+  chipLabel: {
+    fontSize: 13,
     fontWeight: '700',
     color: colors.accent,
   },
   input: {
-    marginTop: 16,
-    minHeight: 90,
+    marginTop: 14,
+    minHeight: 104,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 14,
+    paddingVertical: 13,
+    borderRadius: 16,
     backgroundColor: colors.surface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     color: colors.text,
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: 17,
+    lineHeight: 24,
   },
   actions: {
-    marginTop: 18,
+    marginTop: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
   },
   actionsRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    flexShrink: 1,
+    gap: 4,
+  },
+  ghostHit: {
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
+  ghostHitPressed: {
+    opacity: 0.65,
   },
   cancelLabel: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '500',
     color: colors.textMuted,
   },
   hideLabel: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: colors.textMuted,
   },
   deleteLabel: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: colors.danger,
   },
   saveButton: {
+    marginLeft: 4,
     backgroundColor: colors.accent,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    borderRadius: 14,
+    minWidth: 76,
+    alignItems: 'center',
   },
   saveButtonPressed: {
     opacity: 0.86,

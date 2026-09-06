@@ -66,6 +66,7 @@ import {
   findBestLocalForRemote,
   remoteAudioChanged,
   remoteIsClaimed,
+  remoteReplacesLocalTrack,
   surplusLocalTracks,
   uniqueRemotes,
 } from './remoteAudioChange';
@@ -217,6 +218,11 @@ export async function peekDriveAlbum(albumId: string): Promise<DriveAlbumPeek> {
     }
     claimRemote(claimed, remote);
     if (existing.driveFileId && existing.driveFileId !== remote.id) {
+      // Same name, new Drive id, old id gone → delete+reupload. Keep twins in version folders.
+      if (remoteReplacesLocalTrack(existing, remote, audios)) {
+        useLibraryStore.getState().markTrackNeedsUpdate(existing.id, metaFrom(remote));
+        changedTrackIds.push(existing.id);
+      }
       continue;
     }
     if (remoteAudioChanged(existing, remote)) {
@@ -428,7 +434,12 @@ async function runCloudSyncBody(): Promise<void> {
         claimRemote(importedRemotes, remote);
 
         // Same name in a version folder: keep the local row, do not import another.
+        // Delete+reupload (old Drive id gone) adopts the new file id instead.
         if (existing.driveFileId && existing.driveFileId !== remote.id) {
+          if (remoteReplacesLocalTrack(existing, remote, audios)) {
+            store.markTrackNeedsUpdate(existing.id, metaFrom(remote));
+            versioned += 1;
+          }
           continue;
         }
 

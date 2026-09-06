@@ -1219,6 +1219,8 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     if (!track?.fileUri) {
       return;
     }
+    const { releaseTrackFromPlayer } = await import('./playerStore');
+    await releaseTrackFromPlayer(trackId);
     await removeUri(track.fileUri);
     set((state) => ({
       tracks: state.tracks.map((item) =>
