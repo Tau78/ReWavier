@@ -8,6 +8,7 @@ import { nowPlayingMetadata } from '../audio/nowPlaying';
 import { playableUri } from '../domain/audioFormats';
 import { canWriteWithRole, FOLDER_READ_ONLY_MESSAGE } from '../domain/folderRole';
 import { canEditMarkerInAlbum, stampNewMarker } from '../domain/markers';
+import { nextNotePlaceholder } from '../domain/notePlaceholders';
 import {
   clampTime,
   isCustomRange,
@@ -628,6 +629,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         timestampMs,
         markerId: null,
         draft: '',
+        placeholderPrompt: nextNotePlaceholder(),
       },
     });
   },
@@ -666,7 +668,10 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
   saveBubble() {
     const { bubble, markers } = get();
-    const text = bubble.draft.trim();
+    const typed = bubble.draft.trim();
+    const prompt = bubble.placeholderPrompt?.trim() ?? '';
+    const savingStamp = !bubble.markerId && typed.length === 0 && prompt.length > 0;
+    const text = typed || (savingStamp ? prompt : '');
     if (!text) {
       return;
     }
@@ -676,11 +681,18 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
 
     const now = Date.now();
     if (bubble.markerId) {
-      const next = markers.map((marker) =>
-        marker.id === bubble.markerId
-          ? { ...marker, text, updatedAt: now }
-          : marker,
-      );
+      const next = markers.map((marker) => {
+        if (marker.id !== bubble.markerId) {
+          return marker;
+        }
+        const keepStamp = marker.placeholder === true && text === marker.text.trim();
+        return {
+          ...marker,
+          text,
+          updatedAt: now,
+          placeholder: keepStamp ? true : undefined,
+        };
+      });
       persistMarkers(get().track.id, next);
       set({
         markers: next,
@@ -697,6 +709,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         text,
         createdAt: now,
         updatedAt: now,
+        placeholder: savingStamp,
       },
       useSessionStore.getState().user,
     );
@@ -890,6 +903,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         timestampMs: ts,
         markerId: null,
         draft: '',
+        placeholderPrompt: nextNotePlaceholder(),
       },
     });
   },

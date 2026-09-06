@@ -15,6 +15,7 @@ import { albumContainsTrackId } from '../../domain/albumVersions';
 import { canWriteWithRole, roleOfAlbum } from '../../domain/folderRole';
 import {
   canEditMarkerInAlbum,
+  isPlaceholderMarker,
   markerAuthorLabel,
   markerColor,
   visibleMarkers,
@@ -80,7 +81,14 @@ export function NoteBubble() {
   const folderReadOnly = !canWriteWithRole(folderRole);
   const readOnly =
     folderReadOnly || (isEditing && current != null && !canEditMarkerInAlbum(current, user, folderRole));
-  const canSave = !readOnly && bubble.draft.trim().length > 0;
+  const prompt = bubble.placeholderPrompt?.trim() ?? '';
+  const showingStamp =
+    isEditing &&
+    current != null &&
+    isPlaceholderMarker(current) &&
+    bubble.draft.trim() === current.text.trim();
+  const canSave =
+    !readOnly && (bubble.draft.trim().length > 0 || (!isEditing && prompt.length > 0));
   const canReply = !folderReadOnly && (isEditing || thread.length > 0);
   const addedLabel =
     isEditing && current?.createdAt
@@ -193,7 +201,13 @@ export function NoteBubble() {
                             <Text style={[styles.threadWho, { color: pinColor }]} numberOfLines={1}>
                               {whoLine}
                             </Text>
-                            <Text style={styles.threadText} numberOfLines={1}>
+                            <Text
+                              style={[
+                                styles.threadText,
+                                isPlaceholderMarker(marker) && styles.stampText,
+                              ]}
+                              numberOfLines={1}
+                            >
                               {marker.text.trim() || '—'}
                             </Text>
                           </View>
@@ -228,10 +242,10 @@ export function NoteBubble() {
               </View>
 
               <TextInput
-                style={styles.input}
+                style={[styles.input, showingStamp && styles.stampInput]}
                 value={bubble.draft}
                 onChangeText={setDraft}
-                placeholder="Scrivi qui il tuo appunto…"
+                placeholder={isEditing ? 'Scrivi qui il tuo appunto…' : prompt || 'Scrivi qui il tuo appunto…'}
                 placeholderTextColor={colors.textMuted}
                 multiline
                 autoFocus={!readOnly}
@@ -443,6 +457,9 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     color: colors.text,
   },
+  stampText: {
+    color: colors.textMuted,
+  },
   chipRow: {
     marginTop: 14,
     flexDirection: 'row',
@@ -477,6 +494,9 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 17,
     lineHeight: 24,
+  },
+  stampInput: {
+    color: colors.textMuted,
   },
   actions: {
     marginTop: 14,

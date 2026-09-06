@@ -79,6 +79,8 @@ export type Marker = {
   authorName?: string;
   color?: string;
   editableByOthers?: boolean;
+  /** Saved the ready-made prompt without typing a real note. */
+  placeholder?: boolean;
 };
 
 export type NoteBubbleState = {
@@ -86,6 +88,8 @@ export type NoteBubbleState = {
   timestampMs: number;
   markerId: string | null;
   draft: string;
+  /** Ready-made phrase shown until the person types. */
+  placeholderPrompt?: string;
 };
 
 export function formatTimecode(ms: number): string {

@@ -5,6 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import {
   isMarkerHidden,
+  isPlaceholderMarker,
   markerAuthorLabel,
   markerColor,
   markerPreviewText,
@@ -102,7 +103,13 @@ export function CollectionMarkers({
                     {says}
                   </Text>
                   {preview ? (
-                    <Text style={styles.preview} numberOfLines={2}>
+                    <Text
+                      style={[
+                        styles.preview,
+                        isPlaceholderMarker(row.marker) && { color: colors.textMuted },
+                      ]}
+                      numberOfLines={2}
+                    >
                       {preview}
                     </Text>
                   ) : null}

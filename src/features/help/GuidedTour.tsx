@@ -1,36 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Image, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { isDemoUser } from '../../auth/demoAccount';
 import { useHelpStore } from '../../store/helpStore';
-import { useSessionStore } from '../../store/sessionStore';
 import { colors, layout } from '../../theme/colors';
 import { TOUR_STEPS } from './tourCopy';
 
 export function GuidedTour() {
-  const user = useSessionStore((s) => s.user);
-  const demoAccount = isDemoUser(user);
-  const hydrated = useHelpStore((s) => s.hydrated);
   const tourDone = useHelpStore((s) => s.tourDone);
   const tourVisible = useHelpStore((s) => s.tourVisible);
-  const hydrate = useHelpStore((s) => s.hydrate);
-  const startTour = useHelpStore((s) => s.startTour);
   const skipTour = useHelpStore((s) => s.skipTour);
   const completeTour = useHelpStore((s) => s.completeTour);
   const hideTour = useHelpStore((s) => s.hideTour);
   const [stepIndex, setStepIndex] = useState(0);
-
-  useEffect(() => {
-    if (!hydrated) {
-      void hydrate();
-    }
-  }, [hydrated, hydrate]);
-
-  useEffect(() => {
-    if (hydrated && !demoAccount && !tourDone && !tourVisible) {
-      startTour();
-    }
-  }, [demoAccount, hydrated, startTour, tourDone, tourVisible]);
 
   useEffect(() => {
     if (tourVisible) {

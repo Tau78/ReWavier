@@ -176,6 +176,7 @@ export function parseSidecar(raw: string): SidecarFile | null {
           authorName: marker.authorName,
           color: marker.color,
           editableByOthers: marker.editableByOthers,
+          placeholder: marker.placeholder,
         }),
       ),
     };

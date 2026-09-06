@@ -1,0 +1,16 @@
+---
+description: Catalogo “Cosa c’è di nuovo” — aggiornare a ogni novità visibile
+alwaysApply: true
+---
+
+# Cosa c’è di nuovo
+
+Quando si spedisce una cosa visibile all’utente, aggiungere 1–3 frasi in `WHATS_NEW_RELEASES` (`src/features/help/whatsNew.ts`) per la versione in `app.json`.
+
+Se la versione non è ancora stata alzata, accodare alla release corrente.
+
+Prima riga: titolo corto. Body: cosa fare / cosa succede.
+
+Non duplicare la guida (tour). What’s new = novità dopo che l’utente ha già visto la guida.
+
+Non mostrare What’s new e guida insieme (lo fa lo store, non questa UI).

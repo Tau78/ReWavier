@@ -15,6 +15,7 @@ export function normalizeMarker(raw: Partial<Marker> & Pick<Marker, 'id' | 'time
     authorName: raw.authorName,
     color: raw.color,
     editableByOthers: raw.editableByOthers,
+    placeholder: raw.placeholder === true ? true : undefined,
   };
 }
 
@@ -64,8 +65,13 @@ export function canEditMarkerInAlbum(
   return canWriteWithRole(role) && canEditMarker(marker, user);
 }
 
+export function isPlaceholderMarker(marker: Pick<Marker, 'placeholder'>): boolean {
+  return marker.placeholder === true;
+}
+
 export function stampNewMarker(
-  base: Pick<Marker, 'id' | 'timestampMs' | 'text' | 'createdAt' | 'updatedAt'>,
+  base: Pick<Marker, 'id' | 'timestampMs' | 'text' | 'createdAt' | 'updatedAt'> &
+    Partial<Pick<Marker, 'placeholder'>>,
   user: SessionUser | null,
 ): Marker {
   return {
@@ -75,5 +81,6 @@ export function stampNewMarker(
     authorName: user?.displayName,
     color: user?.bandColor ?? colors.marker,
     editableByOthers: user && userHasUsage(user, 'band') ? user.markersEditableByOthers : true,
+    placeholder: base.placeholder === true ? true : undefined,
   };
 }

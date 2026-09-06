@@ -17,7 +17,7 @@ import {
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 
-import { isMarkerHidden, markerColor } from '../../domain/markers';
+import { isMarkerHidden, isPlaceholderMarker, markerColor } from '../../domain/markers';
 import {
   clampTime,
   formatTimecode,
@@ -527,7 +527,13 @@ function ZoomMarkerPin({
             {says}
           </Text>
           {preview ? (
-            <Text style={styles.pinBubbleText} numberOfLines={2}>
+            <Text
+              style={[
+                styles.pinBubbleText,
+                isPlaceholderMarker(marker) && { color: colors.textMuted },
+              ]}
+              numberOfLines={2}
+            >
               {preview}
             </Text>
           ) : null}
@@ -1093,7 +1099,13 @@ export function Waveform() {
                   <View style={styles.cueCopy}>
                     <Text style={styles.cueTime}>{formatTimecode(marker.timestampMs)}</Text>
                     {preview ? (
-                      <Text style={styles.cuePreview} numberOfLines={1}>
+                      <Text
+                        style={[
+                          styles.cuePreview,
+                          isPlaceholderMarker(marker) && { color: colors.textMuted },
+                        ]}
+                        numberOfLines={1}
+                      >
                         {preview}
                       </Text>
                     ) : null}

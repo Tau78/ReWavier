@@ -1,0 +1,80 @@
+import Constants from 'expo-constants';
+
+export type WhatsNewItem = { title: string; body: string };
+export type WhatsNewRelease = { version: string; items: WhatsNewItem[] };
+
+/** Dal più vecchio al più nuovo. version = expo.version in app.json, es. "1.0.3" */
+export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
+  {
+    version: '1.0.3',
+    items: [
+      {
+        title: 'Guida e domande frequenti',
+        body: 'In Home, il ? apre la guida quando vuoi. Nelle Impostazioni trovi le domande frequenti, con le foto.',
+      },
+      {
+        title: 'Frasi pronte sul +',
+        body: 'Tocchi + e c’è già un testo. Salvalo così, oppure scrivi tu.',
+      },
+      {
+        title: 'Ripeti un pezzo',
+        body: 'Sull’ascolto tocca A dove ricominciare e B dove fermarti. Quel pezzo si ripete da solo.',
+      },
+    ],
+  },
+];
+
+/** Versione app da expo-constants (Constants.expoConfig?.version ?? '1.0.0') */
+export function appVersion(): string {
+  return Constants.expoConfig?.version ?? '1.0.0';
+}
+
+/**
+ * Confronta semver major.minor.patch (stringhe tipo 1.0.3).
+ * Ritorna <0 se a<b, 0 se uguali, >0 se a>b. Non lanciare.
+ */
+export function compareAppVersions(a: string, b: string): number {
+  const left = versionParts(a);
+  const right = versionParts(b);
+  for (let i = 0; i < 3; i += 1) {
+    const delta = left[i]! - right[i]!;
+    if (delta !== 0) {
+      return delta;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Item da mostrare: tutte le release con version > seenVersion (se seenVersion assente, tutte).
+ * Se seenVersion === appVersion() → [].
+ */
+export function unseenWhatsNew(seenVersion: string | undefined): WhatsNewItem[] {
+  if (seenVersion === appVersion()) {
+    return [];
+  }
+  const items: WhatsNewItem[] = [];
+  for (const release of WHATS_NEW_RELEASES) {
+    if (seenVersion === undefined || compareAppVersions(release.version, seenVersion) > 0) {
+      items.push(...release.items);
+    }
+  }
+  return items;
+}
+
+function versionParts(value: string): [number, number, number] {
+  const raw = typeof value === 'string' ? value.trim().split('.') : [];
+  return [numericPart(raw[0]), numericPart(raw[1]), numericPart(raw[2])];
+}
+
+function numericPart(token: string | undefined): number {
+  if (!token) {
+    return 0;
+  }
+  const match = /^(\d+)/.exec(token);
+  if (!match) {
+    return 0;
+  }
+  const n = Number(match[1]);
+  return Number.isFinite(n) ? n : 0;
+}
