@@ -152,6 +152,15 @@
         "projectId": "ac1cc991-f41d-4b45-adcb-bc574afbce3c"
       }
     },
-    "owner": "musicproeventi"
+    "owner": "musicproeventi",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/ac1cc991-f41d-4b45-adcb-bc574afbce3c",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
+    }
   }
 }
