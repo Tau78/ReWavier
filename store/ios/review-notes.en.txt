@@ -1,0 +1,43 @@
+UPDATE 1.0.3 (build 78)
+
+This is a minor update. Changes:
+• First Drive import now creates the on-device inbox folder before download (previously failed on a clean install).
+• The binary listens for Expo EAS Update on the production channel (JS-only bugfixes). No new native permissions.
+
+No new permissions, no IAP, no ads, no ATT.
+
+1) SCREEN RECORDING
+Not attached. This is an update to an app already on the App Store. No IAP, no ATT, no public social feed, no report/block flow. Notes are private on-device.
+
+2) DEVICES AND OS TESTED BEFORE SUBMISSION
+- TestFlight production build 78 (same devices used for 1.0.2)
+- iPad supported
+
+3) WHAT THE APP DOES / WHO IT IS FOR
+ReWavier is a listening notebook: open audio, pause, and write a note on the exact moment on the waveform. For creators, bands, teachers, and business. Files stay on the phone. Google Drive and iCloud are optional copies.
+
+4) HOW TO SET UP AND USE THE MAIN FEATURES
+SIGN IN — open the app → email and password (not magic link, not Apple/Google for review).
+Email: review@rewavier.app
+Password: Review2026!
+Hardcoded review account; does not expire. First-run library is empty (no demo tracks).
+Then:
+1. Library → Drive → open a folder → “Scegli” to import audio.
+2. Open a track → tap + to add a note at the playhead.
+3. Account deletion: Library → gear → Settings → “Elimina account” → confirm → back to login.
+
+5) EXTERNAL SERVICES USED FOR CORE FEATURES
+- Sign in with Apple / Google (optional; review uses email/password)
+- Google Drive (optional import/sync; drive.file only)
+- iCloud (optional iPhone-to-iPhone copy)
+- Expo EAS Update (JS updates for the production store binary)
+None of: ads, analytics, payment processor, AI. No ReWavier server for accounts.
+
+6) REGIONAL DIFFERENCES
+Italian UI. Features and content are the same in every region. There is no geo-restricted catalog.
+
+7) REGULATED INDUSTRY / PROTECTED MATERIAL
+Not a regulated industry. We do not ship licensed third-party catalogs. Users import their own audio.
+
+Privacy: https://eventi.musicproeventi.it/ReWavier/Privacy.html
+Encryption: HTTPS/TLS only (ITSAppUsesNonExemptEncryption = false).

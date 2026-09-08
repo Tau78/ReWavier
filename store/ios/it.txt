@@ -2,7 +2,7 @@ name: ReWavier
 subtitle: Appunti sull’audio esatto
 promotional_text: Ascolta un audio e annota il momento esatto sull’onda. Per musica, lezioni e lavoro. I file restano sul telefono.
 keywords: audio,appunti,waveform,riunioni,lezione,musica,studio,band,ascolto,note,marker,formazione
-whats_new: Collegamento Drive senza chiedere accesso a tutto Drive (solo i file dell’app). Login Google senza disclaimer. Miglioramenti a libreria e album.
+whats_new: I brani da Drive arrivano sul telefono anche la prima volta. L’app può aggiornarsi da sola per i ritocchi, senza scaricare di nuovo tutto dal negozio.
 
 description: |
   ReWavier è il quaderno di ascolto per chi lavora con l’audio: musica, lezioni, riunioni, corsi, formazione, colloqui e appunti vocali.
