@@ -1,5 +1,6 @@
 import { Directory, Paths } from 'expo-file-system';
 
+import { ensureDirStrictAsync } from './fsSafe';
 import { getActiveLibraryOwner } from './libraryOwner';
 
 function createDir(dir: Directory): Directory {
@@ -45,20 +46,21 @@ export function userLibraryDirectory(owner = getActiveLibraryOwner()): Directory
   return new Directory(libraryDirectory(), 'users', owner);
 }
 
+async function ensureCreated(dir: Directory): Promise<Directory> {
+  await ensureDirStrictAsync(dir.uri);
+  return dir;
+}
+
 export async function ensureAudioDirectory(): Promise<Directory> {
-  return createDir(audioDirectory());
+  return ensureCreated(audioDirectory());
 }
 
 export async function ensureLibraryDirectory(): Promise<Directory> {
-  return createDir(libraryDirectory());
+  return ensureCreated(libraryDirectory());
 }
 
 function childDirectory(name: string): Directory {
   return new Directory(libraryDirectory(), name);
-}
-
-async function ensureChildDirectory(name: string): Promise<Directory> {
-  return createDir(childDirectory(name));
 }
 
 export function inboxDirectory(): Directory {
@@ -70,9 +72,9 @@ export function downloadsDirectory(): Directory {
 }
 
 export async function ensureInboxDirectory(): Promise<Directory> {
-  return ensureChildDirectory('inbox');
+  return ensureCreated(childDirectory('inbox'));
 }
 
 export async function ensureDownloadsDirectory(): Promise<Directory> {
-  return ensureChildDirectory('downloads');
+  return ensureCreated(childDirectory('downloads'));
 }

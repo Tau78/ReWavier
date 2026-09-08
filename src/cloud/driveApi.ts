@@ -2,6 +2,7 @@ import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
 import { DownloadPausedError, isDownloadPausedError } from '../domain/collectionDownloadVisual';
+import { ensureParentDirAsync } from '../files/fsSafe';
 import { throwIfDownloadPaused, useDownloadProgressStore } from '../store/downloadProgressStore';
 
 import { googleTokenHasDriveScope } from '../auth/googleAuthResult';
@@ -348,8 +349,9 @@ export async function downloadDriveFile(
 ): Promise<string> {
   const access = await token();
   const url = `${DRIVE}/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`;
+  // downloadAsync (legacy) does not create parents — inbox is often missing on first import.
+  await ensureParentDirAsync(destUri);
   const dest = new File(destUri);
-  dest.parentDirectory.create({ intermediates: true, idempotent: true });
   if (dest.exists) {
     dest.delete();
   }
