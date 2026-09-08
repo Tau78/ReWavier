@@ -23,6 +23,13 @@
         "track": "internal",
         "releaseStatus": "completed"
       }
+    },
+    "store": {
+      "android": {
+        "serviceAccountKeyPath": "./google-play-service-account.json",
+        "track": "production",
+        "releaseStatus": "completed"
+      }
     }
   }
 }
