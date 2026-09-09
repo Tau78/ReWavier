@@ -32,6 +32,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Ascolto più stabile',
         body: 'Meno interruzioni mentre scarichi un brano o cambi pezzo. La linguetta resta in basso anche nelle playlist.',
       },
+      {
+        title: 'Scegli da Drive',
+        body: 'Su un telefono nuovo o dopo una reinstallazione, i brani da Drive arrivano di nuovo sul telefono.',
+      },
     ],
   },
 ];
