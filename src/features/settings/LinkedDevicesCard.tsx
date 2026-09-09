@@ -84,7 +84,7 @@ function DeviceRow({
   );
 }
 
-export function LinkedDevicesCard() {
+export function LinkedDevicesCard({ embedded = false }: { embedded?: boolean }) {
   const selfId = useDeviceStore((s) => s.selfId);
   const devices = useDeviceStore((s) => s.devices);
   const unlinked = useDeviceStore((s) => s.unlinked);
@@ -138,7 +138,7 @@ export function LinkedDevicesCard() {
   };
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, embedded && styles.cardEmbedded]}>
       <Text style={styles.label}>Altri telefoni</Text>
       <Text style={styles.hint}>
         I telefoni che allineano i tuoi brani. Tocca uno per scollegarlo.
@@ -212,6 +212,13 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     paddingHorizontal: 16,
     paddingVertical: 14,
+  },
+  cardEmbedded: {
+    marginHorizontal: 0,
+    marginBottom: 0,
+    borderWidth: 0,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
   },
   label: {
     color: colors.textMuted,

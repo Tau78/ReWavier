@@ -1,6 +1,6 @@
 import { File } from 'expo-file-system';
 
-import { playableUri } from '../domain/audioFormats';
+import { playableUri, isRemoteHttpUri } from '../domain/audioFormats';
 import type { Track } from '../domain/models';
 import { useLibraryStore } from '../store/libraryStore';
 import { decodePcmPeaks, type DecodedPeaks } from './decodePcmFile';
@@ -122,6 +122,9 @@ export function invalidatePeaksWork(trackId: string): void {
 export async function ensurePeaks(track: Track): Promise<number[]> {
   const uri = playableUri(track);
   if (!uri) {
+    return [];
+  }
+  if (isRemoteHttpUri(uri)) {
     return [];
   }
 

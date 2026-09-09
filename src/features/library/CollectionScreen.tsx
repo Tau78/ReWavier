@@ -934,9 +934,7 @@ export function CollectionScreen() {
                         kind === 'album' || kind === 'folder' ? { autoPlay: true } : undefined,
                       ).then((opened) => {
                         if (opened) {
-                          if (kind !== 'album' && kind !== 'folder') {
-                            navigation.navigate('Player');
-                          }
+                          usePlayerStore.getState().setDockExpanded(true);
                           return;
                         }
                         Alert.alert(

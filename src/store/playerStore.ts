@@ -68,6 +68,8 @@ export type PlayerState = {
   queueIds: string[];
   showHidden: boolean;
   loadState: LoadState;
+  /** In-page dock: true = controlli + waveform; false = solo linguetta. */
+  dockExpanded: boolean;
 };
 
 export type PlayerActions = {
@@ -86,6 +88,8 @@ export type PlayerActions = {
   deleteMarker: (id: string) => void;
   hideMarker: (id: string, hidden?: boolean) => void;
   toggleShowHidden: () => void;
+  setDockExpanded: (expanded: boolean) => void;
+  toggleDockExpanded: () => void;
   loadTrack: (
     track: Track,
     markers?: Marker[],
@@ -363,6 +367,26 @@ export function refreshPlayingArtwork(trackId: string) {
   fileEngine.updateMetadata(nowPlayingMetadata(next));
 }
 
+/** Rebuild waveform peaks in the open player after a local file is ready. */
+export function refreshPlayingPeaks(trackId: string) {
+  const playing = usePlayerStore.getState().track;
+  if (playing.id !== trackId) {
+    return;
+  }
+  const next = useLibraryStore.getState().getTrack(trackId);
+  if (!next || !playableUri(next)) {
+    return;
+  }
+  void ensurePeaks(next)
+    .then((peaks) => {
+      if (peaks.length === 0 || usePlayerStore.getState().track.id !== trackId) {
+        return;
+      }
+      usePlayerStore.setState({ peaks });
+    })
+    .catch(() => undefined);
+}
+
 /** Free the shared audio session so a sketch can open the mic (expo-audio). */
 export async function releaseAudioForRecording(): Promise<void> {
   usePlayerStore.getState().pause();
@@ -420,6 +444,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   queueIds: [],
   showHidden: false,
   loadState: 'idle',
+  dockExpanded: true,
 
   play() {
     const state = get();
@@ -792,6 +817,14 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     set((state) => ({ showHidden: !state.showHidden }));
   },
 
+  setDockExpanded(expanded) {
+    set({ dockExpanded: expanded });
+  },
+
+  toggleDockExpanded() {
+    set((state) => ({ dockExpanded: !state.dockExpanded }));
+  },
+
   deleteMarker(id) {
     if (refuseMarkerWrite(id)) {
       return;
@@ -1004,6 +1037,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       bubble: { ...HIDDEN_BUBBLE },
       queueIds: queueIds ?? get().queueIds,
       loadState: uri ? 'loading' : 'idle',
+      // New track → show in-page player with controls (not only the thin linguetta).
+      dockExpanded: true,
     });
 
     if (uri) {

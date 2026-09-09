@@ -75,6 +75,7 @@ export function PlayerScreen() {
   usePauseNotePrompt();
 
   const dismissToTab = () => {
+    usePlayerStore.getState().setDockExpanded(true);
     if (navigation.canGoBack()) {
       navigation.goBack();
     }

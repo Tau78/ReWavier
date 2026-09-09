@@ -1,58 +1,172 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { formatTimecode } from '../../domain/models';
+import { fileCreatedAtMs, formatFileCreatedAt } from '../../files/fileCreatedAt';
 import type { RootStackParamList } from '../../navigation/types';
+import { useLibraryStore } from '../../store/libraryStore';
 import { usePlayerStore } from '../../store/playerStore';
-import { colors } from '../../theme/colors';
+import { colors, layout } from '../../theme/colors';
+import { NoteBubble } from '../notes/NoteBubble';
+import { AddNoteButton } from '../player/AddNoteButton';
+import { PlaybackControls } from '../player/PlaybackControls';
+import { PracticeBar } from '../player/PracticeBar';
+import { Waveform } from '../player/Waveform';
+import { TrackScoreTabs } from './TrackScoreTabs';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
+type MetaMode = 'duration' | 'created';
 
 /**
- * Linguetta in basso: titolo + tempo. Tap → apre il player grande.
- * Controlli e + restano solo sul PlayerScreen.
- * Mostrata quando c’è un brano in riproduzione, anche se non è nella raccolta aperta.
+ * Player in pagina (Home / Libreria / album).
+ * Linguetta: cicla ridotto (solo titolo/tempo) ↔ grande (waveform + controlli +).
+ * Tap sul titolo → apre la pagina audio (PlayerScreen).
  */
 export function CollectionPlayer() {
   const navigation = useNavigation<Nav>();
+  const focused = useIsFocused();
   const track = usePlayerStore((s) => s.track);
   const positionMs = usePlayerStore((s) => s.positionMs);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const dockExpanded = usePlayerStore((s) => s.dockExpanded);
+  const setDockExpanded = usePlayerStore((s) => s.setDockExpanded);
+  const toggleDockExpanded = usePlayerStore((s) => s.toggleDockExpanded);
+  const libraryTrack = useLibraryStore((s) => (track.id ? s.getTrack(track.id) : undefined));
+  const [metaMode, setMetaMode] = useState<MetaMode>('duration');
+  const [createdLabel, setCreatedLabel] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMetaMode('duration');
+    const source = libraryTrack ?? track;
+    const ms = fileCreatedAtMs(source);
+    setCreatedLabel(ms != null ? formatFileCreatedAt(ms) : null);
+  }, [track.id, libraryTrack?.fileUri, libraryTrack?.inboxUri, libraryTrack?.downloadedAt]);
+
+  const openFullPage = () => {
+    navigation.navigate('Player');
+  };
+
+  const stripGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .runOnJS(true)
+        .activeOffsetY([-24, 24])
+        .failOffsetX([-28, 28])
+        .onEnd((e) => {
+          if (e.translationY < -56 || e.velocityY < -400) {
+            setDockExpanded(true);
+            return;
+          }
+          if (e.translationY > 56 || e.velocityY > 400) {
+            setDockExpanded(false);
+          }
+        }),
+    [setDockExpanded],
+  );
 
   if (!track.id) {
     return null;
   }
 
+  const showCreated = metaMode === 'created' && createdLabel != null;
+
   return (
     <SafeAreaView edges={['bottom']} style={styles.dock}>
-      <View style={styles.handleRow} pointerEvents="none">
-        <View style={styles.handle} />
-      </View>
-      <Pressable
-        onPress={() => navigation.navigate('Player')}
-        accessibilityRole="button"
-        accessibilityLabel={`${track.title}. Apri il lettore`}
-        style={({ pressed }) => [styles.tab, pressed && styles.tabPressed]}
-      >
-        <View style={styles.textCol}>
-          <Text style={styles.title} numberOfLines={1}>
-            {track.title}
-          </Text>
-          <Text style={styles.artist} numberOfLines={1}>
-            {track.artist}
-          </Text>
+      <GestureDetector gesture={stripGesture}>
+        <View>
+          <Pressable
+            onPress={toggleDockExpanded}
+            accessibilityRole="button"
+            accessibilityLabel={
+              dockExpanded ? 'Riduci il player' : 'Espandi il player'
+            }
+            style={styles.handleRow}
+          >
+            <View style={styles.handle} />
+          </Pressable>
+
+          <View style={styles.header}>
+            <Pressable
+              onPress={openFullPage}
+              hitSlop={layout.hitSlop}
+              accessibilityRole="button"
+              accessibilityLabel={`${track.title}. Apri la pagina dell’audio`}
+              style={styles.headerText}
+            >
+              <Text style={styles.title} numberOfLines={1}>
+                {track.title}
+              </Text>
+              <Text style={styles.artist} numberOfLines={1}>
+                {track.artist}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                if (!dockExpanded) {
+                  toggleDockExpanded();
+                  return;
+                }
+                if (!createdLabel) {
+                  return;
+                }
+                setMetaMode((mode) => (mode === 'duration' ? 'created' : 'duration'));
+              }}
+              hitSlop={layout.hitSlop}
+              accessibilityRole="button"
+              accessibilityLabel={
+                !dockExpanded
+                  ? isPlaying
+                    ? 'In ascolto. Tocca per espandere'
+                    : 'In pausa. Tocca per espandere'
+                  : showCreated
+                    ? `Creato il ${createdLabel}. Tocca per la durata`
+                    : createdLabel
+                      ? `Durata ${formatTimecode(track.durationMs)}. Tocca per la data del file`
+                      : `Durata ${formatTimecode(track.durationMs)}`
+              }
+              style={styles.timecodeHit}
+            >
+              {!dockExpanded ? (
+                <View style={styles.metaCol}>
+                  <Text style={styles.playing}>{isPlaying ? 'In ascolto' : 'In pausa'}</Text>
+                  <Text style={styles.timecode} numberOfLines={1}>
+                    {formatTimecode(positionMs)}
+                    <Text style={styles.timecodeSep}> / </Text>
+                    {formatTimecode(track.durationMs)}
+                  </Text>
+                </View>
+              ) : showCreated ? (
+                <Text style={styles.timecode} numberOfLines={1}>
+                  {createdLabel}
+                </Text>
+              ) : (
+                <Text style={styles.timecode} numberOfLines={1}>
+                  {formatTimecode(positionMs)}
+                  <Text style={styles.timecodeSep}> / </Text>
+                  {formatTimecode(track.durationMs)}
+                </Text>
+              )}
+            </Pressable>
+          </View>
         </View>
-        <View style={styles.metaCol}>
-          <Text style={styles.playing}>{isPlaying ? 'In ascolto' : 'In pausa'}</Text>
-          <Text style={styles.timecode} numberOfLines={1}>
-            {formatTimecode(positionMs)}
-            <Text style={styles.timecodeSep}> / </Text>
-            {formatTimecode(track.durationMs)}
-          </Text>
-        </View>
-      </Pressable>
+      </GestureDetector>
+
+      {dockExpanded ? (
+        <>
+          <PracticeBar />
+          <TrackScoreTabs trackId={track.id} />
+          <View style={styles.wave}>
+            <Waveform />
+          </View>
+          <PlaybackControls />
+          <AddNoteButton />
+          {focused ? <NoteBubble /> : null}
+        </>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -63,11 +177,12 @@ const styles = StyleSheet.create({
   dock: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
   },
   handleRow: {
     alignItems: 'center',
     paddingTop: 8,
+    paddingBottom: 4,
   },
   handle: {
     width: 36,
@@ -75,47 +190,47 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: colors.border,
   },
-  tab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+  header: {
     paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 10,
-    minHeight: 56,
+    paddingTop: 6,
+    paddingBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
   },
-  tabPressed: {
-    opacity: 0.75,
-  },
-  textCol: {
+  headerText: {
     flex: 1,
     minWidth: 0,
   },
   title: {
     color: colors.text,
-    fontSize: 16,
+    fontSize: 20,
     fontWeight: '700',
-    letterSpacing: -0.3,
+    letterSpacing: -0.4,
   },
   artist: {
-    marginTop: 2,
+    marginTop: 3,
     color: colors.textMuted,
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '500',
+  },
+  timecodeHit: {
+    marginTop: 4,
+    maxWidth: '46%',
   },
   metaCol: {
     alignItems: 'flex-end',
-    maxWidth: '42%',
   },
   playing: {
     color: colors.accent,
     fontSize: 11,
     fontWeight: '700',
     marginBottom: 2,
+    textAlign: 'right',
   },
   timecode: {
     color: colors.text,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     fontFamily: mono,
     fontVariant: ['tabular-nums'],
@@ -123,5 +238,9 @@ const styles = StyleSheet.create({
   },
   timecodeSep: {
     color: colors.textMuted,
+  },
+  wave: {
+    height: 220,
+    paddingHorizontal: 16,
   },
 });

@@ -22,7 +22,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Player a linguetta',
-        body: 'Scorri in basso sul titolo: resta una barra sottile e l’ascolto continua. Toccala per riaprire il player.',
+        body: 'In basso, la linguetta apre o chiude i tasti e l’onda sulla stessa pagina. Tocca il titolo del brano solo se vuoi la pagina audio intera.',
       },
       {
         title: 'Aggiorna l’album',
@@ -35,6 +35,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       {
         title: 'Scegli da Drive',
         body: 'Su un telefono nuovo o dopo una reinstallazione, i brani da Drive arrivano di nuovo sul telefono.',
+      },
+      {
+        title: 'Esci ed Elimina account',
+        body: 'In fondo alle Impostazioni trovi due pulsanti chiari: Esci, oppure Elimina account. Le altre voci sono in sezioni che apri e chiudi.',
       },
     ],
   },

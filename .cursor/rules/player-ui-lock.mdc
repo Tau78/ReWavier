@@ -24,7 +24,15 @@ Layout vincolato, dall’alto in basso:
 4. Controlli circolari **su una sola riga**: −10 · Stop · Play · +10 (56pt)
 5. FAB + centrale (72pt, non ridurre / non spostare)
 
-**Linguetta:** swipe in basso sul player (zona titolo/timecode) → `goBack` e resta la linguetta in libreria/home. Tap sulla linguetta → riapre `Player`. Controlli e + solo sul player grande, non sulla linguetta.
+## Linguetta in pagina (`CollectionPlayer`)
+
+Resta **sulla stessa schermata** (Home / Libreria / album). Non naviga a `Player`.
+
+- **Ridotto:** maniglia + titolo/artista + tempo — niente tasti
+- **Grande:** waveform + PracticeBar + controlli −10·Stop·Play·+10 + FAB +
+- **Ciclo:** tap/swipe sulla maniglia (o swipe su/giù) → `dockExpanded` on/off
+- **Pagina audio:** solo tap sul **titolo** → `navigate('Player')`
+- Controlli sempre su **una riga**; + 72pt al centro, non ridurre / non spostare
 
 Niente tab bar, drawer, gear, cartelle o settings **sopra** questa schermata.
 
@@ -34,18 +42,18 @@ Usa solo `src/theme/colors.ts`: background `#0D0D0F`, surface `#1A1A1E`, accent 
 
 ## Come aggiungere feature
 
-- **Libreria / cartelle / condizioni (smart playlist):** schermate **nuove**, stack o modal full-screen. Il player si apre da una traccia e resta identico.
+- **Libreria / cartelle / condizioni (smart playlist):** schermate **nuove**, stack o modal full-screen. Il player in pagina resta in `CollectionPlayer`.
 - **Impostazioni:** schermata propria, raggiungibile dalla libreria — non dal player.
-- Sul player, unico ingresso futuro ammesso: un back discreto "‹" in alto a sinistra (solo quando esiste lo stack). Non aggiungere gear, hamburger, tab, badge.
+- Sul player pagina, unico ingresso futuro ammesso: un back discreto "‹" in alto a sinistra (solo quando esiste lo stack). Non aggiungere gear, hamburger, tab, badge.
 - Bugfix sul player: cambiare solo logica, non stile, salvo richiesta esplicita dell’utente.
 
 ```tsx
-// ❌ BAD — rovina il player approvato
-<View style={styles.header}>
-  <Text>{track.title}</Text>
-  <Pressable><GearIcon /></Pressable>
-</View>
+// ❌ BAD — la linguetta non deve aprire la pagina audio
+<Pressable onPress={() => navigation.navigate('Player')}>
+  <Handle />
+</Pressable>
 
-// ✅ GOOD — feature fuori dal player
-// LibraryScreen → tap traccia → PlayerScreen (invariata)
+// ✅ GOOD — titolo → pagina; maniglia → espandi/riduci in pagina
+<Pressable onPress={openFullPage}><Text>{track.title}</Text></Pressable>
+<Pressable onPress={toggleDockExpanded}><Handle /></Pressable>
 ```

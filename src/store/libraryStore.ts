@@ -1241,10 +1241,13 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         }
         const next = get().getTrack(trackId);
         if (next && playableUri(next)) {
-          // Pre-warm peaks off the tap path (same idea as ReplaceFileScreen).
           InteractionManager.runAfterInteractions(() => {
             void import('../audio/extractPeaks')
               .then((mod) => mod.ensurePeaks(next))
+              .then(async () => {
+                const { refreshPlayingPeaks } = await import('./playerStore');
+                refreshPlayingPeaks(trackId);
+              })
               .catch(() => undefined);
           });
         }
@@ -1260,6 +1263,18 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
             ),
           };
         });
+        const next = get().getTrack(trackId);
+        if (next && playableUri(next)) {
+          InteractionManager.runAfterInteractions(() => {
+            void import('../audio/extractPeaks')
+              .then((mod) => mod.ensurePeaks(next))
+              .then(async () => {
+                const { refreshPlayingPeaks } = await import('./playerStore');
+                refreshPlayingPeaks(trackId);
+              })
+              .catch(() => undefined);
+          });
+        }
       }
       await flushLibraryPersist();
       progress.advance();

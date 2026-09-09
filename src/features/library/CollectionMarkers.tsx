@@ -1,7 +1,5 @@
 import { useMemo, useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import {
   isMarkerHidden,
@@ -11,11 +9,9 @@ import {
   markerPreviewText,
 } from '../../domain/markers';
 import { formatTimecode, type Marker, type Track } from '../../domain/models';
-import type { RootStackParamList } from '../../navigation/types';
+import { usePlayerStore } from '../../store/playerStore';
 import { colors } from '../../theme/colors';
 import { ensurePlayableAndOpen } from './openTrack';
-
-type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 type CueRow = {
   key: string;
@@ -30,7 +26,6 @@ export function CollectionMarkers({
   tracks: Track[];
   markersByTrackId: Record<string, Marker[]>;
 }) {
-  const navigation = useNavigation<Nav>();
   const [open, setOpen] = useState(false);
 
   const rows = useMemo<CueRow[]>(() => {
@@ -57,7 +52,7 @@ export function CollectionMarkers({
       startAtMs: row.marker.timestampMs,
     }).then((opened) => {
       if (opened) {
-        navigation.navigate('Player');
+        usePlayerStore.getState().setDockExpanded(true);
         return;
       }
       Alert.alert('Ascolto', 'Questo brano non è ancora arrivato. Riprova tra un attimo.');
