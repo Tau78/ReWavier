@@ -20,7 +20,7 @@
     ],
     "ios": {
       "bundleIdentifier": "app.rewavier",
-      "buildNumber": "77",
+      "buildNumber": "78",
       "usesIcloudStorage": true,
       "entitlements": {
         "com.apple.developer.icloud-container-identifiers": [
@@ -91,7 +91,7 @@
     },
     "android": {
       "package": "app.rewavier",
-      "versionCode": 5,
+      "versionCode": 7,
       "adaptiveIcon": {
         "backgroundColor": "#0D0D0F",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -152,6 +152,15 @@
         "projectId": "ac1cc991-f41d-4b45-adcb-bc574afbce3c"
       }
     },
-    "owner": "musicproeventi"
+    "owner": "musicproeventi",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/ac1cc991-f41d-4b45-adcb-bc574afbce3c",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      }
+    }
   }
 }

@@ -5,10 +5,12 @@
   },
   "build": {
     "preview": {
-      "distribution": "store"
+      "distribution": "store",
+      "channel": "preview"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "channel": "production"
     }
   },
   "submit": {
@@ -19,6 +21,13 @@
       "android": {
         "serviceAccountKeyPath": "./google-play-service-account.json",
         "track": "internal",
+        "releaseStatus": "completed"
+      }
+    },
+    "store": {
+      "android": {
+        "serviceAccountKeyPath": "./google-play-service-account.json",
+        "track": "production",
         "releaseStatus": "completed"
       }
     }
