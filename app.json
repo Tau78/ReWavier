@@ -3,7 +3,7 @@
     "name": "ReWavier",
     "slug": "rewavier",
     "scheme": "rewavier",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "backgroundColor": "#0D0D0F",
@@ -20,7 +20,7 @@
     ],
     "ios": {
       "bundleIdentifier": "app.rewavier",
-      "buildNumber": "79",
+      "buildNumber": "80",
       "usesIcloudStorage": true,
       "entitlements": {
         "com.apple.developer.icloud-container-identifiers": [
@@ -91,7 +91,7 @@
     },
     "android": {
       "package": "app.rewavier",
-      "versionCode": 7,
+      "versionCode": 8,
       "adaptiveIcon": {
         "backgroundColor": "#0D0D0F",
         "foregroundImage": "./assets/android-icon-foreground.png",
