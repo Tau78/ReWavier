@@ -43,9 +43,26 @@ Eventi è live su Play. Il service account è sul progetto **`rewavier-app`** e 
 ```
 
 Email SA: `musicpro-play-submit@rewavier-app.iam.gserviceaccount.com`  
-Fonte: `APP Eventi da GAS/musicpro-eventi-app/apps/mobile/google-play-service-account.json`
+Fonte: `APP Eventi/musicpro-eventi-app/apps/mobile/google-play-service-account.json`
 
 Play Console ReWavier: invita quel SA con permesso **Release**. Script: `bash scripts/play-submit.sh`.
+
+### IARC (rating età Play — live 2026-09-08)
+
+| Campo | Valore |
+| --- | --- |
+| Global Rating ID | `227739ee-487e-83d3-8350-3f8df98d8723` |
+| Product | ReWavier · MusicProEventi |
+| Package | `app.rewavier` |
+| File repo | `store/android/iarc.txt` · `store/ids.txt` (entrambi gitignored — solo sul Mac) |
+
+Usare l’ID solo su storefront che hanno licenziato IARC. Apple ASC = questionario proprio.
+
+## Account demo App Review
+
+Email: `review@rewavier.app`.  
+Password: **solo** in `.env.local` (`EXPO_PUBLIC_REVIEW_DEMO_PASSWORD` + `REVIEW_DEMO_PASSWORD`) e nei campi Sign-In Required su App Store Connect.  
+Mai in README, `docs/`, git, sito FTP, o chat. Lo script `scripts/asc-sync-metadata.sh` la legge dall’env.
 
 ## Google OAuth — disclaimer “app non verificata”
 
@@ -74,6 +91,6 @@ Banner blu «Verifica degli sviluppatori Android» in Play Console = altro (acco
 
 | App | Bundle / note |
 | --- | --- |
-| ReWavier | `app.rewavier` · ASC `6803983715` |
+| ReWavier | `app.rewavier` · ASC `6803983715` · Play live · IARC `227739ee-487e-83d3-8350-3f8df98d8723` |
 | MusicPro Eventi | ASC `6794623686` · Play SA `rewavier-app` |
 | MusicPro School | ASC `6806407450` |

@@ -2,7 +2,7 @@
 
 App iOS per annotare un brano sul timestamp esatto. Waveform, play/stop/±10s e pulsante **+**: la traccia va in pausa e si apre un fumetto con il timecode.
 
-La v1 è locale: audio e marker restano sul dispositivo. Serve un account (Apple, Google o email). Per la recensione App Store: `review@rewavier.app` / `Review2026!`.
+La v1 è locale: audio e marker restano sul dispositivo. Serve un account (Apple, Google o email). Le credenziali di recensione App Store non sono in questo repo (solo su App Store Connect e in `.env.local`).
 
 **Prerequisiti:** Node.js 20+ · account [Apple Developer](https://developer.apple.com/account/) · account [Expo](https://expo.dev)
 

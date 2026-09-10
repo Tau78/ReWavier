@@ -1,11 +1,14 @@
-/** Hardcoded App Store review login. Always accepted, no local registration. */
+/** App Store review login. Password from env — never commit the real value. */
 export const DEMO_ACCOUNT = {
   email: 'review@rewavier.app',
-  password: 'Review2026!',
+  password: (process.env.EXPO_PUBLIC_REVIEW_DEMO_PASSWORD ?? '').trim(),
   displayName: 'App Review',
 } as const;
 
 export function isDemoAccount(email: string, password: string): boolean {
+  if (!DEMO_ACCOUNT.password) {
+    return false;
+  }
   return (
     email.trim().toLowerCase() === DEMO_ACCOUNT.email &&
     password === DEMO_ACCOUNT.password

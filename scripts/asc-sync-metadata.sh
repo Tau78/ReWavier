@@ -68,8 +68,31 @@ printf '%s\n' "https://eventi.musicproeventi.it/ReWavier/Supporto.html" > "$META
 if [[ -f "$SRC/review-notes.en.txt" ]]; then
   cp "$SRC/review-notes.en.txt" "$REVIEW/notes.txt"
 fi
-printf '%s\n' "review@rewavier.app" > "$REVIEW/demo_user.txt"
-printf '%s\n' "Review2026!" > "$REVIEW/demo_password.txt"
+
+# Demo password: only from env / .env.asc / .env.local — never hardcode in git.
+REVIEW_USER="${REVIEW_DEMO_USER:-review@rewavier.app}"
+REVIEW_PASS="${REVIEW_DEMO_PASSWORD:-}"
+if [[ -z "$REVIEW_PASS" && -f "$ROOT/.env.local" ]]; then
+  # shellcheck disable=SC1091
+  set -a
+  # shellcheck disable=SC1090
+  source "$ROOT/.env.local"
+  set +a
+  REVIEW_PASS="${REVIEW_DEMO_PASSWORD:-${EXPO_PUBLIC_REVIEW_DEMO_PASSWORD:-}}"
+fi
+if [[ -z "$REVIEW_PASS" && -f "$ROOT/.env.asc" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT/.env.asc"
+  set +a
+  REVIEW_PASS="${REVIEW_DEMO_PASSWORD:-${EXPO_PUBLIC_REVIEW_DEMO_PASSWORD:-}}"
+fi
+if [[ -z "$REVIEW_PASS" ]]; then
+  echo "manca REVIEW_DEMO_PASSWORD (o EXPO_PUBLIC_REVIEW_DEMO_PASSWORD) in .env.local / .env.asc" >&2
+  exit 1
+fi
+printf '%s\n' "$REVIEW_USER" > "$REVIEW/demo_user.txt"
+printf '%s\n' "$REVIEW_PASS" > "$REVIEW/demo_password.txt"
 printf '%s\n' "Mauro" > "$REVIEW/first_name.txt"
 printf '%s\n' "Andreoni" > "$REVIEW/last_name.txt"
 printf '%s\n' "andreoni.mauro@gmail.com" > "$REVIEW/email_address.txt"
