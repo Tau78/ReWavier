@@ -2,6 +2,7 @@ import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
 import { DownloadPausedError, isDownloadPausedError } from '../domain/collectionDownloadVisual';
+import { softDownloadFraction } from '../domain/downloadProgress';
 import { ensureParentDirAsync } from '../files/fsSafe';
 import { throwIfDownloadPaused, useDownloadProgressStore } from '../store/downloadProgressStore';
 
@@ -12,6 +13,11 @@ import { roleFromDriveCapabilities, type FolderRole } from '../domain/folderRole
 const DRIVE = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
 const DRIVE_FIELDS = 'id,name,mimeType,modifiedTime,md5Checksum,size';
+/** No byte progress for this long → abort (VPN / hung native download). */
+const DOWNLOAD_STALL_MS = 90_000;
+/** Absolute ceiling for one file download. */
+const DOWNLOAD_HARD_MS = 12 * 60_000;
+const DOWNLOAD_TOO_SLOW = 'Drive ci ha messo troppo. Riprova.';
 
 export const DRIVE_FOLDER_MIME = 'application/vnd.google-apps.folder';
 
@@ -314,6 +320,9 @@ function friendlyDownloadError(error: unknown): Error {
     return error instanceof DownloadPausedError ? error : new DownloadPausedError();
   }
   const raw = error instanceof Error ? error.message : String(error ?? '');
+  if (raw === DOWNLOAD_TOO_SLOW || /ci ha messo troppo/i.test(raw)) {
+    return new Error(DOWNLOAD_TOO_SLOW);
+  }
   if (
     /downloadAsync|does not exist|makeDirectory|ENOENT|Directory '/i.test(raw) ||
     raw.includes('file://') ||
@@ -342,12 +351,12 @@ function parseDriveUploadBody(body: string, context: 'upload' | 'update'): Drive
   throw new Error(`Drive ${context}: risposta non JSON dopo HTTP ok.`);
 }
 
-export async function downloadDriveFile(
+async function downloadDriveFileOnce(
   fileId: string,
   destUri: string,
+  access: string,
   onProgress?: (fraction: number) => void,
 ): Promise<string> {
-  const access = await token();
   const url = `${DRIVE}/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`;
   // downloadAsync (legacy) does not create parents — inbox is often missing on first import.
   await ensureParentDirAsync(destUri);
@@ -357,20 +366,49 @@ export async function downloadDriveFile(
   }
   const headers = { Authorization: `Bearer ${access}` };
   throwIfDownloadPaused();
+
+  let lastBytes = 0;
+  let lastProgressAt = Date.now();
+  const startedAt = Date.now();
+  let abortedForStall = false;
+
   const resumable = LegacyFS.createDownloadResumable(url, destUri, { headers }, ({
     totalBytesWritten,
     totalBytesExpectedToWrite,
   }) => {
+    if (totalBytesWritten > lastBytes) {
+      lastBytes = totalBytesWritten;
+      lastProgressAt = Date.now();
+    }
     if (totalBytesExpectedToWrite > 0) {
       onProgress?.(totalBytesWritten / totalBytesExpectedToWrite);
+      return;
+    }
+    if (totalBytesWritten > 0) {
+      onProgress?.(softDownloadFraction(totalBytesWritten));
     }
   });
   useDownloadProgressStore.getState().setCurrentCancel(() => {
     void resumable.pauseAsync();
   });
+
+  const watch = setInterval(() => {
+    const now = Date.now();
+    if (now - lastProgressAt > DOWNLOAD_STALL_MS || now - startedAt > DOWNLOAD_HARD_MS) {
+      abortedForStall = true;
+      void resumable.pauseAsync();
+    }
+  }, 4_000);
+
   try {
     const result = await resumable.downloadAsync();
     throwIfDownloadPaused();
+    if (abortedForStall) {
+      throw new Error(DOWNLOAD_TOO_SLOW);
+    }
+    if (result?.status === 401) {
+      throw new Error('Sessione Google scaduta. Accedi di nuovo con Google.');
+    }
     if (!result || result.status !== 200) {
       throw new Error('Drive non ha scaricato il brano. Riprova.');
     }
@@ -379,12 +417,46 @@ export async function downloadDriveFile(
     }
     return result.uri;
   } catch (error) {
+    if (abortedForStall) {
+      throw new Error(DOWNLOAD_TOO_SLOW);
+    }
     if (isDownloadPausedError(error) || useDownloadProgressStore.getState().pauseRequested) {
       throw new DownloadPausedError();
     }
     throw friendlyDownloadError(error);
   } finally {
+    clearInterval(watch);
     useDownloadProgressStore.getState().setCurrentCancel(null);
+  }
+}
+
+export async function downloadDriveFile(
+  fileId: string,
+  destUri: string,
+  onProgress?: (fraction: number) => void,
+): Promise<string> {
+  try {
+    return await downloadDriveFileOnce(fileId, destUri, await token(), onProgress);
+  } catch (error) {
+    if (isDownloadPausedError(error) || useDownloadProgressStore.getState().pauseRequested) {
+      throw new DownloadPausedError();
+    }
+    const raw = error instanceof Error ? error.message : String(error ?? '');
+    const authFail =
+      /Sessione Google scaduta|401|unauthorized/i.test(raw) ||
+      raw.includes('Google Drive non collegato');
+    if (!authFail) {
+      throw friendlyDownloadError(error);
+    }
+    try {
+      const access = await getValidGoogleAccessToken(true);
+      return await downloadDriveFileOnce(fileId, destUri, access, onProgress);
+    } catch (retryError) {
+      if (isDownloadPausedError(retryError) || useDownloadProgressStore.getState().pauseRequested) {
+        throw new DownloadPausedError();
+      }
+      throw friendlyDownloadError(retryError);
+    }
   }
 }
 

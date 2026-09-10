@@ -13,6 +13,7 @@ import {
   googleAuthNeedsCodeExchange,
   googleExchangeIsReady,
   googleTokenHasDriveScope,
+  resolveGoogleOAuthRedirectUri,
   snapshotGoogleExchange,
   type GoogleExchangeExtras,
 } from './googleAuthResult';
@@ -43,10 +44,6 @@ const DRIVE_CONNECT_ERROR =
 function validClientId(value?: string): string | undefined {
   const trimmed = value?.trim() ?? '';
   return CLIENT_ID_RE.test(trimmed) ? trimmed : undefined;
-}
-
-function reversedGoogleScheme(clientId: string): string {
-  return `com.googleusercontent.apps.${clientId.replace(/\.apps\.googleusercontent\.com$/i, '')}`;
 }
 
 function readClientIds() {
@@ -284,12 +281,14 @@ export function isGoogleConfigured(): boolean {
 function useGoogleAuthRequest(kind: GoogleAuthKind) {
   const ids = readClientIds();
   const clientId = ids.clientId;
-  const redirectUri = ids.iosClientId
-    ? `${reversedGoogleScheme(ids.iosClientId)}:/oauthredirect`
-    : AuthSession.makeRedirectUri({
-        scheme: 'rewavier',
-        path: 'oauth',
-      });
+  const redirectUri = resolveGoogleOAuthRedirectUri({
+    platform: Platform.OS,
+    iosClientId: ids.iosClientId,
+    customSchemeUri: AuthSession.makeRedirectUri({
+      scheme: 'rewavier',
+      path: 'oauth',
+    }),
+  });
 
   // Stable config so a loading-state re-render does not mint a new PKCE verifier mid-login.
   const authRequestConfig = useMemo(

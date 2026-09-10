@@ -14,6 +14,7 @@ import {
 } from '../../cloud/driveApi';
 import { importDriveFolder } from '../../cloud/syncEngine';
 import { isAudioName } from '../../domain/audioFormats';
+import { isDownloadPausedError } from '../../domain/collectionDownloadVisual';
 import { formatDownloadPercent } from '../../domain/downloadProgress';
 import { findTrackCoverFile, isAlbumCoverName, isImageName, isPdfName } from '../../domain/driveMedia';
 import type { RootStackParamList } from '../../navigation/types';
@@ -234,6 +235,9 @@ export function DriveFolderScreen() {
         if (!mountedRef.current) {
           return;
         }
+        if (isDownloadPausedError(error)) {
+          return;
+        }
         const raw = error instanceof Error ? error.message : '';
         const technical =
           /file:\/\/|%25|downloadAsync|does not exist|\/Users\/|Containers\//i.test(raw);
@@ -267,6 +271,10 @@ export function DriveFolderScreen() {
       return;
     }
     choose(false);
+  };
+
+  const onCancelDownload = () => {
+    useDownloadProgressStore.getState().requestPause();
   };
 
   const onBack = () => {
@@ -362,6 +370,17 @@ export function DriveFolderScreen() {
               ]}
             />
           </View>
+          {downloadActive ? (
+            <Pressable
+              onPress={onCancelDownload}
+              hitSlop={layout.hitSlop}
+              accessibilityRole="button"
+              accessibilityLabel="Annulla download"
+              style={({ pressed }) => [styles.cancelBtn, pressed && styles.pressed]}
+            >
+              <Text style={styles.cancelLabel}>Annulla</Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
       {busy ? null : (
@@ -524,6 +543,17 @@ const styles = StyleSheet.create({
     height: '100%',
     backgroundColor: colors.accent,
     borderRadius: 3,
+  },
+  cancelBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  cancelLabel: {
+    color: colors.textMuted,
+    fontSize: 14,
+    fontWeight: '600',
   },
   scroll: { paddingHorizontal: 16, paddingBottom: 32 },
   emptyBox: { alignItems: 'center', paddingVertical: 20 },
