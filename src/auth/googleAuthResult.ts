@@ -66,3 +66,23 @@ export function googleTokenHasDriveScope(scope?: string | null): boolean {
     normalized,
   );
 }
+
+/** iOS uses the reversed client scheme; Android/web use the app custom scheme. */
+export function reversedGoogleClientScheme(clientId: string): string {
+  return `com.googleusercontent.apps.${clientId.replace(/\.apps\.googleusercontent\.com$/i, '')}`;
+}
+
+/**
+ * Redirect URI for Google AuthSession.
+ * Standalone Android must NOT reuse the iOS reverse URI (redirect_uri_mismatch).
+ */
+export function resolveGoogleOAuthRedirectUri(opts: {
+  platform: string;
+  iosClientId?: string;
+  customSchemeUri: string;
+}): string {
+  if (opts.platform === 'ios' && opts.iosClientId) {
+    return `${reversedGoogleClientScheme(opts.iosClientId)}:/oauthredirect`;
+  }
+  return opts.customSchemeUri;
+}

@@ -49,6 +49,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Esci ed Elimina account',
         body: 'In fondo alle Impostazioni trovi due pulsanti chiari: Esci, oppure Elimina account. Le altre voci sono in sezioni che apri e chiudi.',
       },
+      {
+        title: 'Google e Drive su Android',
+        body: 'Su Android l’accesso con Google funziona di nuovo. Se il download da Drive resta fermo, puoi annullarlo e riprovare.',
+      },
     ],
   },
 ];

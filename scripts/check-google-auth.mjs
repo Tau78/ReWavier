@@ -41,6 +41,17 @@ function googleTokenHasDriveScope(scope) {
   );
 }
 
+function reversedGoogleClientScheme(clientId) {
+  return `com.googleusercontent.apps.${clientId.replace(/\.apps\.googleusercontent\.com$/i, '')}`;
+}
+
+function resolveGoogleOAuthRedirectUri(opts) {
+  if (opts.platform === 'ios' && opts.iosClientId) {
+    return `${reversedGoogleClientScheme(opts.iosClientId)}:/oauthredirect`;
+  }
+  return opts.customSchemeUri;
+}
+
 assert.equal(
   googleAuthNeedsCodeExchange({
     type: 'success',
@@ -109,5 +120,20 @@ assert.equal(
 );
 assert.equal(googleTokenHasDriveScope('openid email profile'), false);
 assert.equal(googleTokenHasDriveScope(undefined), false);
+
+const iosId = '1049963169218-o6tcahpfsdijj2lm811bmjs4vjaglb7v.apps.googleusercontent.com';
+const custom = 'rewavier://oauth';
+assert.equal(
+  resolveGoogleOAuthRedirectUri({ platform: 'ios', iosClientId: iosId, customSchemeUri: custom }),
+  'com.googleusercontent.apps.1049963169218-o6tcahpfsdijj2lm811bmjs4vjaglb7v:/oauthredirect',
+);
+assert.equal(
+  resolveGoogleOAuthRedirectUri({ platform: 'android', iosClientId: iosId, customSchemeUri: custom }),
+  custom,
+);
+assert.equal(
+  resolveGoogleOAuthRedirectUri({ platform: 'android', iosClientId: undefined, customSchemeUri: custom }),
+  custom,
+);
 
 console.log('ok google auth snapshots the code; identity login skips Drive consent');
