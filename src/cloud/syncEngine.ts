@@ -71,6 +71,7 @@ import {
   remoteIsClaimed,
   remoteReplacesLocalTrack,
   surplusLocalTracks,
+  trackNameMatchesRemote,
   uniqueRemotes,
 } from './remoteAudioChange';
 
@@ -166,19 +167,6 @@ function albumLocalTracks(albumId: string, treeFolderIds?: ReadonlySet<string>):
 
 function albumTrackIdSet(albumId: string): Set<string> {
   return new Set(useLibraryStore.getState().tracksIn('album', albumId).map((track) => track.id));
-}
-
-/** Prefer a row already on this album; otherwise the same file elsewhere in the library. */
-function findLocalForDriveRemote(
-  albumId: string,
-  treeFolderIds: ReadonlySet<string> | undefined,
-  remote: { id: string; name: string },
-): Track | undefined {
-  const onAlbum = findBestLocalForRemote(albumLocalTracks(albumId, treeFolderIds), remote);
-  if (onAlbum) {
-    return onAlbum;
-  }
-  return findBestLocalForRemote(useLibraryStore.getState().tracks, remote);
 }
 
 export type DriveAlbumPeek = {
@@ -444,12 +432,23 @@ async function syncOneDriveAlbum(
     if (remoteIsClaimed(importedRemotes, remote)) {
       continue;
     }
-    const existing = findLocalForDriveRemote(album.id, treeFolderIds, remote);
+    const existing = findBestLocalForRemote(locals, remote);
     const onAlbum = albumTrackIdSet(album.id);
 
     if (!existing) {
-      // Listing only — audio arrives later via Aggiorna / downloadCollection
-      // so the header spinner is not stuck on a long Drive download.
+      const namedTwin = locals.find(
+        (track) =>
+          Boolean(track.driveFileId) &&
+          track.driveFileId !== remote.id &&
+          trackNameMatchesRemote(track, remote),
+      );
+      if (namedTwin && remoteReplacesLocalTrack(namedTwin, remote, audios)) {
+        store.markTrackNeedsUpdate(namedTwin.id, metaFrom(remote));
+        versioned += 1;
+        claimRemote(importedRemotes, remote);
+        continue;
+      }
+      // New song or another version (01 / 02 / 03): own row, download after listing.
       const idsBefore = albumTrackIdSet(album.id);
       const id = createId('track');
       store.importBundles(
@@ -483,16 +482,6 @@ async function syncOneDriveAlbum(
       added += 1;
     }
     claimRemote(importedRemotes, remote);
-
-    // Same name in a version folder: keep the local row, do not import another.
-    // Delete+reupload (old Drive id gone) adopts the new file id instead.
-    if (existing.driveFileId && existing.driveFileId !== remote.id) {
-      if (remoteReplacesLocalTrack(existing, remote, audios)) {
-        store.markTrackNeedsUpdate(existing.id, metaFrom(remote));
-        versioned += 1;
-      }
-      continue;
-    }
 
     if (!remoteAudioChanged(existing, remote)) {
       store.updateTrackRemote(existing.id, metaFrom(remote));

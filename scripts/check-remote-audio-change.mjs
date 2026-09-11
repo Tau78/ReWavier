@@ -42,13 +42,6 @@ function audioMatchKey(fileName) {
   return (hasAudioExt ? audioBasename(decoded) : decoded).toLowerCase();
 }
 
-function audioMatchKeyLoose(fileName) {
-  return audioMatchKey(fileName)
-    .replace(/[_.-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 function uniqueRemotes(remotes) {
   const seen = new Set();
   const out = [];
@@ -62,33 +55,37 @@ function uniqueRemotes(remotes) {
   return out;
 }
 
-function nameMatchesRemote(localName, remoteName) {
-  if (!localName) {
+function trackNameMatchesRemote(track, remote) {
+  const remoteKey = audioMatchKey(remote.name);
+  if (!remoteKey) {
     return false;
   }
-  const remoteKey = audioMatchKey(remoteName);
-  if (remoteKey && audioMatchKey(localName) === remoteKey) {
+  if (track.sourceFileName && audioMatchKey(track.sourceFileName) === remoteKey) {
     return true;
   }
-  const remoteLoose = audioMatchKeyLoose(remoteName);
-  const localLoose = audioMatchKeyLoose(localName);
-  return Boolean(remoteLoose && localLoose && localLoose === remoteLoose);
+  if (track.title && audioMatchKey(track.title) === remoteKey) {
+    return true;
+  }
+  return false;
 }
 
 function trackMatchesRemote(track, remote) {
   if (track.driveFileId && track.driveFileId === remote.id) {
     return true;
   }
-  if (!audioMatchKey(remote.name) && !audioMatchKeyLoose(remote.name)) {
-    return false;
+  return trackNameMatchesRemote(track, remote);
+}
+
+function findLocalsMatchingRemote(tracks, remote) {
+  const byId = tracks.filter((track) => track.driveFileId === remote.id);
+  if (byId.length > 0) {
+    return byId;
   }
-  if (nameMatchesRemote(track.sourceFileName, remote.name)) {
-    return true;
-  }
-  if (nameMatchesRemote(track.title, remote.name)) {
-    return true;
-  }
-  return false;
+  return tracks.filter((track) => !track.driveFileId && trackNameMatchesRemote(track, remote));
+}
+
+function findBestLocalForRemote(tracks, remote) {
+  return preferDownloadedTrack(findLocalsMatchingRemote(tracks, remote));
 }
 
 function trackPresentRemotely(track, remotes) {
@@ -113,38 +110,23 @@ function createRemoteClaimSet() {
 }
 
 function remoteIsClaimed(claimed, remote) {
-  if (claimed.ids.has(remote.id)) {
-    return true;
-  }
-  const name = audioMatchKey(remote.name);
-  if (name && claimed.names.has(name)) {
-    return true;
-  }
-  const loose = audioMatchKeyLoose(remote.name);
-  return Boolean(loose) && claimed.names.has(loose);
+  return claimed.ids.has(remote.id);
 }
 
 function claimRemote(claimed, remote) {
   claimed.ids.add(remote.id);
-  const name = audioMatchKey(remote.name);
-  if (name) {
-    claimed.names.add(name);
-  }
-  const loose = audioMatchKeyLoose(remote.name);
-  if (loose) {
-    claimed.names.add(loose);
-  }
 }
 
 function surplusLocalTracks(tracks, remotes) {
   const claimedTrackIds = new Set();
   const claimed = createRemoteClaimSet();
+  const remoteIds = new Set(uniqueRemotes(remotes).map((remote) => remote.id));
   for (const remote of uniqueRemotes(remotes)) {
     if (remoteIsClaimed(claimed, remote)) {
       continue;
     }
     const candidates = tracks.filter(
-      (track) => !claimedTrackIds.has(track.id) && trackMatchesRemote(track, remote),
+      (track) => !claimedTrackIds.has(track.id) && findLocalsMatchingRemote([track], remote).length > 0,
     );
     const best = preferDownloadedTrack(candidates);
     if (!best) {
@@ -152,19 +134,16 @@ function surplusLocalTracks(tracks, remotes) {
     }
     claimedTrackIds.add(best.id);
     claimRemote(claimed, remote);
-    if (best.driveFileId) {
-      claimed.ids.add(best.driveFileId);
-    }
-    const name = audioMatchKey(best.sourceFileName || best.title || '');
-    if (name) {
-      claimed.names.add(name);
-    }
-    const loose = audioMatchKeyLoose(best.sourceFileName || best.title || '');
-    if (loose) {
-      claimed.names.add(loose);
-    }
   }
-  return tracks.filter((track) => !claimedTrackIds.has(track.id));
+  return tracks.filter((track) => {
+    if (claimedTrackIds.has(track.id)) {
+      return false;
+    }
+    if (track.driveFileId && remoteIds.has(track.driveFileId)) {
+      return false;
+    }
+    return true;
+  });
 }
 
 function remoteAudioChanged(track, remote) {
@@ -185,7 +164,7 @@ function remoteReplacesLocalTrack(track, remote, remotes) {
   if (!track.driveFileId || track.driveFileId === remote.id) {
     return false;
   }
-  if (!trackMatchesRemote(track, remote)) {
+  if (!trackNameMatchesRemote(track, remote)) {
     return false;
   }
   return !remotes.some((item) => item.id === track.driveFileId);
@@ -312,7 +291,7 @@ assert.deepEqual(
   ['ghost', 'ghost2'],
 );
 
-// Same basename in a version folder must not keep a second local
+// Same name, two Drive ids (01 / 02): both stay
 assert.deepEqual(
   surplusLocalTracks(
     [
@@ -324,14 +303,14 @@ assert.deepEqual(
       { id: 'b', name: original },
     ],
   ).map((track) => track.id),
-  ['copy'],
+  [],
 );
 
-// Same remote listed twice is one claim
+// Same remote listed twice is one claim; another Drive id is a second file
 const claimed = createRemoteClaimSet();
 claimRemote(claimed, { id: 'drv', name: original });
 assert.equal(remoteIsClaimed(claimed, { id: 'drv', name: original }), true);
-assert.equal(remoteIsClaimed(claimed, { id: 'other', name: once }), true);
+assert.equal(remoteIsClaimed(claimed, { id: 'other', name: once }), false);
 assert.deepEqual(
   uniqueRemotes([
     { id: 'drv', name: original },
@@ -363,20 +342,17 @@ assert.equal(
   false,
 );
 
-// Drive underscores / hyphens vs title spaces are the same file
-assert.equal(
-  trackMatchesRemote({ title: '03. Room Pt.1' }, { id: 'x', name: '03._Room_Pt.1.mp3' }),
-  true,
-);
-assert.equal(
-  trackMatchesRemote(
-    { sourceFileName: '10. [1984] The Distance.m4a' },
-    { id: 'x', name: '10_[1984]_The_Distance.m4a' },
-  ),
-  true,
-);
-const claimedLoose = createRemoteClaimSet();
-claimRemote(claimedLoose, { id: 'a', name: '03._Room_Pt.1.mp3' });
-assert.equal(remoteIsClaimed(claimedLoose, { id: 'b', name: '03. Room Pt.1.mp3' }), true);
+// Versions 01 / 02 / 03 are three files, even if the rest of the name matches
+const take1 = { id: 'v1', driveFileId: 'd1', sourceFileName: 'Room Pt.1 01.mp3', title: 'Room Pt.1 01' };
+const take2 = { id: 'v2', driveFileId: 'd2', sourceFileName: 'Room Pt.1 02.mp3', title: 'Room Pt.1 02' };
+const take3 = { id: 'v3', driveFileId: 'd3', sourceFileName: 'Room Pt.1 03.mp3', title: 'Room Pt.1 03' };
+assert.equal(findBestLocalForRemote([take1, take2, take3], { id: 'd2', name: 'Room Pt.1 02.mp3' })?.id, 'v2');
+assert.equal(findBestLocalForRemote([take1, take2, take3], { id: 'd3', name: 'Room Pt.1 03.mp3' })?.id, 'v3');
+assert.equal(findBestLocalForRemote([take1], { id: 'd2', name: 'Room Pt.1 02.mp3' }), undefined);
+assert.equal(remoteIsClaimed((() => {
+  const set = createRemoteClaimSet();
+  claimRemote(set, { id: 'd1', name: 'Room Pt.1 01.mp3' });
+  return set;
+})(), { id: 'd2', name: 'Room Pt.1 02.mp3' }), false);
 
 console.log('ok remote audio change prefers hash/size; missing remotes are pruned; names match across encoding');

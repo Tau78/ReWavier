@@ -75,7 +75,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Aggiorna da Drive',
-        body: 'Tocchi Aggiorna e l’album si allinea. Se i brani sono già sul telefono, te lo dice una volta e non ripete che ne ha aggiunti. Puoi toccare di nuovo per annullare.',
+        body: 'Tocchi Aggiorna e arrivano anche le versioni (01, 02, 03): restano brani distinti da confrontare. Se non c’è niente di nuovo, te lo dice una volta.',
       },
       {
         title: 'Appunto per intero',

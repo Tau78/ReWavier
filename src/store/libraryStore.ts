@@ -68,7 +68,7 @@ import {
   reconcileTrack,
   removeUri,
 } from '../files/downloads';
-import { audioMatchKeyLoose, sourceFileNameFromTitle } from '../domain/sidecar';
+import { audioMatchKey, sourceFileNameFromTitle } from '../domain/sidecar';
 import { writeSidecarToLibrary, removeSidecarFromLibrary, type ImportedBundle } from '../files/libraryFiles';
 import { userHasUsage } from '../domain/session';
 import { throwIfDownloadPaused, useDownloadProgressStore } from './downloadProgressStore';
@@ -296,7 +296,7 @@ export async function flushLibraryPersist(): Promise<void> {
 
 function importNameKey(track: { sourceFileName?: string; title: string }): string {
   const raw = track.sourceFileName || track.title || '';
-  return raw ? audioMatchKeyLoose(raw) : '';
+  return raw ? audioMatchKey(raw) : '';
 }
 
 function tracksAreSameImport(
@@ -306,8 +306,8 @@ function tracksAreSameImport(
   if (left.id === right.id) {
     return true;
   }
-  if (left.driveFileId && left.driveFileId === right.driveFileId) {
-    return true;
+  if (left.driveFileId || right.driveFileId) {
+    return Boolean(left.driveFileId && left.driveFileId === right.driveFileId);
   }
   const leftName = importNameKey(left);
   const rightName = importNameKey(right);
@@ -362,9 +362,13 @@ function collapseDuplicateTracks(tracks: Track[], albums: Album[]): { tracks: Tr
     if (name) {
       const nameHit = byName.get(name);
       if (nameHit != null) {
-        union(i, nameHit);
+        const other = tracks[nameHit]!;
+        if (!track.driveFileId && !other.driveFileId) {
+          union(i, nameHit);
+        }
+      } else {
+        byName.set(name, i);
       }
-      byName.set(name, i);
     }
   }
 

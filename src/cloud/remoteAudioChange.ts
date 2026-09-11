@@ -1,6 +1,6 @@
 /** Pure helpers: detect Drive audio version changes and match local ↔ remote. */
 
-import { audioMatchKey, audioMatchKeyLoose } from '../domain/sidecar';
+import { audioMatchKey } from '../domain/sidecar';
 
 export type RemoteAudioMeta = {
   id: string;
@@ -36,43 +36,25 @@ export function uniqueRemotes<T extends { id: string }>(remotes: T[]): T[] {
   return out;
 }
 
-function localNameKey(track: LocalRemoteTrack): string {
-  const raw = track.sourceFileName || track.title || '';
-  return raw ? audioMatchKey(raw) : '';
-}
-
-function localLooseKey(track: LocalRemoteTrack): string {
-  const raw = track.sourceFileName || track.title || '';
-  return raw ? audioMatchKeyLoose(raw) : '';
-}
-
-function nameMatchesRemote(localName: string | undefined, remoteName: string): boolean {
-  if (!localName) {
+export function trackNameMatchesRemote(track: LocalRemoteTrack, remote: RemoteAudioMeta): boolean {
+  const remoteKey = audioMatchKey(remote.name);
+  if (!remoteKey) {
     return false;
   }
-  const remoteKey = audioMatchKey(remoteName);
-  if (remoteKey && audioMatchKey(localName) === remoteKey) {
+  if (track.sourceFileName && audioMatchKey(track.sourceFileName) === remoteKey) {
     return true;
   }
-  const remoteLoose = audioMatchKeyLoose(remoteName);
-  const localLoose = audioMatchKeyLoose(localName);
-  return Boolean(remoteLoose && localLoose && localLoose === remoteLoose);
+  if (track.title && audioMatchKey(track.title) === remoteKey) {
+    return true;
+  }
+  return false;
 }
 
 export function trackMatchesRemote(track: LocalRemoteTrack, remote: RemoteAudioMeta): boolean {
   if (track.driveFileId && track.driveFileId === remote.id) {
     return true;
   }
-  if (!audioMatchKey(remote.name) && !audioMatchKeyLoose(remote.name)) {
-    return false;
-  }
-  if (nameMatchesRemote(track.sourceFileName, remote.name)) {
-    return true;
-  }
-  if (nameMatchesRemote(track.title, remote.name)) {
-    return true;
-  }
-  return false;
+  return trackNameMatchesRemote(track, remote);
 }
 
 export function trackPresentRemotely(
@@ -100,7 +82,12 @@ export function findLocalsMatchingRemote<T extends LocalRemoteTrack>(
   tracks: T[],
   remote: RemoteAudioMeta,
 ): T[] {
-  return tracks.filter((track) => trackMatchesRemote(track, remote));
+  const byId = tracks.filter((track) => track.driveFileId === remote.id);
+  if (byId.length > 0) {
+    return byId;
+  }
+  // Name match only when the row is not already another Drive file (01 / 02 / 03).
+  return tracks.filter((track) => !track.driveFileId && trackNameMatchesRemote(track, remote));
 }
 
 export function findBestLocalForRemote<T extends LocalRemoteTrack>(
@@ -120,32 +107,17 @@ export function createRemoteClaimSet(): RemoteClaimSet {
 }
 
 export function remoteIsClaimed(claimed: RemoteClaimSet, remote: RemoteAudioMeta): boolean {
-  if (claimed.ids.has(remote.id)) {
-    return true;
-  }
-  const name = audioMatchKey(remote.name);
-  if (name && claimed.names.has(name)) {
-    return true;
-  }
-  const loose = audioMatchKeyLoose(remote.name);
-  return Boolean(loose) && claimed.names.has(loose);
+  return claimed.ids.has(remote.id);
 }
 
 export function claimRemote(claimed: RemoteClaimSet, remote: RemoteAudioMeta): void {
   claimed.ids.add(remote.id);
-  const name = audioMatchKey(remote.name);
-  if (name) {
-    claimed.names.add(name);
-  }
-  const loose = audioMatchKeyLoose(remote.name);
-  if (loose) {
-    claimed.names.add(loose);
-  }
 }
 
 /**
  * Locals that should leave the album: missing on Drive, or extras for a remote
  * that already has a better local (downloaded / fileUri wins).
+ * Two Drive ids (Song 01 / Song 02) are two rows — never surplus of each other.
  */
 export function surplusLocalTracks<T extends LocalRemoteTrack & { id: string }>(
   tracks: T[],
@@ -153,12 +125,13 @@ export function surplusLocalTracks<T extends LocalRemoteTrack & { id: string }>(
 ): T[] {
   const claimedTrackIds = new Set<string>();
   const claimed = createRemoteClaimSet();
+  const remoteIds = new Set(uniqueRemotes(remotes).map((remote) => remote.id));
   for (const remote of uniqueRemotes(remotes)) {
     if (remoteIsClaimed(claimed, remote)) {
       continue;
     }
     const candidates = tracks.filter(
-      (track) => !claimedTrackIds.has(track.id) && trackMatchesRemote(track, remote),
+      (track) => !claimedTrackIds.has(track.id) && findLocalsMatchingRemote([track], remote).length > 0,
     );
     const best = preferDownloadedTrack(candidates);
     if (!best) {
@@ -166,19 +139,17 @@ export function surplusLocalTracks<T extends LocalRemoteTrack & { id: string }>(
     }
     claimedTrackIds.add(best.id);
     claimRemote(claimed, remote);
-    if (best.driveFileId) {
-      claimed.ids.add(best.driveFileId);
-    }
-    const name = localNameKey(best);
-    if (name) {
-      claimed.names.add(name);
-    }
-    const loose = localLooseKey(best);
-    if (loose) {
-      claimed.names.add(loose);
-    }
   }
-  return tracks.filter((track) => !claimedTrackIds.has(track.id));
+  return tracks.filter((track) => {
+    if (claimedTrackIds.has(track.id)) {
+      return false;
+    }
+    // A row that still points at a live Drive file is a version, not leftover junk.
+    if (track.driveFileId && remoteIds.has(track.driveFileId)) {
+      return false;
+    }
+    return true;
+  });
 }
 
 /**
@@ -210,7 +181,7 @@ export function remoteReplacesLocalTrack(
   if (!track.driveFileId || track.driveFileId === remote.id) {
     return false;
   }
-  if (!trackMatchesRemote(track, remote)) {
+  if (!trackNameMatchesRemote(track, remote)) {
     return false;
   }
   return !remotes.some((item) => item.id === track.driveFileId);

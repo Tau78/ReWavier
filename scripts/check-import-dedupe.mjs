@@ -13,24 +13,17 @@ function audioMatchKey(fileName) {
   return base.toLowerCase();
 }
 
-function audioMatchKeyLoose(fileName) {
-  return audioMatchKey(fileName)
-    .replace(/[_.-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 function importNameKey(track) {
   const raw = track.sourceFileName || track.title || '';
-  return raw ? audioMatchKeyLoose(raw) : '';
+  return raw ? audioMatchKey(raw) : '';
 }
 
 function tracksAreSameImport(left, right) {
   if (left.id === right.id) {
     return true;
   }
-  if (left.driveFileId && left.driveFileId === right.driveFileId) {
-    return true;
+  if (left.driveFileId || right.driveFileId) {
+    return Boolean(left.driveFileId && left.driveFileId === right.driveFileId);
   }
   const leftName = importNameKey(left);
   const rightName = importNameKey(right);
@@ -73,8 +66,14 @@ function collapseDuplicateTracks(tracks, albums) {
     const name = importNameKey(track);
     if (name) {
       const nameHit = byName.get(name);
-      if (nameHit != null) union(i, nameHit);
-      byName.set(name, i);
+      if (nameHit != null) {
+        const other = tracks[nameHit];
+        if (!track.driveFileId && !other.driveFileId) {
+          union(i, nameHit);
+        }
+      } else {
+        byName.set(name, i);
+      }
     }
   }
   const bestByRoot = new Map();
@@ -113,7 +112,7 @@ assert.equal(
     { id: 'd', driveFileId: 'one', title: '10. [1984] The', sourceFileName: '10. [1984] The.m4a' },
     { id: 'e', driveFileId: 'two', title: '10. [1984] The', sourceFileName: '10.%20%5B1984%5D%20The.m4a' },
   ),
-  true,
+  false,
 );
 
 const collapsed = collapseDuplicateTracks(
@@ -134,16 +133,16 @@ const collapsed = collapseDuplicateTracks(
 
 assert.deepEqual(
   collapsed.tracks.map((track) => track.id),
-  ['kept'],
+  ['kept', 'again'],
 );
-assert.deepEqual(collapsed.albums[0].trackIds, ['kept']);
+assert.deepEqual(collapsed.albums[0].trackIds, ['kept', 'again']);
 
 assert.equal(
   tracksAreSameImport(
-    { id: 'phone', title: '03. Room Pt.1' },
-    { id: 'stub', title: '03. Room Pt.1', sourceFileName: '03._Room_Pt.1.mp3' },
+    { id: 'v1', driveFileId: 'd1', title: 'Room Pt.1 01', sourceFileName: 'Room Pt.1 01.mp3' },
+    { id: 'v2', driveFileId: 'd2', title: 'Room Pt.1 02', sourceFileName: 'Room Pt.1 02.mp3' },
   ),
-  true,
+  false,
 );
 
 console.log('check-import-dedupe: ok');
