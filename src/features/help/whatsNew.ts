@@ -81,6 +81,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Appunto per intero',
         body: 'Tieni premuto un appunto sull’onda, anche sul dettaglio: lo leggi tutto, anche se sul fumetto è tagliato.',
       },
+      {
+        title: 'Continua con Google',
+        body: 'Su Android, Continua con Google torna nell’app. Se vedi ancora un errore, chiudi ReWavier e riaprila due volte: arriva l’aggiornamento.',
+      },
     ],
   },
 ];
