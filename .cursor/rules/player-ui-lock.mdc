@@ -26,13 +26,14 @@ Layout vincolato, dall’alto in basso:
 
 ## Linguetta in pagina (`CollectionPlayer`)
 
-Resta **sulla stessa schermata** (Home / Libreria / album). Non naviga a `Player`.
+Resta **sulla stessa schermata** (Home / Libreria / album / playlist). Non naviga a `Player`.
+Sfondo **`surface` `#1A1A1E`** (non `background`) così si stacca dalla lista album/playlist.
 
 - **Ridotto:** maniglia + titolo/artista + tempo — niente tasti
-- **Grande:** waveform + PracticeBar + controlli −10·Stop·Play·+10 + FAB +
+- **Grande:** solo waveform **dettaglio 12s** (niente panoramica, niente PracticeBar, niente tab Onda/Testo/Accordi). Comandi su **una sola riga**: −10 · Stop · **+** · Play · +10. Il + resta 72pt **al centro**, non ridurre / non spostare.
 - **Ciclo:** tap/swipe sulla maniglia (o swipe su/giù) → `dockExpanded` on/off
-- **Pagina audio:** solo tap sul **titolo** → `navigate('Player')`
-- Controlli sempre su **una riga**; + 72pt al centro, non ridurre / non spostare
+- **Pagina audio:** solo tap sul **titolo** → `navigate('Player')` (lì restano panoramica, velocità, loop, testo)
+- Controlli sempre su **una riga**; + 72pt al centro
 
 Niente tab bar, drawer, gear, cartelle o settings **sopra** questa schermata.
 

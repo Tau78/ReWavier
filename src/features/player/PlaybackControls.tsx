@@ -52,8 +52,8 @@ function ControlButton({
   );
 }
 
-/** One row only: −10 · Stop · Play · +10. Does not touch the orange + note button. */
-export function PlaybackControls() {
+/** One row only: −10 · Stop · Play · +10. Optional `center` slots the orange + between Stop and Play. */
+export function PlaybackControls({ center }: { center?: ReactNode } = {}) {
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const play = usePlayerStore((s) => s.play);
   const pause = usePlayerStore((s) => s.pause);
@@ -61,7 +61,7 @@ export function PlaybackControls() {
   const seekBy = usePlayerStore((s) => s.seekBy);
 
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, center ? styles.rowWithCenter : null]}>
       <ControlButton onPress={() => seekBy(-10_000)} accessibilityLabel="Indietro 10s">
         <Text style={styles.skipText}>−10</Text>
       </ControlButton>
@@ -69,6 +69,8 @@ export function PlaybackControls() {
       <ControlButton onPress={stop} accessibilityLabel="Stop">
         <StopIcon />
       </ControlButton>
+
+      {center}
 
       <ControlButton
         onPress={() => (isPlaying ? pause() : play())}
@@ -94,6 +96,10 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingHorizontal: 12,
     paddingTop: 8,
+  },
+  rowWithCenter: {
+    paddingTop: 4,
+    paddingBottom: 10,
   },
   btn: {
     width: layout.controlSize,

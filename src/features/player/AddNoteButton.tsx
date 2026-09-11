@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { usePlayerStore } from '../../store/playerStore';
 import { colors, layout } from '../../theme/colors';
 
-export function AddNoteButton() {
+export function AddNoteButton({ inline = false }: { inline?: boolean } = {}) {
   const pressAddNote = usePlayerStore((s) => s.pressAddNote);
 
   const onPress = () => {
@@ -17,7 +17,7 @@ export function AddNoteButton() {
   };
 
   return (
-    <View style={styles.wrap}>
+    <View style={[styles.wrap, inline && styles.wrapInline]}>
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
@@ -31,7 +31,7 @@ export function AddNoteButton() {
       >
         <Text style={styles.plus}>+</Text>
       </Pressable>
-      <Text style={styles.hint}>Aggiungi nota</Text>
+      {inline ? null : <Text style={styles.hint}>Aggiungi nota</Text>}
     </View>
   );
 }
@@ -41,6 +41,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 10,
     paddingBottom: 18,
+  },
+  wrapInline: {
+    paddingTop: 0,
+    paddingBottom: 0,
   },
   fab: {
     width: layout.addButtonSize,

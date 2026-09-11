@@ -14,16 +14,14 @@ import { colors, layout } from '../../theme/colors';
 import { NoteBubble } from '../notes/NoteBubble';
 import { AddNoteButton } from '../player/AddNoteButton';
 import { PlaybackControls } from '../player/PlaybackControls';
-import { PracticeBar } from '../player/PracticeBar';
 import { Waveform } from '../player/Waveform';
-import { TrackScoreTabs } from './TrackScoreTabs';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type MetaMode = 'duration' | 'created';
 
 /**
  * Player in pagina (Home / Libreria / album).
- * Linguetta: cicla ridotto (solo titolo/tempo) ↔ grande (waveform + controlli +).
+ * Linguetta: cicla ridotto (solo titolo/tempo) ↔ grande (onda 12s + una riga di comandi).
  * Tap sul titolo → apre la pagina audio (PlayerScreen).
  */
 export function CollectionPlayer() {
@@ -157,13 +155,10 @@ export function CollectionPlayer() {
 
       {dockExpanded ? (
         <>
-          <PracticeBar />
-          <TrackScoreTabs trackId={track.id} />
           <View style={styles.wave}>
-            <Waveform />
+            <Waveform compact />
           </View>
-          <PlaybackControls />
-          <AddNoteButton />
+          <PlaybackControls center={<AddNoteButton inline />} />
           {focused ? <NoteBubble /> : null}
         </>
       ) : null}
@@ -175,9 +170,16 @@ const mono = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'mon
 
 const styles = StyleSheet.create({
   dock: {
-    borderTopWidth: StyleSheet.hairlineWidth,
+    backgroundColor: colors.surface,
+    borderTopWidth: 1,
     borderTopColor: colors.border,
-    backgroundColor: colors.background,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    elevation: 18,
   },
   handleRow: {
     alignItems: 'center',
@@ -188,7 +190,8 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.border,
+    backgroundColor: colors.textMuted,
+    opacity: 0.55,
   },
   header: {
     paddingHorizontal: 20,
@@ -240,7 +243,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   wave: {
-    height: 220,
+    height: 164,
     paddingHorizontal: 16,
   },
 });
