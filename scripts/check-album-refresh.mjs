@@ -1,15 +1,11 @@
 import assert from 'node:assert/strict';
 
-const CLOUD_JOB_WAIT_MS = 15_000;
 const DRIVE_LIST_TIMEOUT_MS = 20_000;
 const ALBUM_REFRESH_TIMEOUT_MS = 40_000;
 const DRIVE_SLOW_MESSAGE = 'Drive non risponde. Riprova tra poco.';
-const DRIVE_BUSY_MESSAGE = 'Drive è ancora occupato. Tocca di nuovo Aggiorna tra poco.';
 
-assert.ok(CLOUD_JOB_WAIT_MS < ALBUM_REFRESH_TIMEOUT_MS);
 assert.ok(DRIVE_LIST_TIMEOUT_MS <= ALBUM_REFRESH_TIMEOUT_MS);
 assert.ok(DRIVE_SLOW_MESSAGE.includes('Riprova'));
-assert.ok(DRIVE_BUSY_MESSAGE.includes('Aggiorna'));
 
 function isAbortError(error) {
   if (!error || typeof error !== 'object') {

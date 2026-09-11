@@ -40,7 +40,6 @@ import { saveDocumentFromUri } from '../files/albumDocuments';
 import { copyToDownloads, ensureInboxDirectory, inboxDirectory } from '../files/downloads';
 import { safeTempFileName } from '../files/fileNames';
 import { writeSidecarToLibrary } from '../files/libraryFiles';
-import { CLOUD_JOB_WAIT_MS, awaitJobOrTimeout } from '../domain/albumRefresh';
 import { drivePeekNewsCount, isDownloadPausedError } from '../domain/collectionDownloadVisual';
 import { throwIfDownloadPaused, useDownloadProgressStore } from '../store/downloadProgressStore';
 import { flushLibraryPersist, useLibraryStore } from '../store/libraryStore';
@@ -692,27 +691,21 @@ export type SyncDriveAlbumResult = {
   versioned: number;
   notesPulled: number;
   /** Why we did not sync (caller can show a clear message). */
-  skipped?: 'no-album' | 'no-google' | 'demo' | 'busy';
+  skipped?: 'no-album' | 'no-google' | 'demo';
 };
 
 /**
  * Align one Drive album: import new remotes (as rows), mark changed files, pull notes.
- * Waits briefly for any in-flight Drive pass, then gives up so Aggiorna can stop spinning.
- * Does not steal the job slot while waiting — a timed-out wait leaves the other pass running.
+ * If another Drive pass is already running, still list this album — do not wait
+ * or tell the user Drive is “busy”.
  */
 export async function syncDriveAlbum(albumId: string): Promise<SyncDriveAlbumResult> {
   const empty: SyncDriveAlbumResult = { added: 0, removed: 0, versioned: 0, notesPulled: 0 };
-  const prev = cloudSyncJob;
-  if (prev) {
-    const waited = await awaitJobOrTimeout(prev, CLOUD_JOB_WAIT_MS, () =>
-      useDownloadProgressStore.getState().pauseRequested,
-    );
-    if (waited === 'cancelled') {
-      return empty;
-    }
-    if (waited === 'timeout') {
-      return { ...empty, skipped: 'busy' };
-    }
+  if (useDownloadProgressStore.getState().pauseRequested) {
+    return empty;
+  }
+  if (cloudSyncJob) {
+    return runSyncDriveAlbumBody(albumId);
   }
   let outcome = empty;
   const job = (async () => {

@@ -21,7 +21,6 @@ import {
 } from '../../cloud/syncEngine';
 import {
   ALBUM_REFRESH_TIMEOUT_MS,
-  DRIVE_BUSY_MESSAGE,
   DRIVE_SLOW_MESSAGE,
   isDriveSlowError,
   withTimeout,
@@ -375,12 +374,6 @@ export function CollectionScreen() {
         if (syncResult.skipped === 'no-google') {
           if (reportRefreshWhenDoneRef.current) {
             Alert.alert('Drive', 'Collega Google per aggiornare questo album.');
-          }
-          return;
-        }
-        if (syncResult.skipped === 'busy') {
-          if (reportRefreshWhenDoneRef.current) {
-            Alert.alert('Drive', DRIVE_BUSY_MESSAGE);
           }
           return;
         }
