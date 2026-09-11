@@ -45,11 +45,30 @@ function reversedGoogleClientScheme(clientId) {
   return `com.googleusercontent.apps.${clientId.replace(/\.apps\.googleusercontent\.com$/i, '')}`;
 }
 
+const ANDROID_GOOGLE_REDIRECT_URI = 'rewavier://oauth';
+
 function resolveGoogleOAuthRedirectUri(opts) {
   if (opts.platform === 'ios' && opts.iosClientId) {
     return `${reversedGoogleClientScheme(opts.iosClientId)}:/oauthredirect`;
   }
+  if (opts.platform === 'android') {
+    return ANDROID_GOOGLE_REDIRECT_URI;
+  }
   return opts.customSchemeUri;
+}
+
+function googleAuthPromptFailedMessage(result) {
+  if (result.type === 'success' || result.type === 'cancel' || result.type === 'dismiss') {
+    return null;
+  }
+  const raw = `${result.params?.error ?? ''} ${result.errorCode ?? ''}`.toLowerCase();
+  if (raw.includes('redirect_uri')) {
+    return 'Google non ha riconosciuto l’app. Riprova, oppure entra con email.';
+  }
+  if (result.type === 'error') {
+    return 'Login Google non riuscito. Riprova, oppure entra con email.';
+  }
+  return null;
 }
 
 assert.equal(
@@ -133,7 +152,21 @@ assert.equal(
 );
 assert.equal(
   resolveGoogleOAuthRedirectUri({ platform: 'android', iosClientId: undefined, customSchemeUri: custom }),
-  custom,
+  ANDROID_GOOGLE_REDIRECT_URI,
+);
+assert.equal(
+  resolveGoogleOAuthRedirectUri({
+    platform: 'android',
+    iosClientId: iosId,
+    customSchemeUri: 'exp://192.168.1.2:8081/--/oauth',
+  }),
+  ANDROID_GOOGLE_REDIRECT_URI,
+);
+assert.equal(googleAuthPromptFailedMessage({ type: 'dismiss' }), null);
+assert.equal(googleAuthPromptFailedMessage({ type: 'cancel' }), null);
+assert.equal(
+  googleAuthPromptFailedMessage({ type: 'error', params: { error: 'redirect_uri_mismatch' } }),
+  'Google non ha riconosciuto l’app. Riprova, oppure entra con email.',
 );
 
 console.log('ok google auth snapshots the code; identity login skips Drive consent');

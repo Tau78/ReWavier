@@ -67,5 +67,19 @@ module.exports = {
         ],
       },
     },
+    android: {
+      ...appJson.expo.android,
+      intentFilters: [
+        ...(appJson.expo.android?.intentFilters ?? []),
+        {
+          action: 'VIEW',
+          category: ['BROWSABLE', 'DEFAULT'],
+          data: [
+            { scheme: 'rewavier', host: 'oauth' },
+            { scheme: 'rewavier', pathPrefix: '/oauth' },
+          ],
+        },
+      ],
+    },
   },
 };

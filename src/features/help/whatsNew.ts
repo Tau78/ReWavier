@@ -36,6 +36,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Scegli da Drive',
         body: 'Su un telefono nuovo o dopo una reinstallazione, i brani da Drive arrivano di nuovo sul telefono.',
       },
+      {
+        title: 'Accesso su Android',
+        body: 'Dopo Continua con Google torni nell’app. Se non hai ancora un account email su questo telefono, creane uno.',
+      },
     ],
   },
   {
@@ -51,7 +55,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Google e Drive su Android',
-        body: 'Su Android l’accesso con Google funziona di nuovo. Se il download da Drive resta fermo, puoi annullarlo e riprovare.',
+        body: 'Su Android, dopo Continua con Google torni nell’app. Se il download da Drive resta fermo, puoi annullarlo e riprovare.',
       },
     ],
   },
