@@ -75,7 +75,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Aggiorna da Drive',
-        body: 'Tocchi Aggiorna e lo spin si ferma quando Drive ha risposto. Se Drive non risponde, te lo dice. Puoi toccare di nuovo per annullare.',
+        body: 'Tocchi Aggiorna e l’album si allinea. Lo spin si ferma quando Drive ha risposto. Se Drive non risponde, te lo dice. Puoi toccare di nuovo per annullare.',
       },
     ],
   },

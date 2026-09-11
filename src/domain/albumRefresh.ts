@@ -1,14 +1,10 @@
-/** Wait for an in-flight Drive pass, then Aggiorna goes on or gives up. */
-export const CLOUD_JOB_WAIT_MS = 15_000;
-
 /** Drive listing HTTP: abort so the spinner can stop. */
 export const DRIVE_LIST_TIMEOUT_MS = 20_000;
 
-/** Whole Aggiorna listing (wait + elenco + brani nuovi in lista). */
+/** Whole Aggiorna listing (elenco + brani nuovi in lista). */
 export const ALBUM_REFRESH_TIMEOUT_MS = 40_000;
 
 export const DRIVE_SLOW_MESSAGE = 'Drive non risponde. Riprova tra poco.';
-export const DRIVE_BUSY_MESSAGE = 'Drive è ancora occupato. Tocca di nuovo Aggiorna tra poco.';
 
 export type AwaitJobResult = 'done' | 'timeout' | 'cancelled';
 
