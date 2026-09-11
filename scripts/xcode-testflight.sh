@@ -63,6 +63,7 @@ VERSION="$(node -p "require('./app.json').expo.version")"
 # Keep native Info.plist in sync (app.json bump alone does not change the binary).
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUM" "$ROOT/ios/ReWavier/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$ROOT/ios/ReWavier/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Set :EXUpdatesRuntimeVersion $VERSION" "$ROOT/ios/ReWavier/Supporting/Expo.plist" 2>/dev/null || true
 echo "→ Version $VERSION ($BUILD_NUM) scritta in ios/ReWavier/Info.plist"
 
 echo "→ CocoaPods"

@@ -81,6 +81,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Appunto per intero',
         body: 'Tieni premuto un appunto sull’onda, anche sul dettaglio: lo leggi tutto, anche se sul fumetto è tagliato.',
       },
+      {
+        title: 'Continua con Google',
+        body: 'Tocchi Continua con Google e torni nell’app. Se compare un errore di Google, chiudi l’app e riaprila: arriva l’aggiornamento.',
+      },
     ],
   },
 ];

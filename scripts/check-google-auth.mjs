@@ -47,9 +47,13 @@ function reversedGoogleClientScheme(clientId) {
 
 const ANDROID_GOOGLE_REDIRECT_URI = 'rewavier://oauth';
 
+function iosGoogleRedirectUri(iosClientId) {
+  return `${reversedGoogleClientScheme(iosClientId)}:/oauthredirect`;
+}
+
 function resolveGoogleOAuthRedirectUri(opts) {
   if (opts.platform === 'ios' && opts.iosClientId) {
-    return `${reversedGoogleClientScheme(opts.iosClientId)}:/oauthredirect`;
+    return iosGoogleRedirectUri(opts.iosClientId);
   }
   if (opts.platform === 'android') {
     return ANDROID_GOOGLE_REDIRECT_URI;
@@ -57,12 +61,38 @@ function resolveGoogleOAuthRedirectUri(opts) {
   return opts.customSchemeUri;
 }
 
+function pickGoogleClientIds(input) {
+  const iosClientId = input.inExpoGo ? undefined : input.storeIos ?? input.expoIos;
+  if (input.platform === 'android') {
+    return {
+      iosClientId,
+      androidClientId: input.android,
+      webClientId: input.web,
+      clientId: input.android ?? input.web,
+    };
+  }
+  if (input.inExpoGo) {
+    return {
+      iosClientId: undefined,
+      androidClientId: input.android,
+      webClientId: input.web,
+      clientId: input.web ?? input.expoIos ?? input.storeIos,
+    };
+  }
+  return {
+    iosClientId,
+    androidClientId: input.android,
+    webClientId: input.web,
+    clientId: iosClientId,
+  };
+}
+
 function googleAuthPromptFailedMessage(result) {
   if (result.type === 'success' || result.type === 'cancel' || result.type === 'dismiss') {
     return null;
   }
   const raw = `${result.params?.error ?? ''} ${result.errorCode ?? ''}`.toLowerCase();
-  if (raw.includes('redirect_uri')) {
+  if (raw.includes('redirect_uri') || raw.includes('invalid_request')) {
     return 'Google non ha riconosciuto l’app. Riprova, oppure entra con email.';
   }
   if (result.type === 'error') {
@@ -167,6 +197,34 @@ assert.equal(googleAuthPromptFailedMessage({ type: 'cancel' }), null);
 assert.equal(
   googleAuthPromptFailedMessage({ type: 'error', params: { error: 'redirect_uri_mismatch' } }),
   'Google non ha riconosciuto l’app. Riprova, oppure entra con email.',
+);
+assert.equal(
+  googleAuthPromptFailedMessage({ type: 'error', params: { error: 'invalid_request' } }),
+  'Google non ha riconosciuto l’app. Riprova, oppure entra con email.',
+);
+
+const storeIos = '1049963169218-o6tcahpfsdijj2lm811bmjs4vjaglb7v.apps.googleusercontent.com';
+const web = '1049963169218-k8i1dmlbsn1nqrv393u8pp111v7v2efc.apps.googleusercontent.com';
+const standaloneIos = pickGoogleClientIds({
+  platform: 'ios',
+  inExpoGo: false,
+  storeIos,
+  web,
+});
+assert.equal(standaloneIos.clientId, storeIos);
+assert.notEqual(standaloneIos.clientId, web);
+assert.equal(standaloneIos.iosClientId, storeIos);
+assert.equal(
+  resolveGoogleOAuthRedirectUri({
+    platform: 'ios',
+    iosClientId: standaloneIos.iosClientId,
+    customSchemeUri: custom,
+  }).startsWith('com.googleusercontent.apps.'),
+  true,
+);
+assert.equal(
+  pickGoogleClientIds({ platform: 'ios', inExpoGo: false, web }).clientId,
+  undefined,
 );
 
 console.log('ok google auth snapshots the code; identity login skips Drive consent');

@@ -75,9 +75,22 @@ export function reversedGoogleClientScheme(clientId: string): string {
 /** Pinned Android + web-client redirect. Must match the Web client in Google Cloud. */
 export const ANDROID_GOOGLE_REDIRECT_URI = 'rewavier://oauth';
 
+/** Store iOS client — used if Expo extra is missing (OTA / archive). */
+export const STORE_IOS_GOOGLE_CLIENT_ID =
+  '1049963169218-o6tcahpfsdijj2lm811bmjs4vjaglb7v.apps.googleusercontent.com';
+export const EXPO_IOS_GOOGLE_CLIENT_ID =
+  '1049963169218-gpj1pb8omtfhuv76npnhjnsshkqc970g.apps.googleusercontent.com';
+export const WEB_GOOGLE_CLIENT_ID =
+  '1049963169218-k8i1dmlbsn1nqrv393u8pp111v7v2efc.apps.googleusercontent.com';
+
+export function iosGoogleRedirectUri(iosClientId: string): string {
+  return `${reversedGoogleClientScheme(iosClientId)}:/oauthredirect`;
+}
+
 /**
  * Redirect URI for Google AuthSession.
- * Standalone Android must NOT reuse the iOS reverse URI (redirect_uri_mismatch).
+ * iOS store builds must use the reversed iOS client scheme. A web client +
+ * `rewavier://oauth` is the Error 400 / invalid_request Google policy page.
  */
 export function resolveGoogleOAuthRedirectUri(opts: {
   platform: string;
@@ -85,12 +98,51 @@ export function resolveGoogleOAuthRedirectUri(opts: {
   customSchemeUri: string;
 }): string {
   if (opts.platform === 'ios' && opts.iosClientId) {
-    return `${reversedGoogleClientScheme(opts.iosClientId)}:/oauthredirect`;
+    return iosGoogleRedirectUri(opts.iosClientId);
   }
   if (opts.platform === 'android') {
     return ANDROID_GOOGLE_REDIRECT_URI;
   }
   return opts.customSchemeUri;
+}
+
+/** Which Google client to send. Standalone iOS never falls back to the web client. */
+export function pickGoogleClientIds(input: {
+  platform: string;
+  inExpoGo: boolean;
+  storeIos?: string;
+  expoIos?: string;
+  android?: string;
+  web?: string;
+}): {
+  iosClientId?: string;
+  androidClientId?: string;
+  webClientId?: string;
+  clientId?: string;
+} {
+  const iosClientId = input.inExpoGo ? undefined : input.storeIos ?? input.expoIos;
+  if (input.platform === 'android') {
+    return {
+      iosClientId,
+      androidClientId: input.android,
+      webClientId: input.web,
+      clientId: input.android ?? input.web,
+    };
+  }
+  if (input.inExpoGo) {
+    return {
+      iosClientId: undefined,
+      androidClientId: input.android,
+      webClientId: input.web,
+      clientId: input.web ?? input.expoIos ?? input.storeIos,
+    };
+  }
+  return {
+    iosClientId,
+    androidClientId: input.android,
+    webClientId: input.web,
+    clientId: iosClientId,
+  };
 }
 
 /** User-facing line when Google returns an error (not cancel / dismiss). */
@@ -103,7 +155,7 @@ export function googleAuthPromptFailedMessage(result: {
     return null;
   }
   const raw = `${result.params?.error ?? ''} ${result.errorCode ?? ''}`.toLowerCase();
-  if (raw.includes('redirect_uri')) {
+  if (raw.includes('redirect_uri') || raw.includes('invalid_request')) {
     return 'Google non ha riconosciuto l’app. Riprova, oppure entra con email.';
   }
   if (result.type === 'error') {
