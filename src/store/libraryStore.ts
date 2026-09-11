@@ -56,6 +56,7 @@ import {
   type LibrarySnapshot,
 } from '../files/libraryPersist';
 import { setActiveLibraryOwner } from '../files/libraryOwner';
+import { hydratePlaybackPersist } from '../files/playbackPersist';
 import { isDownloaded, playableUri } from '../domain/audioFormats';
 import { isDownloadPausedError, trackNeedsFetch } from '../domain/collectionDownloadVisual';
 import { downloadDriveFile } from '../cloud/driveApi';
@@ -1589,6 +1590,10 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           return;
         }
         setActiveLibraryOwner(user.id);
+        await hydratePlaybackPersist();
+        if (!isHydrateStillCurrent(generation, expectedUserId)) {
+          return;
+        }
         if (!isDemoUser(user)) {
           await adoptLegacyLibraryIfNeeded(user.id);
         }

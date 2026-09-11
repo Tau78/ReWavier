@@ -31,9 +31,11 @@ import {
   isDownloadPausedError,
 } from '../../domain/collectionDownloadVisual';
 import type { Album, AlbumVersionFolder, CollectionKind } from '../../domain/library';
+import { collectionResumeKey } from '../../domain/playbackResume';
 import { isSeparatorId, isVersionFolderId } from '../../domain/library';
 import type { Track } from '../../domain/models';
 import { recoverAudioRelative } from '../../files/libraryUris';
+import { hydratePlaybackPersist } from '../../files/playbackPersist';
 import type { RootStackParamList } from '../../navigation/types';
 import { isCollectionDownloadBusy, useDownloadProgressStore } from '../../store/downloadProgressStore';
 import { flushLibraryPersist, useLibraryStore } from '../../store/libraryStore';
@@ -47,7 +49,7 @@ import { AlbumDocuments } from './AlbumDocuments';
 import { AlbumNotes } from './AlbumNotes';
 import { AlbumSeparatorRow, SEPARATOR_ROW_HEIGHT } from './AlbumSeparatorRow';
 import { CollectionPlayer } from './CollectionPlayer';
-import { ensurePlayableAndOpen, playQueue } from './openTrack';
+import { ensurePlayableAndOpen, playQueue, restoreCollectionPlayback } from './openTrack';
 import { ReorderableTrackList } from './ReorderableTrackList';
 import { TrackRow } from './TrackRow';
 import { VersionFolderRow } from './VersionFolderRow';
@@ -371,6 +373,26 @@ export function CollectionScreen() {
     () => (album ? playableAlbumTrackIds(album) : tracks.map((track) => track.id)),
     [album, tracks],
   );
+  const collectionKey =
+    kind === 'album' || kind === 'playlist' || kind === 'folder'
+      ? collectionResumeKey(kind, id)
+      : undefined;
+  useFocusEffect(
+    useCallback(() => {
+      if (!collectionKey || trackIds.length === 0) {
+        return;
+      }
+      let cancelled = false;
+      void hydratePlaybackPersist().then(() => {
+        if (!cancelled) {
+          restoreCollectionPlayback(collectionKey, trackIds);
+        }
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [collectionKey, trackIds]),
+  );
   const playerTrackId = usePlayerStore((s) => s.track.id);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
   const isPlayingThisAlbum =
@@ -566,15 +588,17 @@ export function CollectionScreen() {
       usePlayerStore.getState().play();
       return;
     }
-    if (playQueue(trackIds)) {
-      return;
-    }
-    Alert.alert(
-      'Ascolto',
-      tracks.length === 0
-        ? 'Questo album è vuoto. Aggiungi un audio e poi tocca Play.'
-        : 'Nessuna traccia è ancora ascoltabile. Scaricala sul telefono e riprova.',
-    );
+    void hydratePlaybackPersist().then(() => {
+      if (playQueue(trackIds, collectionKey ? { collectionKey } : undefined)) {
+        return;
+      }
+      Alert.alert(
+        'Ascolto',
+        tracks.length === 0
+          ? 'Questo album è vuoto. Aggiungi un audio e poi tocca Play.'
+          : 'Nessuna traccia è ancora ascoltabile. Scaricala sul telefono e riprova.',
+      );
+    });
   };
 
   return (
@@ -845,7 +869,10 @@ export function CollectionScreen() {
                         warnBlocked();
                         return;
                       }
-                      void ensurePlayableAndOpen(chosenId, trackIds, { autoPlay: true }).then((opened) => {
+                      void ensurePlayableAndOpen(chosenId, trackIds, {
+                        autoPlay: true,
+                        resumeKey: collectionKey,
+                      }).then((opened) => {
                         if (!opened) {
                           Alert.alert('Ascolto', 'Questo brano non è ancora arrivato. Riprova tra un attimo.');
                         }
@@ -857,7 +884,10 @@ export function CollectionScreen() {
                         return;
                       }
                       useLibraryStore.getState().chooseAlbumVersion(id, item.folder.id, track.id);
-                      void ensurePlayableAndOpen(track.id, trackIds, { autoPlay: true }).then((opened) => {
+                      void ensurePlayableAndOpen(track.id, trackIds, {
+                        autoPlay: true,
+                        resumeKey: collectionKey,
+                      }).then((opened) => {
                         if (!opened) {
                           Alert.alert('Ascolto', 'Questo brano non è ancora arrivato. Riprova tra un attimo.');
                         }
@@ -888,7 +918,10 @@ export function CollectionScreen() {
                           return;
                         }
                         useLibraryStore.getState().chooseAlbumVersion(id, item.folderId, item.track.id);
-                        void ensurePlayableAndOpen(item.track.id, trackIds, { autoPlay: true }).then(
+                        void ensurePlayableAndOpen(item.track.id, trackIds, {
+                          autoPlay: true,
+                          resumeKey: collectionKey,
+                        }).then(
                           (opened) => {
                             if (!opened) {
                               Alert.alert(
@@ -928,11 +961,10 @@ export function CollectionScreen() {
                         warnBlocked();
                         return;
                       }
-                      void ensurePlayableAndOpen(
-                        item.track.id,
-                        trackIds,
-                        kind === 'album' || kind === 'folder' ? { autoPlay: true } : undefined,
-                      ).then((opened) => {
+                      void ensurePlayableAndOpen(item.track.id, trackIds, {
+                        autoPlay: kind === 'album' || kind === 'folder',
+                        resumeKey: collectionKey,
+                      }).then((opened) => {
                         if (opened) {
                           usePlayerStore.getState().setDockExpanded(true);
                           return;

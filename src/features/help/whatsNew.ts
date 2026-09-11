@@ -57,6 +57,14 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Google e Drive su Android',
         body: 'Su Android, dopo Continua con Google torni nell’app. Se il download da Drive resta fermo, puoi annullarlo e riprovare.',
       },
+      {
+        title: 'L’album riparte da lì',
+        body: 'Tocchi Play su un album e riparte dal brano e dal punto dove ti eri fermato, anche dopo aver chiuso l’app.',
+      },
+      {
+        title: 'Ascolto più solido su iPhone',
+        body: 'Meno chiusure improvvise mentre passi da un brano all’altro o lasci l’app in sottofondo.',
+      },
     ],
   },
 ];

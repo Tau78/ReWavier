@@ -30,6 +30,8 @@ import {
   type PracticeIds,
 } from '../domain/practice';
 
+import { collectionKeysForTrackId } from '../domain/playbackResume';
+import { flushPlaybackPersist, rememberPlayback, resetPlaybackPersist } from '../files/playbackPersist';
 import { isTrackDownloadBlocked } from './downloadProgressStore';
 import { albumRoleForTrack, useLibraryStore } from './libraryStore';
 import { useSessionStore } from './sessionStore';
@@ -70,6 +72,8 @@ export type PlayerState = {
   loadState: LoadState;
   /** In-page dock: true = controlli + waveform; false = solo linguetta. */
   dockExpanded: boolean;
+  /** album:id / playlist:id — last collection this track was opened from. */
+  resumeKey: string | null;
 };
 
 export type PlayerActions = {
@@ -94,7 +98,7 @@ export type PlayerActions = {
     track: Track,
     markers?: Marker[],
     queueIds?: string[],
-    options?: { autoPlay?: boolean; startAtMs?: number },
+    options?: { autoPlay?: boolean; startAtMs?: number; resumeKey?: string },
   ) => void;
   skipBy: (step: number, options?: { autoPlay?: boolean }) => boolean;
   setStartMs: (ms: number, options?: { persist?: boolean; seek?: boolean }) => void;
@@ -164,6 +168,7 @@ let loopWrapPending = false;
 let lastWrapAt = 0;
 /** Waveform pan scrub: keep UI positionMs while throttling native seeks. */
 let waveformScrubDepth = 0;
+let lastPlaybackRememberAt = 0;
 
 export function suppressPausePrompt(ms = 2000) {
   suppressPausePromptUntil = Math.max(suppressPausePromptUntil, Date.now() + ms);
@@ -265,6 +270,7 @@ function resetPlayerRuntime() {
   lastWrapAt = 0;
   resetWaveformScrubDepth();
   suppressPausePrompt(2500);
+  lastPlaybackRememberAt = 0;
   usingFile = false;
   mockEngine.reset(EMPTY_TRACK.durationMs);
 }
@@ -283,6 +289,7 @@ export function clearPlayerIfTrackDeleted(trackId: string): void {
     isPlaying: false,
     bubble: { ...HIDDEN_BUBBLE },
     loadState: 'idle',
+    resumeKey: null,
   });
 }
 
@@ -291,6 +298,9 @@ export function clearPlayerIfTrackDeleted(trackId: string): void {
  * Call before logout / account switch so hydrate cannot overlap an open file.
  */
 export async function unloadPlayerForSessionEnd(): Promise<void> {
+  rememberCurrentPlayback(true);
+  await flushPlaybackPersist();
+  resetPlaybackPersist();
   resetPlayerRuntime();
   loadChain = Promise.resolve();
   try {
@@ -307,6 +317,7 @@ export async function unloadPlayerForSessionEnd(): Promise<void> {
     bubble: { ...HIDDEN_BUBBLE },
     loadState: 'idle',
     queueIds: [],
+    resumeKey: null,
   });
 }
 
@@ -338,6 +349,7 @@ export async function releaseTrackFromPlayer(trackId: string): Promise<void> {
     isPlaying: false,
     bubble: { ...HIDDEN_BUBBLE },
     loadState: 'idle',
+    resumeKey: null,
   });
 
   for (const nextId of queueIds) {
@@ -445,6 +457,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   showHidden: false,
   loadState: 'idle',
   dockExpanded: true,
+  resumeKey: null,
 
   play() {
     const state = get();
@@ -490,6 +503,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     if (trackHasPlayableUri(state.track) && state.loadState !== 'ready') {
       set({ isPlaying: false });
     }
+    rememberCurrentPlayback(true);
   },
 
   stop() {
@@ -514,6 +528,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       }
     }
     set({ positionMs: range.startMs, isPlaying: false });
+    rememberCurrentPlayback(true);
   },
 
   seekBy(deltaMs) {
@@ -1015,6 +1030,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     pendingPlay = options?.autoPlay === true;
     pendingSeekMs = null;
     usingFile = false;
+    const resumeKey = options?.resumeKey ?? get().resumeKey;
     const range = resolveTrackRange(track);
     const cueMs =
       options?.startAtMs != null
@@ -1039,6 +1055,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       loadState: uri ? 'loading' : 'idle',
       // New track → show in-page player with controls (not only the thin linguetta).
       dockExpanded: true,
+      resumeKey: resumeKey ?? null,
     });
 
     if (uri) {
@@ -1189,6 +1206,24 @@ function libraryDurationOf(trackId: string): number | undefined {
   return useLibraryStore.getState().getTrack(trackId)?.durationMs;
 }
 
+function rememberCurrentPlayback(force = false): void {
+  const state = usePlayerStore.getState();
+  if (!state.track.id) {
+    return;
+  }
+  const now = Date.now();
+  if (!force && now - lastPlaybackRememberAt < 4000) {
+    return;
+  }
+  lastPlaybackRememberAt = now;
+  const lib = useLibraryStore.getState();
+  const keys = collectionKeysForTrackId(state.track.id, lib.albums, lib.playlists, lib.folders);
+  if (state.resumeKey && !keys.includes(state.resumeKey)) {
+    keys.push(state.resumeKey);
+  }
+  rememberPlayback(state.track.id, state.positionMs, keys);
+}
+
 /** Write engine duration onto the library row so the album list is not stuck at 00:00.000. */
 function persistKnownDuration(trackId: string, durationMs: number) {
   if (!(durationMs > 0) || !trackId) {
@@ -1318,6 +1353,9 @@ function onEngineFrame(positionMs: number, playing: boolean) {
     lastAdvanceKey = '';
   }
   usePlayerStore.setState({ positionMs, isPlaying: playing });
+  if (playing) {
+    rememberCurrentPlayback();
+  }
 }
 
 mockEngine.subscribe((positionMs, playing) => {
