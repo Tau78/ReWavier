@@ -72,8 +72,16 @@ export function reversedGoogleClientScheme(clientId: string): string {
   return `com.googleusercontent.apps.${clientId.replace(/\.apps\.googleusercontent\.com$/i, '')}`;
 }
 
-/** Pinned Android + web-client redirect. Must match the Web client in Google Cloud. */
-export const ANDROID_GOOGLE_REDIRECT_URI = 'rewavier://oauth';
+/**
+ * Android talks to the Web client. Google blocks custom schemes on Web clients
+ * (Error 400 invalid_request), so authorize + token use this HTTPS page.
+ * The page then opens ANDROID_GOOGLE_RETURN_URI so the app can finish login.
+ */
+export const ANDROID_GOOGLE_REDIRECT_URI =
+  'https://eventi.musicproeventi.it/ReWavier/oauth.html';
+
+/** Custom-scheme bounce target after the HTTPS page. AuthSession listens here. */
+export const ANDROID_GOOGLE_RETURN_URI = 'rewavier://oauth';
 
 /** Store iOS client — used if Expo extra is missing (OTA / archive). */
 export const STORE_IOS_GOOGLE_CLIENT_ID =
@@ -88,9 +96,9 @@ export function iosGoogleRedirectUri(iosClientId: string): string {
 }
 
 /**
- * Redirect URI for Google AuthSession.
- * iOS store builds must use the reversed iOS client scheme. A web client +
- * `rewavier://oauth` is the Error 400 / invalid_request Google policy page.
+ * Redirect URI sent to Google.
+ * iOS store builds use the reversed iOS client scheme.
+ * Android uses HTTPS (Web client); a custom scheme is Error 400.
  */
 export function resolveGoogleOAuthRedirectUri(opts: {
   platform: string;

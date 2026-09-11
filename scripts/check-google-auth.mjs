@@ -45,7 +45,9 @@ function reversedGoogleClientScheme(clientId) {
   return `com.googleusercontent.apps.${clientId.replace(/\.apps\.googleusercontent\.com$/i, '')}`;
 }
 
-const ANDROID_GOOGLE_REDIRECT_URI = 'rewavier://oauth';
+const ANDROID_GOOGLE_REDIRECT_URI =
+  'https://eventi.musicproeventi.it/ReWavier/oauth.html';
+const ANDROID_GOOGLE_RETURN_URI = 'rewavier://oauth';
 
 function iosGoogleRedirectUri(iosClientId) {
   return `${reversedGoogleClientScheme(iosClientId)}:/oauthredirect`;
@@ -172,13 +174,15 @@ assert.equal(googleTokenHasDriveScope(undefined), false);
 
 const iosId = '1049963169218-o6tcahpfsdijj2lm811bmjs4vjaglb7v.apps.googleusercontent.com';
 const custom = 'rewavier://oauth';
+assert.equal(ANDROID_GOOGLE_RETURN_URI, custom);
+assert.match(ANDROID_GOOGLE_REDIRECT_URI, /^https:\/\/eventi\.musicproeventi\.it\/ReWavier\/oauth\.html$/);
 assert.equal(
   resolveGoogleOAuthRedirectUri({ platform: 'ios', iosClientId: iosId, customSchemeUri: custom }),
   'com.googleusercontent.apps.1049963169218-o6tcahpfsdijj2lm811bmjs4vjaglb7v:/oauthredirect',
 );
 assert.equal(
   resolveGoogleOAuthRedirectUri({ platform: 'android', iosClientId: iosId, customSchemeUri: custom }),
-  custom,
+  ANDROID_GOOGLE_REDIRECT_URI,
 );
 assert.equal(
   resolveGoogleOAuthRedirectUri({ platform: 'android', iosClientId: undefined, customSchemeUri: custom }),

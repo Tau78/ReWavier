@@ -83,7 +83,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Continua con Google',
-        body: 'Tocchi Continua con Google e torni nell’app. Se compare un errore di Google, chiudi l’app e riaprila: arriva l’aggiornamento.',
+        body: 'Su Android, Continua con Google torna nell’app. Se vedi ancora un errore, chiudi ReWavier e riaprila due volte: arriva l’aggiornamento.',
       },
     ],
   },

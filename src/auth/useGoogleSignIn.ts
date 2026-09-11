@@ -9,7 +9,7 @@ import { useSessionStore } from '../store/sessionStore';
 import {
   GOOGLE_DRIVE_EXTRA_PARAMS,
   GOOGLE_IDENTITY_EXTRA_PARAMS,
-  ANDROID_GOOGLE_REDIRECT_URI,
+  ANDROID_GOOGLE_RETURN_URI,
   EXPO_IOS_GOOGLE_CLIENT_ID,
   STORE_IOS_GOOGLE_CLIENT_ID,
   WEB_GOOGLE_CLIENT_ID,
@@ -301,7 +301,7 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
       AuthSession.makeRedirectUri({
         scheme: 'rewavier',
         path: 'oauth',
-        native: ANDROID_GOOGLE_REDIRECT_URI,
+        native: ANDROID_GOOGLE_RETURN_URI,
       }),
   });
 
@@ -335,7 +335,7 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
             scheme: reversedGoogleClientScheme(ids.iosClientId),
             path: 'oauthredirect',
           }
-        : { native: ANDROID_GOOGLE_REDIRECT_URI, scheme: 'rewavier', path: 'oauth' },
+        : { native: ANDROID_GOOGLE_RETURN_URI, scheme: 'rewavier', path: 'oauth' },
     [ids.iosClientId],
   );
 
@@ -360,8 +360,21 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
         // Custom Tabs warmup is optional
       }
       try {
-        // Same Android task so Google can return into the app (else AuthSession is `dismiss`).
-        return await promptAsyncRef.current({ createTask: false, showInRecents: true });
+        const request = requestRef.current;
+        const authUrl = request?.url;
+        if (!request || !authUrl) {
+          throw new Error(notReady);
+        }
+        // Google sees the HTTPS redirect; the bounce page opens this custom scheme.
+        const browserResult = await WebBrowser.openAuthSessionAsync(
+          authUrl,
+          ANDROID_GOOGLE_RETURN_URI,
+          { createTask: false, showInRecents: true },
+        );
+        if (browserResult.type !== 'success') {
+          return { type: browserResult.type };
+        }
+        return request.parseReturnUrl(browserResult.url);
       } finally {
         try {
           await WebBrowser.coolDownAsync();
