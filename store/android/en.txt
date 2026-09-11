@@ -1,6 +1,6 @@
 title: ReWavier
 short_description: Open audio, tap +, note the exact moment. Files stay on the phone.
-whatsnew: Sign in with Google without the safety warning. Drive only sees files you use with ReWavier, not all of Drive. This version also fixes the Android opening screen.
+whatsnew: In an album the player is clearer and resumes where you left off. Refresh from Drive lines up the tracks. Long-press a note to read it in full.
 
 description: |
   ReWavier is a listening notebook for anyone who works with audio: music, lessons, meetings, courses, training, interviews, and voice notes.

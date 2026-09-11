@@ -30,8 +30,27 @@ bash "$ROOT/scripts/asc-sync-metadata.sh"
 mkdir -p "$ROOT/fastlane"
 [[ -f "$ROOT/fastlane/Appfile" ]] || printf 'app_identifier("app.rewavier")\n' > "$ROOT/fastlane/Appfile"
 
+API_KEY_JSON="$(mktemp)"
+trap 'rm -f "$API_KEY_JSON"' EXIT
+ASC_KEY_ID="$ASC_KEY_ID" ASC_ISSUER_ID="$ASC_ISSUER_ID" ASC_KEY_PATH="$ASC_KEY_PATH" python3 - "$API_KEY_JSON" <<'PY'
+import json, os, sys
+out = sys.argv[1]
+with open(os.environ["ASC_KEY_PATH"], encoding="utf-8") as fh:
+    key = fh.read()
+with open(out, "w", encoding="utf-8") as fh:
+    json.dump(
+        {
+            "key_id": os.environ["ASC_KEY_ID"],
+            "issuer_id": os.environ["ASC_ISSUER_ID"],
+            "key": key,
+        },
+        fh,
+    )
+PY
+
 echo "→ Upload metadati ASC…"
 fastlane deliver \
+  --api_key_path "$API_KEY_JSON" \
   --app_identifier app.rewavier \
   --skip_binary_upload \
   --skip_screenshots \
