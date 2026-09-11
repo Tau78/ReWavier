@@ -77,6 +77,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Aggiorna da Drive',
         body: 'Tocchi Aggiorna e l’album si allinea. Lo spin si ferma quando Drive ha risposto. Se Drive non risponde, te lo dice. Puoi toccare di nuovo per annullare.',
       },
+      {
+        title: 'Appunto per intero',
+        body: 'Tieni premuto un appunto sull’onda: lo leggi tutto, anche se sul fumetto è tagliato.',
+      },
     ],
   },
 ];
