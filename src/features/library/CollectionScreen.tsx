@@ -19,6 +19,13 @@ import {
   type DriveAlbumPeek,
   type SyncDriveAlbumResult,
 } from '../../cloud/syncEngine';
+import {
+  ALBUM_REFRESH_TIMEOUT_MS,
+  DRIVE_BUSY_MESSAGE,
+  DRIVE_SLOW_MESSAGE,
+  isDriveSlowError,
+  withTimeout,
+} from '../../domain/albumRefresh';
 import { canWriteWithRole, folderRoleLine, roleOfAlbum } from '../../domain/folderRole';
 import { orderedAlbumItemIds } from '../../domain/albumOrder';
 import { playableAlbumTrackIds, versionFolderById, type AlbumListReorderItem } from '../../domain/albumVersions';
@@ -331,6 +338,10 @@ export function CollectionScreen() {
     if (isDownloadPausedError(error)) {
       return;
     }
+    if (isDriveSlowError(error)) {
+      Alert.alert('Drive', DRIVE_SLOW_MESSAGE);
+      return;
+    }
     Alert.alert('Download', error instanceof Error ? error.message : 'Download non riuscito');
   };
   const applyCollectionNews = (options?: { fromButton?: boolean }) => {
@@ -356,7 +367,7 @@ export function CollectionScreen() {
           notesPulled: 0,
         };
         if (isDriveAlbum) {
-          syncResult = await syncDriveAlbum(id);
+          syncResult = await withTimeout(syncDriveAlbum(id), ALBUM_REFRESH_TIMEOUT_MS);
         }
         if (!mountedRef.current) {
           return;
@@ -367,8 +378,17 @@ export function CollectionScreen() {
           }
           return;
         }
+        if (syncResult.skipped === 'busy') {
+          if (reportRefreshWhenDoneRef.current) {
+            Alert.alert('Drive', DRIVE_BUSY_MESSAGE);
+          }
+          return;
+        }
         if (useDownloadProgressStore.getState().pauseRequested) {
           return;
+        }
+        if (mountedRef.current) {
+          setAlbumRefreshBusy(false);
         }
         const playingId = usePlayerStore.getState().track.id;
         const inAlbum = new Set(
@@ -448,6 +468,7 @@ export function CollectionScreen() {
         }
       } finally {
         reportRefreshWhenDoneRef.current = false;
+        useDownloadProgressStore.getState().clearPauseRequested();
         if (mountedRef.current) {
           setAlbumRefreshBusy(false);
         }
@@ -461,6 +482,10 @@ export function CollectionScreen() {
   };
   const startCollectionDownload = () => {
     if (downloadVisual === 'pause') {
+      useDownloadProgressStore.getState().requestPause();
+      return;
+    }
+    if (albumRefreshBusy || albumRefreshJobRef.current) {
       useDownloadProgressStore.getState().requestPause();
       return;
     }
@@ -542,7 +567,9 @@ export function CollectionScreen() {
               visual={downloadVisual}
               busy={downloadButtonBusy}
               busyLabel={
-                albumRefreshBusy && !collectionBusy ? 'Sto controllando Drive' : 'Download in corso'
+                albumRefreshBusy && !collectionBusy
+                  ? 'Tocca per annullare'
+                  : 'Download in corso'
               }
               idleLabel={downloadLabel}
               onPress={startCollectionDownload}

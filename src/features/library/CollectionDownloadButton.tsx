@@ -53,7 +53,6 @@ export function CollectionDownloadButton({
         ]}
         accessibilityRole="button"
         accessibilityLabel={busy ? busyLabel : idleLabel}
-        disabled={busy && visual !== 'pause'}
       >
         {busy && visual !== 'pause' ? (
           <ActivityIndicator color={colors.accent} />

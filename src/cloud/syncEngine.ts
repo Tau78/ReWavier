@@ -40,6 +40,7 @@ import { saveDocumentFromUri } from '../files/albumDocuments';
 import { copyToDownloads, ensureInboxDirectory, inboxDirectory } from '../files/downloads';
 import { safeTempFileName } from '../files/fileNames';
 import { writeSidecarToLibrary } from '../files/libraryFiles';
+import { CLOUD_JOB_WAIT_MS, awaitJobOrTimeout } from '../domain/albumRefresh';
 import { drivePeekNewsCount, isDownloadPausedError } from '../domain/collectionDownloadVisual';
 import { throwIfDownloadPaused, useDownloadProgressStore } from '../store/downloadProgressStore';
 import { flushLibraryPersist, useLibraryStore } from '../store/libraryStore';
@@ -433,22 +434,9 @@ async function syncOneDriveAlbum(
     );
 
     if (!existing) {
+      // Listing only — audio arrives later via Aggiorna / downloadCollection
+      // so the header spinner is not stuck on a long Drive download.
       const id = createId('track');
-      const fileUri = await saveAudio(remote, id, false);
-      if (!isCloudSyncUserActive(expectedUserId)) {
-        sync.finish({ lastSyncedAt: Date.now(), message: null });
-        return { ...empty, added, removed, versioned, notesPulled, aborted: true };
-      }
-      locals = albumLocalTracks(album.id, treeFolderIds);
-      const appeared = findBestLocalForRemote(locals, remote);
-      if (appeared) {
-        if (!onAlbum.has(appeared.id)) {
-          store.addTracksToAlbum(album.id, [appeared.id]);
-          added += 1;
-        }
-        claimRemote(importedRemotes, remote);
-        continue;
-      }
       store.importBundles(
         [
           {
@@ -457,10 +445,8 @@ async function syncOneDriveAlbum(
               title: titleFromFileName(remote.name),
               artist: album.name,
               durationMs: 0,
-              fileUri,
               sourceFileName: remote.name,
-              downloaded: true,
-              downloadedAt: Date.now(),
+              downloaded: false,
               ...metaFrom(remote),
             },
             markers: [],
@@ -706,25 +692,30 @@ export type SyncDriveAlbumResult = {
   versioned: number;
   notesPulled: number;
   /** Why we did not sync (caller can show a clear message). */
-  skipped?: 'no-album' | 'no-google' | 'demo';
+  skipped?: 'no-album' | 'no-google' | 'demo' | 'busy';
 };
 
 /**
- * Align one Drive album: import new remotes, mark changed files, pull notes.
- * Queued on `cloudSyncJob` so Aggiorna waits for any in-flight Drive pass
- * instead of returning immediately with no UI feedback.
+ * Align one Drive album: import new remotes (as rows), mark changed files, pull notes.
+ * Waits briefly for any in-flight Drive pass, then gives up so Aggiorna can stop spinning.
+ * Does not steal the job slot while waiting — a timed-out wait leaves the other pass running.
  */
 export async function syncDriveAlbum(albumId: string): Promise<SyncDriveAlbumResult> {
-  let outcome: SyncDriveAlbumResult = { added: 0, removed: 0, versioned: 0, notesPulled: 0 };
+  const empty: SyncDriveAlbumResult = { added: 0, removed: 0, versioned: 0, notesPulled: 0 };
   const prev = cloudSyncJob;
-  const job = (async () => {
-    if (prev) {
-      try {
-        await prev;
-      } catch {
-        // previous pass failed — still try this album
-      }
+  if (prev) {
+    const waited = await awaitJobOrTimeout(prev, CLOUD_JOB_WAIT_MS, () =>
+      useDownloadProgressStore.getState().pauseRequested,
+    );
+    if (waited === 'cancelled') {
+      return empty;
     }
+    if (waited === 'timeout') {
+      return { ...empty, skipped: 'busy' };
+    }
+  }
+  let outcome = empty;
+  const job = (async () => {
     outcome = await runSyncDriveAlbumBody(albumId);
   })().finally(() => {
     if (cloudSyncJob === job) {
@@ -1235,6 +1226,10 @@ async function downloadDriveTemp(remote: DriveFile, prefix: string): Promise<str
 }
 
 async function applyTrackCover(trackId: string, cover: DriveFile): Promise<void> {
+  if (useLibraryStore.getState().getTrack(trackId)?.artworkUri) {
+    finishDriveItem();
+    return;
+  }
   const temp = await downloadDriveTemp(cover, 'art');
   if (!temp) {
     finishDriveItem();
@@ -1275,6 +1270,10 @@ function buildTrackCoverByAudioBase(
 async function applyAlbumCoverFromFiles(albumId: string, children: DriveFile[]): Promise<void> {
   const cover = findAlbumCoverFile(children);
   if (!cover) {
+    return;
+  }
+  if (useLibraryStore.getState().albums.find((item) => item.id === albumId)?.artworkUri) {
+    finishDriveItem();
     return;
   }
   const temp = await downloadDriveTemp(cover, 'cover');
