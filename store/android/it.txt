@@ -1,6 +1,6 @@
 title: ReWavier
 short_description: Apri un audio, tocca + e annota il momento esatto. Resta sul telefono.
-whatsnew: Entra con Google senza avvisi. Drive vede solo i file che usi con ReWavier, non tutto Drive.
+whatsnew: In album il player è più chiaro e riparte da dove ti eri fermato. Aggiorna da Drive allinea i brani. Tieni premuto un appunto per leggerlo tutto.
 
 description: |
   ReWavier è il quaderno di ascolto per chi lavora con l’audio: musica, lezioni, riunioni, corsi, formazione, colloqui e appunti vocali.
