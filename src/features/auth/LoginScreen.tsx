@@ -13,6 +13,7 @@ import {
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { googleAuthPromptFailedMessage } from '../../auth/googleAuthResult';
 import { isGoogleConfigured, useGoogleSignIn } from '../../auth/useGoogleSignIn';
 import { useSessionStore } from '../../store/sessionStore';
 import { colors, layout } from '../../theme/colors';
@@ -68,6 +69,10 @@ function GoogleContinueButtonConfigured({
             const result = await google.prompt();
             if (result.type === 'dismiss' || result.type === 'cancel') {
               return;
+            }
+            const googleFailed = googleAuthPromptFailedMessage(result);
+            if (googleFailed) {
+              throw new Error(googleFailed);
             }
             if (mountedRef.current) {
               setBusy(true);

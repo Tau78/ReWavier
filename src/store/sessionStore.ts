@@ -209,7 +209,9 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const accounts = await loadLocalAccounts();
     const account = accounts.find((item) => item.email === normalized);
     if (!account) {
-      throw new Error('Nessun account con questa email');
+      throw new Error(
+        'Su questo telefono non c’è ancora un account con questa email. Creane uno, o entra con Google.',
+      );
     }
     const hash = await hashPassword(normalized, password);
     if (hash !== account.passwordHash) {

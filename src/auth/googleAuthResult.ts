@@ -72,6 +72,9 @@ export function reversedGoogleClientScheme(clientId: string): string {
   return `com.googleusercontent.apps.${clientId.replace(/\.apps\.googleusercontent\.com$/i, '')}`;
 }
 
+/** Pinned Android + web-client redirect. Must match the Web client in Google Cloud. */
+export const ANDROID_GOOGLE_REDIRECT_URI = 'rewavier://oauth';
+
 /**
  * Redirect URI for Google AuthSession.
  * Standalone Android must NOT reuse the iOS reverse URI (redirect_uri_mismatch).
@@ -84,5 +87,27 @@ export function resolveGoogleOAuthRedirectUri(opts: {
   if (opts.platform === 'ios' && opts.iosClientId) {
     return `${reversedGoogleClientScheme(opts.iosClientId)}:/oauthredirect`;
   }
+  if (opts.platform === 'android') {
+    return ANDROID_GOOGLE_REDIRECT_URI;
+  }
   return opts.customSchemeUri;
+}
+
+/** User-facing line when Google returns an error (not cancel / dismiss). */
+export function googleAuthPromptFailedMessage(result: {
+  type: string;
+  params?: Record<string, string>;
+  errorCode?: string | null;
+}): string | null {
+  if (result.type === 'success' || result.type === 'cancel' || result.type === 'dismiss') {
+    return null;
+  }
+  const raw = `${result.params?.error ?? ''} ${result.errorCode ?? ''}`.toLowerCase();
+  if (raw.includes('redirect_uri')) {
+    return 'Google non ha riconosciuto l’app. Riprova, oppure entra con email.';
+  }
+  if (result.type === 'error') {
+    return 'Login Google non riuscito. Riprova, oppure entra con email.';
+  }
+  return null;
 }

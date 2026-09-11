@@ -9,8 +9,10 @@ import { useSessionStore } from '../store/sessionStore';
 import {
   GOOGLE_DRIVE_EXTRA_PARAMS,
   GOOGLE_IDENTITY_EXTRA_PARAMS,
+  ANDROID_GOOGLE_REDIRECT_URI,
   googleAccessTokenFromResult,
   googleAuthNeedsCodeExchange,
+  googleAuthPromptFailedMessage,
   googleExchangeIsReady,
   googleTokenHasDriveScope,
   resolveGoogleOAuthRedirectUri,
@@ -287,24 +289,30 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
     customSchemeUri: AuthSession.makeRedirectUri({
       scheme: 'rewavier',
       path: 'oauth',
+      native: ANDROID_GOOGLE_REDIRECT_URI,
     }),
   });
 
   // Stable config so a loading-state re-render does not mint a new PKCE verifier mid-login.
-  const authRequestConfig = useMemo(
-    () => ({
-      iosClientId: ids.iosClientId,
-      androidClientId: ids.androidClientId,
+  // Omit empty androidClientId: Expo treats '' as the client and skips the web fallback.
+  const authRequestConfig = useMemo(() => {
+    const config: Parameters<typeof Google.useAuthRequest>[0] = {
       webClientId: ids.webClientId,
       clientId: clientId ?? ids.webClientId,
       redirectUri,
-      language: 'it' as const,
-      shouldAutoExchangeCode: false as const,
+      language: 'it',
+      shouldAutoExchangeCode: false,
       scopes: kind === 'drive' ? DRIVE_SCOPES : IDENTITY_SCOPES,
       extraParams: kind === 'drive' ? GOOGLE_DRIVE_EXTRA_PARAMS : GOOGLE_IDENTITY_EXTRA_PARAMS,
-    }),
-    [kind, ids.iosClientId, ids.androidClientId, ids.webClientId, clientId, redirectUri],
-  );
+    };
+    if (ids.iosClientId) {
+      config.iosClientId = ids.iosClientId;
+    }
+    if (ids.androidClientId) {
+      config.androidClientId = ids.androidClientId;
+    }
+    return config;
+  }, [kind, ids.iosClientId, ids.androidClientId, ids.webClientId, clientId, redirectUri]);
 
   const [request, , promptAsync] = Google.useAuthRequest(authRequestConfig);
   const requestRef = useRef(request);
@@ -315,6 +323,31 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
 
   const notReady = 'Google non è ancora pronto. Entra con Apple o crea un account email.';
 
+  const prompt = async () => {
+    if (!clientId) {
+      throw new Error(notReady);
+    }
+    exchangeRef.current = snapshotGoogleExchange(redirectUri, requestRef.current?.codeVerifier);
+    if (Platform.OS === 'android') {
+      try {
+        await WebBrowser.warmUpAsync();
+      } catch {
+        // Custom Tabs warmup is optional
+      }
+      try {
+        // Same Android task so Google can return into the app (else AuthSession is `dismiss`).
+        return await promptAsyncRef.current({ createTask: false, showInRecents: true });
+      } finally {
+        try {
+          await WebBrowser.coolDownAsync();
+        } catch {
+          // optional
+        }
+      }
+    }
+    return promptAsyncRef.current();
+  };
+
   return {
     ready: Boolean(clientId && request),
     clientId,
@@ -322,6 +355,7 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
     requestRef,
     promptAsyncRef,
     exchangeRef,
+    prompt,
     notReady,
   };
 }
@@ -341,16 +375,7 @@ export function useGoogleSignIn() {
           snapshotGoogleExchange(auth.redirectUri, auth.requestRef.current?.codeVerifier),
       );
     },
-    prompt: async () => {
-      if (!auth.clientId) {
-        throw new Error(auth.notReady);
-      }
-      auth.exchangeRef.current = snapshotGoogleExchange(
-        auth.redirectUri,
-        auth.requestRef.current?.codeVerifier,
-      );
-      return auth.promptAsyncRef.current();
-    },
+    prompt: auth.prompt,
   };
 }
 
@@ -360,6 +385,10 @@ export async function runGoogleDriveConnect(
   const result = await drive.prompt();
   if (result.type === 'dismiss' || result.type === 'cancel') {
     return false;
+  }
+  const failed = googleAuthPromptFailedMessage(result);
+  if (failed) {
+    throw new Error(failed);
   }
   await drive.completeDriveConnect(result);
   return true;
@@ -380,15 +409,6 @@ export function useGoogleDriveConnect() {
           snapshotGoogleExchange(auth.redirectUri, auth.requestRef.current?.codeVerifier),
       );
     },
-    prompt: async () => {
-      if (!auth.clientId) {
-        throw new Error(auth.notReady);
-      }
-      auth.exchangeRef.current = snapshotGoogleExchange(
-        auth.redirectUri,
-        auth.requestRef.current?.codeVerifier,
-      );
-      return auth.promptAsyncRef.current();
-    },
+    prompt: auth.prompt,
   };
 }
