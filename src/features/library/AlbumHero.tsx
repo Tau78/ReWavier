@@ -31,9 +31,18 @@ export function AlbumHero({
 }) {
   const letter = (album.name.trim()[0] || 'A').toUpperCase();
   const artworkUri = resolveLibraryUri(album.artworkUri);
-  const meta = album.artist?.trim()
-    ? `${album.artist} · ${trackCount} ${trackCount === 1 ? 'traccia' : 'tracce'}`
-    : `${trackCount} ${trackCount === 1 ? 'traccia' : 'tracce'}`;
+  const countLabel = `${trackCount} ${trackCount === 1 ? 'traccia' : 'tracce'}`;
+  const artist = album.artist?.trim() ?? '';
+  const artistRepeatsDrive =
+    !artist || artist.toLowerCase() === 'drive' || artist === album.name;
+  const meta =
+    album.origin === 'drive'
+      ? artistRepeatsDrive
+        ? `Drive · ${countLabel}`
+        : `${artist} · ${countLabel}`
+      : artistRepeatsDrive
+        ? countLabel
+        : `${artist} · ${countLabel}`;
 
   const pickArtwork = async () => {
     try {
@@ -97,7 +106,7 @@ export function AlbumHero({
         {album.name}
       </Text>
       <Text style={styles.meta} numberOfLines={1}>
-        {album.origin === 'drive' ? `Drive · ${meta}` : meta}
+        {meta}
       </Text>
     </View>
   );

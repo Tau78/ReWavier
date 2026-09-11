@@ -65,6 +65,14 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Ascolto più solido su iPhone',
         body: 'Meno chiusure improvvise mentre passi da un brano all’altro o lasci l’app in sottofondo.',
       },
+      {
+        title: 'Album più pulito',
+        body: 'Sotto il titolo restano copertina e lista. Le spiegazioni le apri con i accanto a Tracce. Se c’è qualcosa da scaricare, il pulsante in alto pulsa.',
+      },
+      {
+        title: 'Titolo più lungo in lista',
+        body: 'Nella lista il nome del brano ha più spazio. Il tempo sta sulla riga sotto, prima del nome dell’album.',
+      },
     ],
   },
 ];

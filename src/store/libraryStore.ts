@@ -167,7 +167,7 @@ export type LibraryActions = {
     kind: 'album' | 'folder',
     id: string,
     options?: { reuseSession?: boolean },
-  ) => Promise<void>;
+  ) => Promise<number>;
   updateTrackDuration: (id: string, durationMs: number) => void;
   setTrackPeaks: (id: string, peaks: number[]) => void;
   createSmartPlaylist: (playlist: Omit<SmartPlaylist, 'id'>) => string;
@@ -1331,14 +1331,14 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     const progress = useDownloadProgressStore.getState();
     if (progress.active && progress.mode === 'collection' && !reuseSession) {
       progress.requestPause();
-      return;
+      return 0;
     }
     const tracks = get().tracksIn(kind, id);
     const pending = tracks.filter((track) => !isDownloaded(track) || track.pendingRemoteUpdate);
     const fetchable = pending.filter((track) => trackNeedsFetch(track));
     if (fetchable.length === 0) {
       if (reuseSession) {
-        return;
+        return 0;
       }
       throw new Error(
         pending.length > 0
@@ -1353,10 +1353,10 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     const skippedPlaying = Boolean(playingId && fetchable.some((track) => track.id === playingId));
     if (toFetch.length === 0) {
       if (reuseSession) {
-        return;
+        return 0;
       }
       if (skippedPlaying) {
-        return;
+        return 0;
       }
       throw new Error(
         pending.length > 0
@@ -1367,6 +1367,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     if (!reuseSession) {
       progress.beginCollection(toFetch.map((track) => track.id));
     }
+    let downloaded = 0;
     try {
       for (const track of toFetch) {
         if (useDownloadProgressStore.getState().pauseRequested) {
@@ -1374,6 +1375,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         }
         try {
           await get().downloadTrack(track.id, { replace: track.pendingRemoteUpdate === true });
+          downloaded += 1;
           await new Promise((resolve) => setTimeout(resolve, 0));
         } catch (error) {
           if (isDownloadPausedError(error)) {
@@ -1387,6 +1389,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         progress.end();
       }
     }
+    return downloaded;
   },
 
   setTrackPeaks(id, peaks) {

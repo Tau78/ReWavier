@@ -33,6 +33,13 @@ export function collectionDownloadGlyph(visual: CollectionDownloadVisual): strin
   return '↓';
 }
 
+export function drivePeekNewsCount(peek: {
+  newRemoteCount: number;
+  changedTrackIds: readonly string[];
+}): number {
+  return Math.max(0, peek.newRemoteCount) + new Set(peek.changedTrackIds).size;
+}
+
 export function collectionDownloadLabel(
   visual: CollectionDownloadVisual,
   kind: 'album' | 'folder',

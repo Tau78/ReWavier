@@ -40,7 +40,7 @@ import { saveDocumentFromUri } from '../files/albumDocuments';
 import { copyToDownloads, ensureInboxDirectory, inboxDirectory } from '../files/downloads';
 import { safeTempFileName } from '../files/fileNames';
 import { writeSidecarToLibrary } from '../files/libraryFiles';
-import { isDownloadPausedError } from '../domain/collectionDownloadVisual';
+import { drivePeekNewsCount, isDownloadPausedError } from '../domain/collectionDownloadVisual';
 import { throwIfDownloadPaused, useDownloadProgressStore } from '../store/downloadProgressStore';
 import { flushLibraryPersist, useLibraryStore } from '../store/libraryStore';
 import { refreshPlayingArtwork, usePlayerStore } from '../store/playerStore';
@@ -234,7 +234,10 @@ export async function peekDriveAlbum(albumId: string): Promise<DriveAlbumPeek> {
     }
   }
 
-  useDownloadProgressStore.getState().setDriveNews(albumId, newRemoteCount);
+  useDownloadProgressStore.getState().setDriveNews(albumId, drivePeekNewsCount({
+    newRemoteCount,
+    changedTrackIds,
+  }));
   await flushLibraryPersist();
   return { newRemoteCount, changedTrackIds };
 }

@@ -106,35 +106,41 @@ export function TrackRow({
         >
           {track.title}
         </Text>
-        <Text style={[styles.sub, blocked && styles.titleBlocked]} numberOfLines={1}>
-          {blocked ? 'In aggiornamento…' : track.artist}
-        </Text>
-      </View>
-      <View style={styles.aside}>
-        <Pressable
-          onPress={() => {
-            if (!createdLabel) {
-              return;
-            }
-            setMetaMode((mode) => (mode === 'duration' ? 'created' : 'duration'));
-          }}
-          hitSlop={6}
-          accessibilityRole="button"
-          accessibilityLabel={
-            showCreated
-              ? `Creato il ${createdLabel}. Tocca per la durata`
-              : createdLabel
-                ? `Durata ${formatTimecode(durationMs)}. Tocca per la data del file`
-                : `Durata ${formatTimecode(durationMs)}`
-          }
-        >
-          <Text style={styles.time} numberOfLines={1}>
-            {showCreated ? createdLabel : formatTimecode(durationMs)}
+        {blocked ? (
+          <Text style={[styles.sub, styles.subBelow, styles.titleBlocked]} numberOfLines={1}>
+            In aggiornamento…
           </Text>
-        </Pressable>
-        <Text style={styles.notes}>
-          {noteCount === 0 ? 'Nessun appunto' : `${noteCount} appunti`}
-        </Text>
+        ) : (
+          <View style={styles.subRow}>
+            <Pressable
+              onPress={() => {
+                if (!createdLabel) {
+                  return;
+                }
+                setMetaMode((mode) => (mode === 'duration' ? 'created' : 'duration'));
+              }}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={
+                showCreated
+                  ? `Creato il ${createdLabel}. Tocca per la durata`
+                  : createdLabel
+                    ? `Durata ${formatTimecode(durationMs)}. Tocca per la data del file`
+                    : `Durata ${formatTimecode(durationMs)}`
+              }
+            >
+              <Text style={styles.time} numberOfLines={1}>
+                {showCreated ? createdLabel : formatTimecode(durationMs)}
+              </Text>
+            </Pressable>
+            <Text style={styles.sub} numberOfLines={1}>
+              {track.artist}
+            </Text>
+            <Text style={styles.notes} numberOfLines={1}>
+              {noteCount === 0 ? 'Nessun appunto' : `${noteCount} appunti`}
+            </Text>
+          </View>
+        )}
       </View>
       {onDownload ? (
         <Pressable
@@ -231,20 +237,29 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
   },
   sub: {
-    marginTop: 2,
+    flex: 1,
+    minWidth: 0,
     color: colors.textMuted,
     fontSize: 13,
   },
-  aside: {
-    alignItems: 'flex-end',
+  subBelow: {
+    marginTop: 2,
+  },
+  subRow: {
+    marginTop: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0,
   },
   time: {
+    flexShrink: 0,
     color: colors.textMuted,
     fontSize: 11,
     fontVariant: ['tabular-nums'],
   },
   notes: {
-    marginTop: 2,
+    flexShrink: 0,
     color: colors.accent,
     fontSize: 11,
     fontWeight: '600',
