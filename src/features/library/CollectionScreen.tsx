@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   RefreshControl,
@@ -25,7 +24,6 @@ import { orderedAlbumItemIds } from '../../domain/albumOrder';
 import { playableAlbumTrackIds, versionFolderById, type AlbumListReorderItem } from '../../domain/albumVersions';
 import { isDownloaded } from '../../domain/audioFormats';
 import {
-  collectionDownloadGlyph,
   collectionDownloadLabel,
   collectionDownloadVisual,
   isDownloadPausedError,
@@ -42,6 +40,7 @@ import { useSyncStore } from '../../store/syncStore';
 import { colors, layout } from '../../theme/colors';
 import { EmptyGraphic, KindRow } from '../../theme/graphics';
 import { CollectionMarkers } from './CollectionMarkers';
+import { CollectionDownloadButton } from './CollectionDownloadButton';
 import { AlbumHero } from './AlbumHero';
 import { AlbumDocuments } from './AlbumDocuments';
 import { AlbumNotes } from './AlbumNotes';
@@ -178,12 +177,12 @@ export function CollectionScreen() {
   const canReorder = kind !== 'smart' && albumWritable;
   const isDriveAlbum = album?.origin === 'drive';
   const syncStatus = useSyncStore((s) => s.status);
-  const syncMessage = useSyncStore((s) => s.message);
   const [pulling, setPulling] = useState(false);
-  const [peeking, setPeeking] = useState(false);
-  /** True while Aggiorna is checking Drive / importing — drives button spinner + hint. */
+  const [showAlbumInfo, setShowAlbumInfo] = useState(false);
+  /** True while Aggiorna is checking Drive / importing — drives button spinner. */
   const [albumRefreshBusy, setAlbumRefreshBusy] = useState(false);
   const albumRefreshJobRef = useRef<Promise<void> | null>(null);
+  const reportRefreshWhenDoneRef = useRef(false);
   const peekJobRef = useRef<Promise<DriveAlbumPeek> | null>(null);
   const heldFileUriRef = useRef<Map<string, string>>(new Map());
   const mountedRef = useRef(true);
@@ -212,18 +211,9 @@ export function CollectionScreen() {
       return peekJobRef.current;
     }
     const job = (async () => {
-      if (mountedRef.current) {
-        setPeeking(true);
-      }
-      try {
-        await flushLibraryPersist();
-        useLibraryStore.getState().reattachLocalAudio();
-        return await peekDriveAlbum(id);
-      } finally {
-        if (mountedRef.current) {
-          setPeeking(false);
-        }
-      }
+      await flushLibraryPersist();
+      useLibraryStore.getState().reattachLocalAudio();
+      return await peekDriveAlbum(id);
     })();
     peekJobRef.current = job;
     try {
@@ -234,91 +224,13 @@ export function CollectionScreen() {
       }
     }
   }, [isDriveAlbum, id]);
-  const autoUpdateJobRef = useRef<Promise<void> | null>(null);
-  const downloadPendingUpdates = useCallback(async (trackIds: string[]) => {
-    const playingId = usePlayerStore.getState().track.id;
-    const ids = [...new Set(trackIds.filter(Boolean))].filter((trackId) => trackId !== playingId);
-    const skippedPlaying = Boolean(playingId && trackIds.includes(playingId));
-    if (ids.length === 0 || isCollectionDownloadBusy()) {
-      if (skippedPlaying && ids.length === 0) {
-        Alert.alert(
-          'Aggiorna',
-          'Il brano in ascolto non è stato aggiornato. Quando lo fermi, tocca di nuovo Aggiorna.',
-        );
-      }
-      return;
-    }
-    const progress = useDownloadProgressStore.getState();
-    progress.beginCollection(ids);
-    try {
-      for (const trackId of ids) {
-        if (useDownloadProgressStore.getState().pauseRequested) {
-          break;
-        }
-        await useLibraryStore.getState().downloadTrack(trackId, { replace: true });
-        await new Promise((resolve) => setTimeout(resolve, 0));
-      }
-    } finally {
-      progress.end();
-    }
-    if (skippedPlaying) {
-      Alert.alert(
-        'Aggiorna',
-        'Il brano in ascolto non è stato aggiornato. Quando lo fermi, tocca di nuovo Aggiorna.',
-      );
-    }
-  }, []);
   const refreshFromDrive = useCallback(async () => {
     try {
-      const peek = await peekAlbum();
-      // Peek only counts new remotes — import them or the album never grows.
-      if (peek.newRemoteCount > 0) {
-        await syncDriveAlbum(id);
-        void peekDriveAlbum(id).catch(() => undefined);
-      }
-      const albumTrackIds = new Set(
-        useLibraryStore.getState().tracksIn(kind === 'folder' ? 'folder' : 'album', id).map((track) => track.id),
-      );
-      const pendingIds = [
-        ...peek.changedTrackIds,
-        ...useLibraryStore
-          .getState()
-          .tracks.filter((track) => track.pendingRemoteUpdate === true && albumTrackIds.has(track.id))
-          .map((track) => track.id),
-      ];
-      const uniquePending = [...new Set(pendingIds)];
-      if (uniquePending.length === 0 || autoUpdateJobRef.current) {
-        return;
-      }
-      const job = (async () => {
-        try {
-          await downloadPendingUpdates(uniquePending);
-        } catch (error) {
-          if (!isDownloadPausedError(error)) {
-            Alert.alert(
-              'Download',
-              error instanceof Error ? error.message : 'Download non riuscito',
-            );
-          }
-        } finally {
-          if (isDriveAlbum) {
-            void peekDriveAlbum(id).catch(() => undefined);
-          }
-        }
-      })().finally(() => {
-        if (autoUpdateJobRef.current === job) {
-          autoUpdateJobRef.current = null;
-        }
-      });
-      autoUpdateJobRef.current = job;
-      await job;
-    } catch (error) {
-      Alert.alert(
-        'Drive',
-        error instanceof Error ? error.message : 'Non riesco a ricontrollare la cartella.',
-      );
+      await peekAlbum();
+    } catch {
+      // The Aggiorna button pulses when peek finds news; no text on the page.
     }
-  }, [peekAlbum, downloadPendingUpdates, kind, isDriveAlbum, id]);
+  }, [peekAlbum]);
   useFocusEffect(
     useCallback(() => {
       if (isDriveAlbum) {
@@ -326,9 +238,7 @@ export function CollectionScreen() {
         void refreshFromDrive();
       }
       return () => {
-        // Drop in-flight UI flags if the user leaves before peek/pull finishes.
         if (mountedRef.current) {
-          setPeeking(false);
           setPulling(false);
         }
       };
@@ -403,10 +313,8 @@ export function CollectionScreen() {
   };
   const applyCollectionNews = (options?: { fromButton?: boolean }) => {
     const fromButton = options?.fromButton === true;
-    const progress = useDownloadProgressStore.getState();
-    if (progress.active && progress.mode === 'collection') {
-      progress.requestPause();
-      return;
+    if (fromButton) {
+      reportRefreshWhenDoneRef.current = true;
     }
     if (albumRefreshJobRef.current) {
       return;
@@ -432,7 +340,7 @@ export function CollectionScreen() {
           return;
         }
         if (syncResult.skipped === 'no-google') {
-          if (fromButton) {
+          if (reportRefreshWhenDoneRef.current) {
             Alert.alert('Drive', 'Collega Google per aggiornare questo album.');
           }
           return;
@@ -458,31 +366,30 @@ export function CollectionScreen() {
           playingId && pendingAll.some((track) => track.id === playingId),
         );
         const pending = pendingAll.filter((track) => track.id !== playingId);
-        let didDownload = false;
+        let downloaded = 0;
         if (pending.length > 0) {
-          progress.beginCollection(pending.map((track) => track.id));
+          useDownloadProgressStore.getState().beginCollection(pending.map((track) => track.id));
           try {
             if (!useDownloadProgressStore.getState().pauseRequested) {
-              await useLibraryStore.getState().downloadCollection(downloadKind, id, {
+              downloaded = await useLibraryStore.getState().downloadCollection(downloadKind, id, {
                 reuseSession: true,
               });
-              didDownload = true;
             }
           } finally {
-            progress.end();
+            useDownloadProgressStore.getState().end();
           }
         }
         if (isDriveAlbum) {
-          void peekDriveAlbum(id).catch(() => undefined);
+          await peekDriveAlbum(id).catch(() => undefined);
         }
-        if (!mountedRef.current || !fromButton) {
+        if (!mountedRef.current || !reportRefreshWhenDoneRef.current) {
           return;
         }
         const trackCountAfter = useLibraryStore
           .getState()
           .tracksIn(kind === 'folder' ? 'folder' : 'album', id).length;
         const addedNow = Math.max(syncResult.added, trackCountAfter - trackCountBefore);
-        if (skippedPlaying) {
+        if (skippedPlaying && downloaded === 0 && addedNow === 0) {
           Alert.alert(
             'Aggiorna',
             'Il brano in ascolto non è stato aggiornato. Quando lo fermi, tocca di nuovo Aggiorna.',
@@ -498,7 +405,7 @@ export function CollectionScreen() {
           );
           return;
         }
-        if (didDownload || syncResult.versioned > 0) {
+        if (downloaded > 0 || syncResult.versioned > 0) {
           Alert.alert('Drive', 'Album aggiornato. I brani nuovi o modificati sono sul telefono.');
           return;
         }
@@ -518,6 +425,7 @@ export function CollectionScreen() {
           reportCollectionError(error);
         }
       } finally {
+        reportRefreshWhenDoneRef.current = false;
         if (mountedRef.current) {
           setAlbumRefreshBusy(false);
         }
@@ -534,12 +442,11 @@ export function CollectionScreen() {
       useDownloadProgressStore.getState().requestPause();
       return;
     }
-    if (downloadButtonBusy) {
+    if (isDriveAlbum) {
+      applyCollectionNews({ fromButton: true });
       return;
     }
-    // Drive album: always run full check+import (✓ used to only peek and skip new files).
-    if (isDriveAlbum && (downloadVisual === 'done' || downloadVisual === 'update')) {
-      applyCollectionNews({ fromButton: true });
+    if (downloadButtonBusy) {
       return;
     }
     if (displayTracks.length === 0) {
@@ -551,7 +458,6 @@ export function CollectionScreen() {
       .downloadCollection(downloadKind, id)
       .catch(reportCollectionError);
   };
-  const downloadGlyph = collectionDownloadGlyph(downloadVisual);
   const downloadLabel = collectionDownloadLabel(downloadVisual, downloadKind);
   const warnBlocked = () => {
     Alert.alert('Ascolto', 'Aspetta: questo brano si sta aggiornando.');
@@ -608,33 +514,15 @@ export function CollectionScreen() {
           </Pressable>
         ) : kind === 'album' ? (
           <View style={styles.headerButtons}>
-            <Pressable
-              onPress={startCollectionDownload}
-              style={({ pressed }) => [styles.plus, pressed && styles.plusPressed]}
-              accessibilityRole="button"
-              accessibilityLabel={
-                downloadButtonBusy
-                  ? albumRefreshBusy && !collectionBusy
-                    ? 'Sto controllando Drive'
-                    : 'Download in corso'
-                  : downloadLabel
+            <CollectionDownloadButton
+              visual={downloadVisual}
+              busy={downloadButtonBusy}
+              busyLabel={
+                albumRefreshBusy && !collectionBusy ? 'Sto controllando Drive' : 'Download in corso'
               }
-              disabled={downloadButtonBusy && downloadVisual !== 'pause'}
-            >
-              {downloadButtonBusy && downloadVisual !== 'pause' ? (
-                <ActivityIndicator color={colors.accent} />
-              ) : (
-                <Text
-                  style={[
-                    styles.plusGlyph,
-                    downloadVisual === 'pause' && styles.pauseGlyph,
-                    downloadVisual === 'done' && styles.downloadDone,
-                  ]}
-                >
-                  {downloadGlyph}
-                </Text>
-              )}
-            </Pressable>
+              idleLabel={downloadLabel}
+              onPress={startCollectionDownload}
+            />
             <Pressable
               onPress={() => actions.openAlbumMenu(id)}
               style={({ pressed }) => [styles.plus, pressed && styles.plusPressed]}
@@ -646,22 +534,13 @@ export function CollectionScreen() {
           </View>
         ) : kind === 'folder' ? (
           <View style={styles.headerButtons}>
-            <Pressable
+            <CollectionDownloadButton
+              visual={downloadVisual}
+              busy={downloadButtonBusy}
+              busyLabel="Download in corso"
+              idleLabel={downloadLabel}
               onPress={startCollectionDownload}
-              style={({ pressed }) => [styles.plus, pressed && styles.plusPressed]}
-              accessibilityRole="button"
-              accessibilityLabel={downloadLabel}
-            >
-              <Text
-                style={[
-                  styles.plusGlyph,
-                  downloadVisual === 'pause' && styles.pauseGlyph,
-                  downloadVisual === 'done' && styles.downloadDone,
-                ]}
-              >
-                {downloadGlyph}
-              </Text>
-            </Pressable>
+            />
             <Pressable
               onPress={() => actions.openFolderCreateMenu()}
               style={({ pressed }) => [styles.plus, pressed && styles.plusPressed]}
@@ -723,31 +602,43 @@ export function CollectionScreen() {
             onPlay={playAlbum}
           />
         ) : null}
-        {album?.driveFolderId ? (
-          <Text style={[styles.hint, styles.hintInScroll, styles.roleLine]}>
-            {folderRoleLine(roleOfAlbum(album))}
-          </Text>
+        {album ? (
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionLabel}>Tracce</Text>
+            <Pressable
+              onPress={() => setShowAlbumInfo((open) => !open)}
+              hitSlop={layout.hitSlop}
+              accessibilityRole="button"
+              accessibilityLabel={showAlbumInfo ? 'Nascondi info album' : 'Info album'}
+              accessibilityState={{ expanded: showAlbumInfo }}
+              style={({ pressed }) => [styles.infoBtn, pressed && styles.infoBtnPressed]}
+            >
+              <Text style={styles.infoGlyph}>i</Text>
+            </Pressable>
+          </View>
         ) : null}
-        {album ? <Text style={styles.sectionLabel}>Tracce</Text> : null}
-        {isDriveAlbum ? (
-          <Text style={[styles.hint, styles.hintInScroll]}>
-            {albumRefreshBusy || syncStatus === 'syncing' || peeking
-              ? collectionBusy
-                ? 'Sto scaricando i brani sul telefono…'
-                : 'Sto controllando la cartella Drive…'
-              : downloadVisual === 'update'
-                ? 'C’è qualcosa di nuovo su Drive. Tocca Aggiorna in alto a destra.'
-                : syncMessage?.startsWith('Album aggiornato')
-                  ? syncMessage
-                  : 'Tocca Aggiorna in alto a destra, o trascina in basso, per cercare i brani nuovi.'}
-          </Text>
+        {album && showAlbumInfo ? (
+          <View style={styles.infoCard}>
+            {album.driveFolderId ? (
+              <Text style={styles.infoLine}>{folderRoleLine(roleOfAlbum(album))}</Text>
+            ) : null}
+            {isDriveAlbum ? (
+              <Text style={styles.infoLine}>
+                Se il pulsante in alto pulsa, c’è qualcosa da scaricare. Toccalo, oppure trascina in
+                basso.
+              </Text>
+            ) : null}
+            {canReorder && listItems.length > 1 ? (
+              <Text style={styles.infoLine}>
+                {album
+                  ? 'Tieni premuto e trascina per spostare. Sopra un altro: li metti insieme. Fuori dalla cartella di versioni: lo stacchi.'
+                  : 'Tieni premuto una traccia e trascinala per riordinare.'}
+              </Text>
+            ) : null}
+          </View>
         ) : null}
-        {canReorder && listItems.length > 1 ? (
-          <Text style={[styles.hint, album && styles.hintInScroll]}>
-            {album
-              ? 'Tieni premuto e trascina per riordinare. Porta un brano fuori dalla cartella di versioni per staccarlo. Porta un brano sopra un altro per metterli insieme.'
-              : 'Tieni premuto una traccia e trascinala per riordinare.'}
-          </Text>
+        {!album && canReorder && listItems.length > 1 ? (
+          <Text style={styles.hint}>Tieni premuto una traccia e trascinala per riordinare.</Text>
         ) : null}
         {canReorder && listItems.length > 1 ? (
           <Pressable
@@ -1034,6 +925,7 @@ const styles = StyleSheet.create({
   },
   headerButtons: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
     marginTop: 4,
   },
@@ -1042,13 +934,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '600',
     marginTop: -2,
-  },
-  downloadDone: {
-    color: '#34C759',
-  },
-  pauseGlyph: {
-    fontSize: 16,
-    marginTop: 0,
   },
   editSpacer: {
     width: 28,
@@ -1060,13 +945,46 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  hintInScroll: {
+  sectionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 4,
+    paddingBottom: 8,
   },
-  roleLine: {
-    textAlign: 'center',
-    paddingBottom: 12,
-    marginTop: -8,
+  infoBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  infoBtnPressed: {
+    opacity: 0.7,
+  },
+  infoGlyph: {
+    color: colors.textMuted,
+    fontSize: 15,
+    fontWeight: '700',
+    fontStyle: 'italic',
+  },
+  infoCard: {
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    gap: 8,
+  },
+  infoLine: {
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
   },
   sortBtn: {
     flexDirection: 'row',
@@ -1095,8 +1013,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   sectionLabel: {
-    paddingHorizontal: 4,
-    paddingBottom: 8,
     color: colors.textMuted,
     fontSize: 11,
     fontWeight: '700',

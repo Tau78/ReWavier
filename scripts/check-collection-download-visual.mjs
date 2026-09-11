@@ -30,4 +30,11 @@ assert.equal(collectionDownloadGlyph('update'), '↻');
 assert.equal(collectionDownloadGlyph('done'), '✓');
 assert.equal(collectionDownloadGlyph('download'), '↓');
 
+function drivePeekNewsCount(peek) {
+  return Math.max(0, peek.newRemoteCount) + new Set(peek.changedTrackIds).size;
+}
+
+assert.equal(drivePeekNewsCount({ newRemoteCount: 2, changedTrackIds: ['a', 'a'] }), 3);
+assert.equal(drivePeekNewsCount({ newRemoteCount: 0, changedTrackIds: [] }), 0);
+
 console.log('ok collection download visual');
