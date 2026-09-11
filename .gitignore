@@ -47,3 +47,7 @@ google-play-service-account.json
 
 .env.asc
 .env.play
+store/ids.txt
+store/android/iarc.txt
+fastlane/metadata/**/review_information/demo_password.txt
+fastlane/metadata/**/review_information/demo_user.txt

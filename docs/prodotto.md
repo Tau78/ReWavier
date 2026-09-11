@@ -147,9 +147,8 @@ ReWavier is a notebook for audio — music, lessons, and work use (meetings, tra
 
 4) HOW TO SET UP AND USE THE MAIN FEATURES
 SIGN IN — use Email and Password on the first screen. Do not use Sign in with Apple or Google.
-Email: review@rewavier.app
-Password: Review2026!
-This demo account is hardcoded and always accepted. It skips first-run setup and opens the library. The library is empty on a fresh install — that is expected. No sample music is bundled (users import or record their own audio).
+Email / password: use the values in App Store Connect → App Review Information → Sign-In Required (not published in this public repo).
+This demo account is accepted by the app for review. It skips first-run setup and opens the library. The library is empty on a fresh install — that is expected. No sample music is bundled (users import or record their own audio).
 Then:
 1. Tap + (top right) → “Registra bozza” (Record a sketch). Allow the microphone, record a few seconds, save. Or tap “Carica audio” and pick any wav / aiff / mp3 / m4a / aac from the Files app.
 2. Tap the track to open the player.
@@ -176,7 +175,7 @@ Privacy policy: https://eventi.musicproeventi.it/ReWavier/Privacy.html
 
 1. Impostazioni iPhone → Controllo → Registrazione schermo (o Centro di Controllo).
 2. Chiudi ReWavier. Avvia la registrazione. Tocca l’icona ReWavier.
-3. Accedi con `review@rewavier.app` / `Review2026!` (email e password, non Apple/Google).
+3. Accedi con l’account demo in App Store Connect → Sign-In Required (email e password, non Apple/Google).
 4. Libreria vuota (normale: questo accesso non vede i brani di Google). Tocca **＋** → **Registra bozza**. Accetta il microfono. Registra pochi secondi, salva.
 5. Tocca il brano. Play. Tocca il **＋ arancione**, scrivi una nota, **Salva**. Tocca il segnalino e spostalo.
 6. **‹** per tornare. Ingranaggio → scorri → **Elimina account** → **Elimina**. Si torna al login.

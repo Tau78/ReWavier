@@ -5,6 +5,8 @@
 - Testo italiano: `it.txt` (titolo, riassunto, descrizione, novità)
 - Testo inglese: `en.txt`
 - Novità già usate dagli script: `whatsnew-it.txt` e `whatsnew-en.txt`
+- Rating IARC: `iarc.txt` (Global Rating ID)
+- Riepilogo ID Apple/Play: `../ids.txt`
 
 Il riassunto sta in 80 caratteri. Il tono è lo stesso della scheda iPhone: apri un audio, tocca +, annoti il momento esatto. I file restano sul telefono. Con Google colleghi anche Drive.
 

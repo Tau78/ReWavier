@@ -18,9 +18,8 @@ ReWavier is a listening notebook: open audio, pause, and write a note on the exa
 
 4) HOW TO SET UP AND USE THE MAIN FEATURES
 SIGN IN — open the app → email and password (not magic link, not Apple/Google for review).
-Email: review@rewavier.app
-Password: Review2026!
-Hardcoded review account; does not expire. First-run library is empty (no demo tracks).
+Email / password: App Store Connect → App Review Information → Sign-In Required (same fields; do not paste the password into public docs or git).
+Review account does not expire. First-run library is empty (no demo tracks).
 Then:
 1. Library → Drive → open a folder → “Scegli” to import audio.
 2. Open a track → tap + to add a note at the playhead.
