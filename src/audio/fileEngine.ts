@@ -95,7 +95,7 @@ export class FileAudioEngine {
 
     const player = createAudioPlayer(
       { uri },
-      { updateInterval: 50, keepAudioSessionActive: true },
+      { updateInterval: 120, keepAudioSessionActive: true },
     );
 
     if (!alive()) {
@@ -199,6 +199,8 @@ export class FileAudioEngine {
     this.durationMs = 0;
     if (player) {
       disposeOrphanPlayer(player);
+      // Let AVPlayer finish teardown before the next createAudioPlayer (iOS crash).
+      await new Promise<void>((resolve) => setTimeout(resolve, 40));
     }
     this.emit();
   }
@@ -332,7 +334,7 @@ function waitForDuration(
       if (!isCurrent()) {
         abort();
       }
-    }, 40);
+    }, 80);
     const sub = player.addListener('playbackStatusUpdate', (status) => {
       if (!isCurrent()) {
         abort();

@@ -1,21 +1,34 @@
-import { useEffect } from 'react';
-import { AppState } from 'react-native';
+import { useEffect, useState } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 
 import { ClipExtractorHost } from '../audio/ClipExtractorHost';
 import { WaveformDecoderHost } from '../audio/WaveformDecoderHost';
 import { runCloudSync } from '../cloud/syncEngine';
 import { GuidedTour } from '../features/help/GuidedTour';
 import { WhatsNewModal } from '../features/help/WhatsNewModal';
+import { flushPlaybackPersist, hydratePlaybackPersist } from '../files/playbackPersist';
 import { AppStack } from '../navigation/AppStack';
 import { useHelpStore } from '../store/helpStore';
 import { flushLibraryPersist, waitForLibraryHydrated } from '../store/libraryStore';
+import { usePlayerStore } from '../store/playerStore';
 import { useSessionStore } from '../store/sessionStore';
+
+function mediaHostsShouldMount(state: AppStateStatus): boolean {
+  if (state !== 'background') {
+    return true;
+  }
+  // Keep WebViews while audio is playing — teardown at lock can kill iOS.
+  return usePlayerStore.getState().isPlaying;
+}
 
 export function AuthenticatedApp() {
   const userId = useSessionStore((s) => s.user?.id ?? null);
   const whatsNewVisible = useHelpStore((s) => s.whatsNewVisible);
   const whatsNewItems = useHelpStore((s) => s.whatsNewItems);
   const dismissWhatsNew = useHelpStore((s) => s.dismissWhatsNew);
+  const [mediaHostsActive, setMediaHostsActive] = useState(() =>
+    mediaHostsShouldMount(AppState.currentState),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -24,16 +37,26 @@ export function AuthenticatedApp() {
       if (cancelled) {
         return;
       }
+      await hydratePlaybackPersist();
+      if (cancelled) {
+        return;
+      }
       await useHelpStore.getState().hydrate(userId);
       void runCloudSync();
     })();
     const sub = AppState.addEventListener('change', (state) => {
-      if (state !== 'active') {
+      setMediaHostsActive(mediaHostsShouldMount(state));
+      if (state === 'background') {
         void flushLibraryPersist();
+        void flushPlaybackPersist();
+        return;
+      }
+      if (state !== 'active') {
         return;
       }
       void (async () => {
         await waitForLibraryHydrated();
+        await hydratePlaybackPersist();
         void runCloudSync();
       })();
     });
@@ -52,8 +75,12 @@ export function AuthenticatedApp() {
         items={whatsNewItems}
         onDismiss={dismissWhatsNew}
       />
-      <WaveformDecoderHost />
-      <ClipExtractorHost />
+      {mediaHostsActive ? (
+        <>
+          <WaveformDecoderHost />
+          <ClipExtractorHost />
+        </>
+      ) : null}
     </>
   );
 }
