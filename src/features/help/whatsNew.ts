@@ -42,8 +42,8 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
     version: '1.0.4',
     items: [
       {
-        title: 'Player a linguetta',
-        body: 'In basso, la linguetta apre o chiude i tasti e l’onda sulla stessa pagina. Tocca il titolo del brano solo se vuoi la pagina audio intera.',
+        title: 'Player in album',
+        body: 'In basso il player è più chiaro sulla lista. Da aperto vedi l’onda piccola e i tasti su una riga, con + al centro. Tocca il titolo per la pagina audio intera.',
       },
       {
         title: 'Esci ed Elimina account',
