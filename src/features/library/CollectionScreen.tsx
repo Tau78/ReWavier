@@ -191,6 +191,8 @@ export function CollectionScreen() {
   const [albumRefreshBusy, setAlbumRefreshBusy] = useState(false);
   const albumRefreshJobRef = useRef<Promise<void> | null>(null);
   const reportRefreshWhenDoneRef = useRef(false);
+  /** Ignore a second Aggiorna/pull while the result alert is still up. */
+  const refreshCooldownUntilRef = useRef(0);
   const peekJobRef = useRef<Promise<DriveAlbumPeek> | null>(null);
   const heldFileUriRef = useRef<Map<string, string>>(new Map());
   const mountedRef = useRef(true);
@@ -345,6 +347,9 @@ export function CollectionScreen() {
   };
   const applyCollectionNews = (options?: { fromButton?: boolean }) => {
     const fromButton = options?.fromButton === true;
+    if (Date.now() < refreshCooldownUntilRef.current) {
+      return;
+    }
     if (fromButton) {
       reportRefreshWhenDoneRef.current = true;
     }
@@ -423,7 +428,7 @@ export function CollectionScreen() {
         const trackCountAfter = useLibraryStore
           .getState()
           .tracksIn(kind === 'folder' ? 'folder' : 'album', id).length;
-        const addedNow = Math.max(syncResult.added, trackCountAfter - trackCountBefore);
+        const addedNow = Math.max(0, trackCountAfter - trackCountBefore);
         if (skippedPlaying && downloaded === 0 && addedNow === 0) {
           Alert.alert(
             'Aggiorna',
@@ -461,6 +466,7 @@ export function CollectionScreen() {
         }
       } finally {
         reportRefreshWhenDoneRef.current = false;
+        refreshCooldownUntilRef.current = Date.now() + 2000;
         useDownloadProgressStore.getState().clearPauseRequested();
         if (mountedRef.current) {
           setAlbumRefreshBusy(false);
@@ -619,7 +625,12 @@ export function CollectionScreen() {
             <RefreshControl
               refreshing={pulling}
               onRefresh={() => {
-                if (!mountedRef.current || albumRefreshBusy || albumRefreshJobRef.current) {
+                if (
+                  !mountedRef.current ||
+                  albumRefreshBusy ||
+                  albumRefreshJobRef.current ||
+                  Date.now() < refreshCooldownUntilRef.current
+                ) {
                   return;
                 }
                 setPulling(true);

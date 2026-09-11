@@ -164,6 +164,23 @@ function albumLocalTracks(albumId: string, treeFolderIds?: ReadonlySet<string>):
   return uniqueTracksById(out);
 }
 
+function albumTrackIdSet(albumId: string): Set<string> {
+  return new Set(useLibraryStore.getState().tracksIn('album', albumId).map((track) => track.id));
+}
+
+/** Prefer a row already on this album; otherwise the same file elsewhere in the library. */
+function findLocalForDriveRemote(
+  albumId: string,
+  treeFolderIds: ReadonlySet<string> | undefined,
+  remote: { id: string; name: string },
+): Track | undefined {
+  const onAlbum = findBestLocalForRemote(albumLocalTracks(albumId, treeFolderIds), remote);
+  if (onAlbum) {
+    return onAlbum;
+  }
+  return findBestLocalForRemote(useLibraryStore.getState().tracks, remote);
+}
+
 export type DriveAlbumPeek = {
   newRemoteCount: number;
   changedTrackIds: string[];
@@ -427,14 +444,13 @@ async function syncOneDriveAlbum(
     if (remoteIsClaimed(importedRemotes, remote)) {
       continue;
     }
-    const existing = findBestLocalForRemote(locals, remote);
-    const onAlbum = new Set(
-      useLibraryStore.getState().tracksIn('album', album.id).map((track) => track.id),
-    );
+    const existing = findLocalForDriveRemote(album.id, treeFolderIds, remote);
+    const onAlbum = albumTrackIdSet(album.id);
 
     if (!existing) {
       // Listing only — audio arrives later via Aggiorna / downloadCollection
       // so the header spinner is not stuck on a long Drive download.
+      const idsBefore = albumTrackIdSet(album.id);
       const id = createId('track');
       store.importBundles(
         [
@@ -454,13 +470,17 @@ async function syncOneDriveAlbum(
         { albumId: album.id },
       );
       locals = albumLocalTracks(album.id, treeFolderIds);
-      added += 1;
+      const idsAfter = albumTrackIdSet(album.id);
+      if ([...idsAfter].some((trackId) => !idsBefore.has(trackId))) {
+        added += 1;
+      }
       claimRemote(importedRemotes, remote);
       continue;
     }
 
     if (!onAlbum.has(existing.id)) {
       store.addTracksToAlbum(album.id, [existing.id]);
+      added += 1;
     }
     claimRemote(importedRemotes, remote);
 
@@ -696,19 +716,26 @@ export type SyncDriveAlbumResult = {
 
 /**
  * Align one Drive album: import new remotes (as rows), mark changed files, pull notes.
- * If another Drive pass is already running, still list this album — do not wait
- * or tell the user Drive is “busy”.
+ * Wait for an in-flight Drive pass instead of listing the same album twice.
  */
 export async function syncDriveAlbum(albumId: string): Promise<SyncDriveAlbumResult> {
   const empty: SyncDriveAlbumResult = { added: 0, removed: 0, versioned: 0, notesPulled: 0 };
   if (useDownloadProgressStore.getState().pauseRequested) {
     return empty;
   }
-  if (cloudSyncJob) {
-    return runSyncDriveAlbumBody(albumId);
-  }
+  const prev = cloudSyncJob;
   let outcome = empty;
   const job = (async () => {
+    if (prev) {
+      try {
+        await prev;
+      } catch {
+        // previous pass failed — still align this album
+      }
+    }
+    if (useDownloadProgressStore.getState().pauseRequested) {
+      return;
+    }
     outcome = await runSyncDriveAlbumBody(albumId);
   })().finally(() => {
     if (cloudSyncJob === job) {

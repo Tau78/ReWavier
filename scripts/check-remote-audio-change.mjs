@@ -42,6 +42,13 @@ function audioMatchKey(fileName) {
   return (hasAudioExt ? audioBasename(decoded) : decoded).toLowerCase();
 }
 
+function audioMatchKeyLoose(fileName) {
+  return audioMatchKey(fileName)
+    .replace(/[_.-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function uniqueRemotes(remotes) {
   const seen = new Set();
   const out = [];
@@ -55,18 +62,30 @@ function uniqueRemotes(remotes) {
   return out;
 }
 
+function nameMatchesRemote(localName, remoteName) {
+  if (!localName) {
+    return false;
+  }
+  const remoteKey = audioMatchKey(remoteName);
+  if (remoteKey && audioMatchKey(localName) === remoteKey) {
+    return true;
+  }
+  const remoteLoose = audioMatchKeyLoose(remoteName);
+  const localLoose = audioMatchKeyLoose(localName);
+  return Boolean(remoteLoose && localLoose && localLoose === remoteLoose);
+}
+
 function trackMatchesRemote(track, remote) {
   if (track.driveFileId && track.driveFileId === remote.id) {
     return true;
   }
-  const remoteKey = audioMatchKey(remote.name);
-  if (!remoteKey) {
+  if (!audioMatchKey(remote.name) && !audioMatchKeyLoose(remote.name)) {
     return false;
   }
-  if (track.sourceFileName && audioMatchKey(track.sourceFileName) === remoteKey) {
+  if (nameMatchesRemote(track.sourceFileName, remote.name)) {
     return true;
   }
-  if (track.title && audioMatchKey(track.title) === remoteKey) {
+  if (nameMatchesRemote(track.title, remote.name)) {
     return true;
   }
   return false;
@@ -98,7 +117,11 @@ function remoteIsClaimed(claimed, remote) {
     return true;
   }
   const name = audioMatchKey(remote.name);
-  return Boolean(name) && claimed.names.has(name);
+  if (name && claimed.names.has(name)) {
+    return true;
+  }
+  const loose = audioMatchKeyLoose(remote.name);
+  return Boolean(loose) && claimed.names.has(loose);
 }
 
 function claimRemote(claimed, remote) {
@@ -106,6 +129,10 @@ function claimRemote(claimed, remote) {
   const name = audioMatchKey(remote.name);
   if (name) {
     claimed.names.add(name);
+  }
+  const loose = audioMatchKeyLoose(remote.name);
+  if (loose) {
+    claimed.names.add(loose);
   }
 }
 
@@ -131,6 +158,10 @@ function surplusLocalTracks(tracks, remotes) {
     const name = audioMatchKey(best.sourceFileName || best.title || '');
     if (name) {
       claimed.names.add(name);
+    }
+    const loose = audioMatchKeyLoose(best.sourceFileName || best.title || '');
+    if (loose) {
+      claimed.names.add(loose);
     }
   }
   return tracks.filter((track) => !claimedTrackIds.has(track.id));
@@ -331,5 +362,21 @@ assert.equal(
   ),
   false,
 );
+
+// Drive underscores / hyphens vs title spaces are the same file
+assert.equal(
+  trackMatchesRemote({ title: '03. Room Pt.1' }, { id: 'x', name: '03._Room_Pt.1.mp3' }),
+  true,
+);
+assert.equal(
+  trackMatchesRemote(
+    { sourceFileName: '10. [1984] The Distance.m4a' },
+    { id: 'x', name: '10_[1984]_The_Distance.m4a' },
+  ),
+  true,
+);
+const claimedLoose = createRemoteClaimSet();
+claimRemote(claimedLoose, { id: 'a', name: '03._Room_Pt.1.mp3' });
+assert.equal(remoteIsClaimed(claimedLoose, { id: 'b', name: '03. Room Pt.1.mp3' }), true);
 
 console.log('ok remote audio change prefers hash/size; missing remotes are pruned; names match across encoding');

@@ -128,4 +128,18 @@ assert.equal(stub.fileUri, undefined);
 assert.equal(stub.driveFileId, 'drv1');
 assert.equal(stub.sourceFileName, 'Take.m4a');
 
+/** Alert counts rows that actually joined the album — not rejected stubs. */
+function albumAddedNow(syncAdded, trackCountAfter, trackCountBefore) {
+  return Math.max(0, trackCountAfter - trackCountBefore);
+}
+assert.equal(albumAddedNow(3, 16, 16), 0);
+assert.equal(albumAddedNow(0, 19, 16), 3);
+assert.equal(albumAddedNow(3, 16, 19), 0);
+
+function countIdsAdded(idsBefore, idsAfter) {
+  return [...idsAfter].filter((id) => !idsBefore.has(id)).length;
+}
+assert.equal(countIdsAdded(new Set(['a', 'b']), new Set(['a', 'b'])), 0);
+assert.equal(countIdsAdded(new Set(['a', 'b']), new Set(['a', 'b', 'c'])), 1);
+
 console.log('ok album refresh');

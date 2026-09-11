@@ -1,6 +1,6 @@
 /** Pure helpers: detect Drive audio version changes and match local ↔ remote. */
 
-import { audioMatchKey } from '../domain/sidecar';
+import { audioMatchKey, audioMatchKeyLoose } from '../domain/sidecar';
 
 export type RemoteAudioMeta = {
   id: string;
@@ -41,18 +41,35 @@ function localNameKey(track: LocalRemoteTrack): string {
   return raw ? audioMatchKey(raw) : '';
 }
 
+function localLooseKey(track: LocalRemoteTrack): string {
+  const raw = track.sourceFileName || track.title || '';
+  return raw ? audioMatchKeyLoose(raw) : '';
+}
+
+function nameMatchesRemote(localName: string | undefined, remoteName: string): boolean {
+  if (!localName) {
+    return false;
+  }
+  const remoteKey = audioMatchKey(remoteName);
+  if (remoteKey && audioMatchKey(localName) === remoteKey) {
+    return true;
+  }
+  const remoteLoose = audioMatchKeyLoose(remoteName);
+  const localLoose = audioMatchKeyLoose(localName);
+  return Boolean(remoteLoose && localLoose && localLoose === remoteLoose);
+}
+
 export function trackMatchesRemote(track: LocalRemoteTrack, remote: RemoteAudioMeta): boolean {
   if (track.driveFileId && track.driveFileId === remote.id) {
     return true;
   }
-  const remoteKey = audioMatchKey(remote.name);
-  if (!remoteKey) {
+  if (!audioMatchKey(remote.name) && !audioMatchKeyLoose(remote.name)) {
     return false;
   }
-  if (track.sourceFileName && audioMatchKey(track.sourceFileName) === remoteKey) {
+  if (nameMatchesRemote(track.sourceFileName, remote.name)) {
     return true;
   }
-  if (track.title && audioMatchKey(track.title) === remoteKey) {
+  if (nameMatchesRemote(track.title, remote.name)) {
     return true;
   }
   return false;
@@ -107,7 +124,11 @@ export function remoteIsClaimed(claimed: RemoteClaimSet, remote: RemoteAudioMeta
     return true;
   }
   const name = audioMatchKey(remote.name);
-  return Boolean(name) && claimed.names.has(name);
+  if (name && claimed.names.has(name)) {
+    return true;
+  }
+  const loose = audioMatchKeyLoose(remote.name);
+  return Boolean(loose) && claimed.names.has(loose);
 }
 
 export function claimRemote(claimed: RemoteClaimSet, remote: RemoteAudioMeta): void {
@@ -115,6 +136,10 @@ export function claimRemote(claimed: RemoteClaimSet, remote: RemoteAudioMeta): v
   const name = audioMatchKey(remote.name);
   if (name) {
     claimed.names.add(name);
+  }
+  const loose = audioMatchKeyLoose(remote.name);
+  if (loose) {
+    claimed.names.add(loose);
   }
 }
 
@@ -147,6 +172,10 @@ export function surplusLocalTracks<T extends LocalRemoteTrack & { id: string }>(
     const name = localNameKey(best);
     if (name) {
       claimed.names.add(name);
+    }
+    const loose = localLooseKey(best);
+    if (loose) {
+      claimed.names.add(loose);
     }
   }
   return tracks.filter((track) => !claimedTrackIds.has(track.id));

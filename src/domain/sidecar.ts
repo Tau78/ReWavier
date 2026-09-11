@@ -66,6 +66,17 @@ export function audioMatchKey(fileName: string): string {
   return (hasAudioExt ? audioBasename(decoded) : decoded).toLowerCase();
 }
 
+/**
+ * Same file when Drive uses `_` / `-` / `.` and the phone shows spaces
+ * (`03._Room_Pt.1.mp3` ↔ title `03. Room Pt.1`).
+ */
+export function audioMatchKeyLoose(fileName: string): string {
+  return audioMatchKey(fileName)
+    .replace(/[_.-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function isSidecarName(fileName: string): boolean {
   const lower = fileName.toLowerCase();
   if (lower === 'rewavier.order.json') {

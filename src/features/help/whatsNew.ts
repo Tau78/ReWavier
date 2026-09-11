@@ -75,7 +75,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Aggiorna da Drive',
-        body: 'Tocchi Aggiorna e l’album si allinea. Lo spin si ferma quando Drive ha risposto. Se Drive non risponde, te lo dice. Puoi toccare di nuovo per annullare.',
+        body: 'Tocchi Aggiorna e l’album si allinea. Se i brani sono già sul telefono, te lo dice una volta e non ripete che ne ha aggiunti. Puoi toccare di nuovo per annullare.',
       },
       {
         title: 'Appunto per intero',

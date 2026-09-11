@@ -68,7 +68,7 @@ import {
   reconcileTrack,
   removeUri,
 } from '../files/downloads';
-import { audioMatchKey, sourceFileNameFromTitle } from '../domain/sidecar';
+import { audioMatchKeyLoose, sourceFileNameFromTitle } from '../domain/sidecar';
 import { writeSidecarToLibrary, removeSidecarFromLibrary, type ImportedBundle } from '../files/libraryFiles';
 import { userHasUsage } from '../domain/session';
 import { throwIfDownloadPaused, useDownloadProgressStore } from './downloadProgressStore';
@@ -296,7 +296,7 @@ export async function flushLibraryPersist(): Promise<void> {
 
 function importNameKey(track: { sourceFileName?: string; title: string }): string {
   const raw = track.sourceFileName || track.title || '';
-  return raw ? audioMatchKey(raw) : '';
+  return raw ? audioMatchKeyLoose(raw) : '';
 }
 
 function tracksAreSameImport(
@@ -1048,29 +1048,39 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     const albumId = dest.albumId;
     const accepted: ImportedBundle[] = [];
     const upgrades: Track[] = [];
+    const attachIds: string[] = [];
     let known = [...get().tracks];
     for (const bundle of bundles) {
       const existing = findImportedTrack(known, bundle.track);
       if (existing) {
-        if (trackQuality(bundle.track) > trackQuality(existing)) {
+        const incoming = bundle.track;
+        const needsRemoteClaim = Boolean(incoming.driveFileId) && !existing.driveFileId;
+        const needsName = Boolean(incoming.sourceFileName) && !existing.sourceFileName;
+        if (trackQuality(incoming) > trackQuality(existing) || needsRemoteClaim || needsName) {
           const upgraded = {
             ...existing,
-            fileUri: bundle.track.fileUri || existing.fileUri,
-            downloaded: Boolean(bundle.track.fileUri || existing.fileUri || existing.downloaded),
-            downloadedAt: bundle.track.downloadedAt ?? existing.downloadedAt,
-            durationMs: Math.max(existing.durationMs ?? 0, bundle.track.durationMs ?? 0),
-            driveFileId: existing.driveFileId || bundle.track.driveFileId,
-            sourceFileName: existing.sourceFileName || bundle.track.sourceFileName,
+            fileUri: incoming.fileUri || existing.fileUri,
+            downloaded: Boolean(incoming.fileUri || existing.fileUri || existing.downloaded),
+            downloadedAt: incoming.downloadedAt ?? existing.downloadedAt,
+            durationMs: Math.max(existing.durationMs ?? 0, incoming.durationMs ?? 0),
+            driveFileId: existing.driveFileId || incoming.driveFileId,
+            sourceFileName: existing.sourceFileName || incoming.sourceFileName,
+            remoteHash: existing.remoteHash || incoming.remoteHash,
+            remoteSize: existing.remoteSize ?? incoming.remoteSize,
+            remoteModifiedAt: existing.remoteModifiedAt || incoming.remoteModifiedAt,
           };
           upgrades.push(upgraded);
           known = known.map((track) => (track.id === existing.id ? upgraded : track));
         }
+        attachIds.push(existing.id);
         continue;
       }
       accepted.push(bundle);
       known = [...known, bundle.track];
     }
-    const ids = accepted.map((bundle) => bundle.track.id);
+    const ids = [...accepted.map((bundle) => bundle.track.id), ...attachIds].filter(
+      (id, index, list) => list.indexOf(id) === index,
+    );
     set((state) => {
       const nextMarkers = { ...state.markersByTrackId };
       for (const bundle of accepted) {

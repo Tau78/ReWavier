@@ -1,16 +1,28 @@
 import assert from 'node:assert/strict';
 
+const AUDIO_EXT = /\.(wav|aiff|aif|mp4|mp3|aac|m4a|caf|flac|ogg|json)$/i;
+
 function audioMatchKey(fileName) {
   const decoded = decodeURIComponent(String(fileName).replace(/\+/g, ' '));
-  const lower = decoded.toLowerCase();
-  const dot = lower.lastIndexOf('.');
-  const base = dot > 0 ? decoded.slice(0, decoded.lastIndexOf('.')) : decoded;
+  const hasAudioExt = AUDIO_EXT.test(decoded);
+  if (!hasAudioExt) {
+    return decoded.toLowerCase();
+  }
+  const dot = decoded.lastIndexOf('.');
+  const base = dot > 0 ? decoded.slice(0, dot) : decoded;
   return base.toLowerCase();
+}
+
+function audioMatchKeyLoose(fileName) {
+  return audioMatchKey(fileName)
+    .replace(/[_.-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function importNameKey(track) {
   const raw = track.sourceFileName || track.title || '';
-  return raw ? audioMatchKey(raw) : '';
+  return raw ? audioMatchKeyLoose(raw) : '';
 }
 
 function tracksAreSameImport(left, right) {
@@ -125,5 +137,13 @@ assert.deepEqual(
   ['kept'],
 );
 assert.deepEqual(collapsed.albums[0].trackIds, ['kept']);
+
+assert.equal(
+  tracksAreSameImport(
+    { id: 'phone', title: '03. Room Pt.1' },
+    { id: 'stub', title: '03. Room Pt.1', sourceFileName: '03._Room_Pt.1.mp3' },
+  ),
+  true,
+);
 
 console.log('check-import-dedupe: ok');
