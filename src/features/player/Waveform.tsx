@@ -50,6 +50,8 @@ const MIN_WINDOW_MS = 800;
 const DRAG_THRESHOLD = 8;
 const LONG_PRESS_MS = 480;
 const PIN_HIT = 44;
+const PIN_BUBBLE_W = 132;
+const PIN_BUBBLE_GAP = 6;
 const HANDLE_HIT = 28;
 const PLAYHEAD_HALF = 7;
 /** Cap native seeks during pan scrub; UI position updates every frame. */
@@ -513,19 +515,31 @@ function ZoomMarkerPin({
   const preview = markerPreview(marker.text);
   const says = author === 'Tu' ? 'Tu dici:' : `${author} dice:`;
   const flipLeft = tapeWidth > 0 && left > tapeWidth * 0.58;
+  const bubbleExtra = PIN_BUBBLE_W + PIN_BUBBLE_GAP;
 
   return (
     <View
-      style={[styles.zoomPinWrap, { left }, dragging && styles.zoomPinDragging]}
+      style={[
+        styles.zoomPinWrap,
+        {
+          left,
+          width: PIN_HIT + bubbleExtra,
+          marginLeft: flipLeft ? -(PIN_HIT / 2 + bubbleExtra) : -(PIN_HIT / 2),
+        },
+        dragging && styles.zoomPinDragging,
+      ]}
       {...pan.panHandlers}
       accessibilityRole="adjustable"
       accessibilityLabel={`${says} ${preview || formatTimecode(displayMs)}`}
-      accessibilityHint="Tocca per aprire. Tieni premuto per leggere tutto. Trascina per spostare."
+      accessibilityHint="Tocca per aprire. Tieni premuto il fumetto per leggere tutto. Trascina per spostare."
     >
-      {dragging ? <Text style={styles.dragTime}>{formatTimecode(displayMs)}</Text> : null}
+      {dragging ? (
+        <Text style={[styles.dragTime, { left: flipLeft ? bubbleExtra : 0 }]}>
+          {formatTimecode(displayMs)}
+        </Text>
+      ) : null}
       {!dragging ? (
         <View
-          pointerEvents="none"
           style={[
             styles.pinBubble,
             { borderColor: pinColor },
@@ -550,21 +564,26 @@ function ZoomMarkerPin({
         </View>
       ) : null}
       <View
-        style={[
-          styles.pinHead,
-          { backgroundColor: pinColor, shadowColor: pinColor },
-          dragging && styles.pinHeadActive,
-          marker.hidden && styles.pinHidden,
-        ]}
-      />
-      <View
-        style={[
-          styles.pinStem,
-          { backgroundColor: pinColor },
-          dragging && styles.pinStemActive,
-          marker.hidden && styles.pinHidden,
-        ]}
-      />
+        pointerEvents="none"
+        style={[styles.pinColumn, { left: flipLeft ? bubbleExtra : 0 }]}
+      >
+        <View
+          style={[
+            styles.pinHead,
+            { backgroundColor: pinColor, shadowColor: pinColor },
+            dragging && styles.pinHeadActive,
+            marker.hidden && styles.pinHidden,
+          ]}
+        />
+        <View
+          style={[
+            styles.pinStem,
+            { backgroundColor: pinColor },
+            dragging && styles.pinStemActive,
+            marker.hidden && styles.pinHidden,
+          ]}
+        />
+      </View>
     </View>
   );
 }
@@ -1707,16 +1726,20 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 2,
     bottom: 2,
-    width: PIN_HIT,
-    marginLeft: -(PIN_HIT / 2),
-    alignItems: 'center',
     zIndex: 6,
     overflow: 'visible',
+  },
+  pinColumn: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: PIN_HIT,
+    alignItems: 'center',
   },
   pinBubble: {
     position: 'absolute',
     top: 0,
-    width: 132,
+    width: PIN_BUBBLE_W,
     backgroundColor: colors.surface,
     borderRadius: 8,
     borderWidth: 1,

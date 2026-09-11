@@ -79,7 +79,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Appunto per intero',
-        body: 'Tieni premuto un appunto sull’onda: lo leggi tutto, anche se sul fumetto è tagliato.',
+        body: 'Tieni premuto un appunto sull’onda, anche sul dettaglio: lo leggi tutto, anche se sul fumetto è tagliato.',
       },
     ],
   },
