@@ -520,7 +520,7 @@ function ZoomMarkerPin({
       {...pan.panHandlers}
       accessibilityRole="adjustable"
       accessibilityLabel={`${says} ${preview || formatTimecode(displayMs)}`}
-      accessibilityHint="Tocca per aprire, tieni premuto per ascoltare intorno o l’esercizio, trascina per spostare"
+      accessibilityHint="Tocca per aprire. Tieni premuto per leggere tutto. Trascina per spostare."
     >
       {dragging ? <Text style={styles.dragTime}>{formatTimecode(displayMs)}</Text> : null}
       {!dragging ? (
@@ -1169,7 +1169,7 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
                   delayLongPress={LONG_PRESS_MS}
                   accessibilityRole="button"
                   accessibilityLabel={`Parti da ${formatTimecode(marker.timestampMs)}${preview ? `. ${preview}` : ''}`}
-                  accessibilityHint="Parte da questo punto. Tieni premuto per ascoltare intorno o l’esercizio."
+                  accessibilityHint="Parte da questo punto. Tieni premuto per leggere tutto."
                   style={({ pressed }) => [
                     styles.cueChip,
                     { borderColor: pinColor },
@@ -1295,9 +1295,10 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
         visible={menuMarker != null}
         title={
           menuMarker
-            ? `${formatTimecode(menuMarker.timestampMs)}${markerPreview(menuMarker.text) ? ` · ${markerPreview(menuMarker.text)}` : ''}`
+            ? `${formatTimecode(menuMarker.timestampMs)} · ${markerAuthorName(menuMarker)}`
             : 'Appunto'
         }
+        message={menuMarker?.text}
         actions={
           menuMarker
             ? [
