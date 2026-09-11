@@ -73,6 +73,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Titolo più lungo in lista',
         body: 'Nella lista il nome del brano ha più spazio. Il tempo sta sulla riga sotto, prima del nome dell’album.',
       },
+      {
+        title: 'Aggiorna da Drive',
+        body: 'Tocchi Aggiorna e lo spin si ferma quando Drive ha risposto. Se Drive non risponde, te lo dice. Puoi toccare di nuovo per annullare.',
+      },
     ],
   },
 ];

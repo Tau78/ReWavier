@@ -23,6 +23,7 @@ type DownloadProgressActions = {
   setFileFraction: (fraction: number) => void;
   advance: () => void;
   requestPause: () => void;
+  clearPauseRequested: () => void;
   setCurrentCancel: (cancel: (() => void) | null) => void;
   setDriveNews: (albumId: string, count: number) => void;
   end: () => void;
@@ -99,13 +100,18 @@ export const useDownloadProgressStore = create<DownloadProgressState & DownloadP
     },
 
     requestPause() {
+      // Also used to cancel an Aggiorna listing (no download session yet).
+      set({ pauseRequested: true });
       if (!get().active) {
         return;
       }
-      set({ pauseRequested: true });
       const cancel = currentCancel;
       currentCancel = null;
       cancel?.();
+    },
+
+    clearPauseRequested() {
+      set({ pauseRequested: false });
     },
 
     setCurrentCancel(cancel) {

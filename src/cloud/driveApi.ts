@@ -1,6 +1,11 @@
 import { File } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
+import {
+  DRIVE_LIST_TIMEOUT_MS,
+  DRIVE_SLOW_MESSAGE,
+  isAbortError,
+} from '../domain/albumRefresh';
 import { DownloadPausedError, isDownloadPausedError } from '../domain/collectionDownloadVisual';
 import { softDownloadFraction } from '../domain/downloadProgress';
 import { ensureParentDirAsync } from '../files/fsSafe';
@@ -61,9 +66,24 @@ async function safeJsonParse<T>(response: Response, context: string): Promise<T>
   }
 }
 
+async function fetchDrive(url: string, init: RequestInit, timeoutMs = DRIVE_LIST_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (isAbortError(error) || controller.signal.aborted) {
+      throw new Error(DRIVE_SLOW_MESSAGE);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function driveGet<T>(path: string): Promise<T> {
   const call = async (access: string) =>
-    fetch(`${DRIVE}${path}`, {
+    fetchDrive(`${DRIVE}${path}`, {
       headers: { Authorization: `Bearer ${access}` },
     });
   let response = await call(await token());
