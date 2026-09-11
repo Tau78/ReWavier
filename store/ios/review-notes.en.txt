@@ -1,35 +1,37 @@
-UPDATE 1.0.3 (build 78)
+UPDATE 1.0.4 (build 86)
 
-This is a minor update. Changes:
-• First Drive import now creates the on-device inbox folder before download (previously failed on a clean install).
-• The binary listens for Expo EAS Update on the production channel (JS-only bugfixes). No new native permissions.
+This is a minor update to an app already on the App Store. Changes for reviewers:
+• Album page keeps a small in-page player and resumes the last track and position.
+• Drive refresh lists new songs without hanging the refresh control; long-press a note on the waveform to read the full text.
+• Account deletion remains in Settings (Elimina account).
 
 No new permissions, no IAP, no ads, no ATT.
 
 1) SCREEN RECORDING
-Not attached. This is an update to an app already on the App Store. No IAP, no ATT, no public social feed, no report/block flow. Notes are private on-device.
+Not attached. This is an update. No IAP, no ATT, no public social feed, no report/block flow. Notes are private on-device. A recording will be provided if App Review asks in Resolution Center.
 
 2) DEVICES AND OS TESTED BEFORE SUBMISSION
-- TestFlight production build 78 (same devices used for 1.0.2)
-- iPad supported
+- TestFlight production build 86 (same review path as 1.0.3)
+- iPhone (primary) and iPad supported
+- We do not list a specific iPhone model here; testing was on the physical device used for TestFlight 1.0.4
 
 3) WHAT THE APP DOES / WHO IT IS FOR
 ReWavier is a listening notebook: open audio, pause, and write a note on the exact moment on the waveform. For creators, bands, teachers, and business. Files stay on the phone. Google Drive and iCloud are optional copies.
 
 4) HOW TO SET UP AND USE THE MAIN FEATURES
 SIGN IN — open the app → email and password (not magic link, not Apple/Google for review).
-Email / password: App Store Connect → App Review Information → Sign-In Required (same fields; do not paste the password into public docs or git).
+Email / password: App Store Connect → App Review Information → Sign-In Required (same dedicated fields; do not paste the password into public docs).
 Review account does not expire. First-run library is empty (no demo tracks).
 Then:
 1. Library → Drive → open a folder → “Scegli” to import audio.
-2. Open a track → tap + to add a note at the playhead.
-3. Account deletion: Library → gear → Settings → “Elimina account” → confirm → back to login.
+2. Open an album or a track → tap + to add a note at the playhead.
+3. Long-press a note on the waveform to read the full text.
+4. Account deletion: Settings → “Elimina account” → confirm → back to login.
 
 5) EXTERNAL SERVICES USED FOR CORE FEATURES
 - Sign in with Apple / Google (optional; review uses email/password)
 - Google Drive (optional import/sync; drive.file only)
 - iCloud (optional iPhone-to-iPhone copy)
-- Expo EAS Update (JS updates for the production store binary)
 None of: ads, analytics, payment processor, AI. No ReWavier server for accounts.
 
 6) REGIONAL DIFFERENCES
