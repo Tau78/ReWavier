@@ -25,4 +25,14 @@ const sketch = readFileSync(join(root, 'src/features/library/RecordSketchScreen.
 assert.match(sketch, /applyPlaybackAudioMode/);
 assert.match(sketch, /shouldPlayInBackground:\s*false/);
 
+const auth = readFileSync(join(root, 'src/app/AuthenticatedApp.tsx'), 'utf8');
+assert.match(auth, /<WaveformDecoderHost/);
+assert.match(auth, /<ClipExtractorHost/);
+assert.doesNotMatch(auth, /mediaHostsShouldMount/);
+assert.doesNotMatch(auth, /mediaHostsActive/);
+
+const appTsx = readFileSync(join(root, 'App.tsx'), 'utf8');
+assert.match(appTsx, /state === 'background'/);
+assert.doesNotMatch(appTsx, /state === 'inactive'/);
+
 console.log('check-background-playback: ok');

@@ -63,7 +63,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Ascolto più solido su iPhone',
-        body: 'Meno chiusure improvvise mentre passi da un brano all’altro o lasci l’app in sottofondo.',
+        body: 'Meno chiusure improvvise quando lasci l’app in sottofondo o passi a un’altra app, anche se stavi ascoltando.',
       },
       {
         title: 'Album più pulito',
