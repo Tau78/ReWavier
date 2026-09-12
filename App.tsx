@@ -41,7 +41,7 @@ export default function App() {
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'background' || state === 'inactive') {
+      if (state === 'background') {
         void flushLibraryPersist().catch(() => undefined);
       }
     });
