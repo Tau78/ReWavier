@@ -2,10 +2,23 @@ import assert from 'node:assert/strict';
 
 const DRIVE_LIST_TIMEOUT_MS = 20_000;
 const ALBUM_REFRESH_TIMEOUT_MS = 40_000;
+const ALBUM_REFRESH_WAIT_FULL_MS = 0;
+const ALBUM_REFRESH_WAIT_SAME_ALBUM_MS = 12_000;
 const DRIVE_SLOW_MESSAGE = 'Drive non risponde. Riprova tra poco.';
+
+function albumRefreshWaitMs(prevKind) {
+  if (prevKind === 'album') {
+    return ALBUM_REFRESH_WAIT_SAME_ALBUM_MS;
+  }
+  return ALBUM_REFRESH_WAIT_FULL_MS;
+}
 
 assert.ok(DRIVE_LIST_TIMEOUT_MS <= ALBUM_REFRESH_TIMEOUT_MS);
 assert.ok(DRIVE_SLOW_MESSAGE.includes('Riprova'));
+assert.equal(albumRefreshWaitMs('full'), 0);
+assert.equal(albumRefreshWaitMs(null), 0);
+assert.equal(albumRefreshWaitMs('album'), ALBUM_REFRESH_WAIT_SAME_ALBUM_MS);
+assert.ok(albumRefreshWaitMs('album') < ALBUM_REFRESH_TIMEOUT_MS);
 
 function isAbortError(error) {
   if (!error || typeof error !== 'object') {

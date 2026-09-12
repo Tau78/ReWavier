@@ -4,6 +4,20 @@ export const DRIVE_LIST_TIMEOUT_MS = 20_000;
 /** Whole Aggiorna listing (elenco + brani nuovi in lista). */
 export const ALBUM_REFRESH_TIMEOUT_MS = 40_000;
 
+/** Do not sit behind a full-library Drive pass. */
+export const ALBUM_REFRESH_WAIT_FULL_MS = 0;
+
+/** Same album already listing — wait a bit, then list anyway. */
+export const ALBUM_REFRESH_WAIT_SAME_ALBUM_MS = 12_000;
+
+/** How long Aggiorna may wait for an in-flight pass before listing this album. */
+export function albumRefreshWaitMs(prevKind: 'full' | 'album' | null | undefined): number {
+  if (prevKind === 'album') {
+    return ALBUM_REFRESH_WAIT_SAME_ALBUM_MS;
+  }
+  return ALBUM_REFRESH_WAIT_FULL_MS;
+}
+
 export const DRIVE_SLOW_MESSAGE = 'Drive non risponde. Riprova tra poco.';
 
 export type AwaitJobResult = 'done' | 'timeout' | 'cancelled';
