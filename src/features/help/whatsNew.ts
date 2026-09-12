@@ -78,6 +78,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         body: 'Tocchi Aggiorna e arrivano anche le versioni (01, 02, 03): restano brani distinti da confrontare. Se non c’è niente di nuovo, te lo dice una volta.',
       },
       {
+        title: 'Aggiorna più pronto',
+        body: 'Tocchi Aggiorna e controlla questo album subito. Non aspetta che gli altri album finiscano di allinearsi.',
+      },
+      {
         title: 'Appunto per intero',
         body: 'Tieni premuto un appunto sull’onda, anche sul dettaglio: lo leggi tutto, anche se sul fumetto è tagliato.',
       },

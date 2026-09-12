@@ -40,6 +40,7 @@ import { saveDocumentFromUri } from '../files/albumDocuments';
 import { copyToDownloads, ensureInboxDirectory, inboxDirectory } from '../files/downloads';
 import { safeTempFileName } from '../files/fileNames';
 import { writeSidecarToLibrary } from '../files/libraryFiles';
+import { awaitJobOrTimeout, ALBUM_REFRESH_WAIT_SAME_ALBUM_MS } from '../domain/albumRefresh';
 import { drivePeekNewsCount, isDownloadPausedError } from '../domain/collectionDownloadVisual';
 import { throwIfDownloadPaused, useDownloadProgressStore } from '../store/downloadProgressStore';
 import { flushLibraryPersist, useLibraryStore } from '../store/libraryStore';
@@ -286,6 +287,29 @@ type CloudSyncJobKind = 'full' | 'album';
 let cloudSyncJob: Promise<void> | null = null;
 let cloudSyncJobKind: CloudSyncJobKind | null = null;
 
+/** Serialize Drive work per album so Aggiorna does not wait for other albums. */
+const albumWorkTails = new Map<string, Promise<unknown>>();
+
+async function runExclusiveAlbumWork<T>(albumId: string, work: () => Promise<T>): Promise<T> {
+  const prev = albumWorkTails.get(albumId);
+  let settled!: T;
+  const job = (async () => {
+    if (prev) {
+      await awaitJobOrTimeout(prev, ALBUM_REFRESH_WAIT_SAME_ALBUM_MS);
+    }
+    settled = await work();
+  })();
+  albumWorkTails.set(albumId, job);
+  try {
+    await job;
+    return settled;
+  } finally {
+    if (albumWorkTails.get(albumId) === job) {
+      albumWorkTails.delete(albumId);
+    }
+  }
+}
+
 /** True while the same onboarded user that started this sync is still signed in. */
 function isCloudSyncUserActive(expectedUserId: string): boolean {
   const current = useSessionStore.getState().user;
@@ -355,10 +379,16 @@ type SyncOneDriveAlbumResult = {
  * Sync one Drive album: remotes, sidecars, media tree, order, notes.
  * On user/logout abort, finishes the sync store and returns `aborted: true`.
  */
+type SyncOneDriveAlbumOptions = {
+  /** Sidecars, covers, PDFs, album notes. Aggiorna listing skips these. */
+  extras?: boolean;
+};
+
 async function syncOneDriveAlbum(
   album: Album,
   expectedUserId: string,
   selfSlug: string | undefined,
+  options?: SyncOneDriveAlbumOptions,
 ): Promise<SyncOneDriveAlbumResult> {
   const empty = {
     added: 0,
@@ -521,6 +551,12 @@ async function syncOneDriveAlbum(
     }
     // Sidecar apply must not revive deleted IDs via setTrackMarkers on a stale snapshot.
     locals = albumLocalTracks(album.id, treeFolderIds);
+  }
+
+  if (options?.extras === false) {
+    store.touchAlbumSync(album.id);
+    await refreshAlbumDriveRole(album.id);
+    return { added, removed, versioned, notesPulled, needsFolderLink: false, aborted: false };
   }
 
   for (const remote of sidecars) {
@@ -704,38 +740,39 @@ export type SyncDriveAlbumResult = {
 };
 
 /**
- * Align one Drive album: import new remotes (as rows), mark changed files, pull notes.
- * Wait for an in-flight Drive pass instead of listing the same album twice.
+ * Align one Drive album: import new remotes (as rows), mark changed files.
+ * Does not wait for a full-library pass. Same album is serialized.
  */
 export async function syncDriveAlbum(albumId: string): Promise<SyncDriveAlbumResult> {
   const empty: SyncDriveAlbumResult = { added: 0, removed: 0, versioned: 0, notesPulled: 0 };
   if (useDownloadProgressStore.getState().pauseRequested) {
     return empty;
   }
-  const prev = cloudSyncJob;
-  let outcome = empty;
-  const job = (async () => {
-    if (prev) {
-      try {
-        await prev;
-      } catch {
-        // previous pass failed — still align this album
-      }
-    }
-    if (useDownloadProgressStore.getState().pauseRequested) {
-      return;
-    }
-    outcome = await runSyncDriveAlbumBody(albumId);
-  })().finally(() => {
-    if (cloudSyncJob === job) {
-      cloudSyncJob = null;
-      cloudSyncJobKind = null;
-    }
+  const outcome = await runExclusiveAlbumWork(albumId, () => runSyncDriveAlbumBody(albumId));
+  void runExclusiveAlbumWork(albumId, () => runSyncDriveAlbumExtras(albumId)).catch(() => {
+    // extras (notes, PDF) can arrive on the next Aggiorna
   });
-  cloudSyncJob = job;
-  cloudSyncJobKind = 'album';
-  await job;
   return outcome;
+}
+
+async function runSyncDriveAlbumExtras(albumId: string): Promise<void> {
+  if (useDownloadProgressStore.getState().pauseRequested) {
+    return;
+  }
+  const user = useSessionStore.getState().user;
+  if (!user?.onboarded || shouldSkipCloudSync(user)) {
+    return;
+  }
+  if (!(await hasDriveToken())) {
+    return;
+  }
+  const album = useLibraryStore
+    .getState()
+    .albums.find((item) => item.id === albumId && item.origin === 'drive');
+  if (!album) {
+    return;
+  }
+  await syncOneDriveAlbum(album, user.id, user.authorSlug, { extras: true });
 }
 
 async function runSyncDriveAlbumBody(albumId: string): Promise<SyncDriveAlbumResult> {
@@ -788,7 +825,9 @@ async function runSyncDriveAlbumBody(albumId: string): Promise<SyncDriveAlbumRes
     }
 
     try {
-      const result = await syncOneDriveAlbum(album, expectedUserId, user.authorSlug);
+      const result = await syncOneDriveAlbum(album, expectedUserId, user.authorSlug, {
+        extras: false,
+      });
       if (result.aborted) {
         return empty;
       }
@@ -902,7 +941,9 @@ async function runCloudSyncBody(): Promise<void> {
 
     try {
       for (const album of albums) {
-        const result = await syncOneDriveAlbum(album, expectedUserId, selfSlug);
+        const result = await runExclusiveAlbumWork(album.id, () =>
+          syncOneDriveAlbum(album, expectedUserId, selfSlug, { extras: true }),
+        );
         if (result.aborted) {
           return;
         }
