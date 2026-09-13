@@ -3,7 +3,6 @@ import * as LegacyFS from 'expo-file-system/legacy';
 
 import {
   DRIVE_LIST_TIMEOUT_MS,
-  DRIVE_SLOW_MESSAGE,
   DriveSlowError,
   isAbortError,
   isDriveSlowError,
