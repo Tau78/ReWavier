@@ -13,7 +13,6 @@ import {
   EXPO_IOS_GOOGLE_CLIENT_ID,
   STORE_IOS_GOOGLE_CLIENT_ID,
   WEB_GOOGLE_CLIENT_ID,
-  androidGoogleNativeRedirectUri,
   googleAccessTokenFromResult,
   googleAuthNeedsCodeExchange,
   googleAuthPromptFailedMessage,
@@ -307,7 +306,6 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
   const ids = readClientIds();
   const clientId = ids.clientId;
   const iosRedirect = ids.iosClientId ? iosGoogleRedirectUri(ids.iosClientId) : undefined;
-  const androidRedirect = androidGoogleNativeRedirectUri(ids.webClientId);
   const redirectUri = resolveGoogleOAuthRedirectUri({
     platform: Platform.OS,
     iosClientId: ids.iosClientId,
@@ -317,7 +315,7 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
       AuthSession.makeRedirectUri({
         scheme: 'rewavier',
         path: 'oauth',
-        native: androidRedirect,
+        native: ANDROID_GOOGLE_RETURN_URI,
       }),
   });
 
@@ -351,16 +349,8 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
         path: 'oauthredirect',
       };
     }
-    if (Platform.OS === 'android') {
-      const webId = ids.webClientId || WEB_GOOGLE_CLIENT_ID;
-      return {
-        native: androidGoogleNativeRedirectUri(webId),
-        scheme: reversedGoogleClientScheme(webId),
-        path: 'oauthredirect',
-      };
-    }
     return { native: ANDROID_GOOGLE_RETURN_URI, scheme: 'rewavier', path: 'oauth' };
-  }, [ids.iosClientId, ids.webClientId]);
+  }, [ids.iosClientId]);
 
   const [request, , promptAsync] = Google.useAuthRequest(authRequestConfig, redirectUriOptions);
   const requestRef = useRef(request);
@@ -388,10 +378,10 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
         if (!request || !authUrl) {
           throw new Error(notReady);
         }
-        // Google already allows the reversed Web-client scheme (same pattern as iOS).
+        // Google sees the HTTPS redirect; the bounce page opens rewavier://oauth.
         const browserResult = await WebBrowser.openAuthSessionAsync(
           authUrl,
-          androidRedirect,
+          ANDROID_GOOGLE_RETURN_URI,
           { createTask: false, showInRecents: true },
         );
         if (browserResult.type !== 'success') {

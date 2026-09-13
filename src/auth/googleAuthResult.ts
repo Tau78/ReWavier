@@ -72,17 +72,14 @@ export function reversedGoogleClientScheme(clientId: string): string {
   return `com.googleusercontent.apps.${clientId.replace(/\.apps\.googleusercontent\.com$/i, '')}`;
 }
 
-/**
- * Bounce page if we ever need HTTPS. The Web client does not list this URI yet
- * (Google returns redirect_uri_mismatch). Android uses the reversed Web scheme.
- */
+/** Web client authorize target. The bounce page then opens ANDROID_GOOGLE_RETURN_URI. */
 export const ANDROID_GOOGLE_REDIRECT_URI =
   'https://eventi.musicproeventi.it/ReWavier/oauth.html';
 
-/** Legacy custom-scheme bounce. Google blocks it on the Web client (invalid_request). */
+/** Custom-scheme bounce after the HTTPS page. The Play binary already listens here. */
 export const ANDROID_GOOGLE_RETURN_URI = 'rewavier://oauth';
 
-/** Redirect Google already accepts for the Web client (same pattern as iOS). */
+/** Reversed scheme — iOS / Desktop clients only. A Web client rejects it. */
 export function androidGoogleNativeRedirectUri(webClientId?: string): string {
   return `${reversedGoogleClientScheme(webClientId || WEB_GOOGLE_CLIENT_ID)}:/oauthredirect`;
 }
@@ -93,7 +90,7 @@ export const STORE_IOS_GOOGLE_CLIENT_ID =
 export const EXPO_IOS_GOOGLE_CLIENT_ID =
   '1049963169218-gpj1pb8omtfhuv76npnhjnsshkqc970g.apps.googleusercontent.com';
 export const WEB_GOOGLE_CLIENT_ID =
-  '1049963169218-k8i1dmlbsn1nqrv393u8pp111v7v2efc.apps.googleusercontent.com';
+  '1049963169218-oglbjve738epat5bsm2fnbunsolfh4ed.apps.googleusercontent.com';
 
 export function iosGoogleRedirectUri(iosClientId: string): string {
   return `${reversedGoogleClientScheme(iosClientId)}:/oauthredirect`;
@@ -102,7 +99,7 @@ export function iosGoogleRedirectUri(iosClientId: string): string {
 /**
  * Redirect URI sent to Google.
  * iOS store builds use the reversed iOS client scheme.
- * Android uses the reversed Web client scheme (Google already allows it).
+ * Android uses the HTTPS bounce page on the Web application client.
  */
 export function resolveGoogleOAuthRedirectUri(opts: {
   platform: string;
@@ -114,7 +111,7 @@ export function resolveGoogleOAuthRedirectUri(opts: {
     return iosGoogleRedirectUri(opts.iosClientId);
   }
   if (opts.platform === 'android') {
-    return androidGoogleNativeRedirectUri(opts.webClientId);
+    return ANDROID_GOOGLE_REDIRECT_URI;
   }
   return opts.customSchemeUri;
 }
