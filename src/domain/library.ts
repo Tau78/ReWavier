@@ -91,8 +91,15 @@ export function albumTrackCount(
   return count;
 }
 
-export function mergeAlbumOrderFromCloud(previousIds: string[], incomingTrackIds: string[]): string[] {
-  const next = incomingTrackIds.filter((id) => !isSeparatorId(id) && !isVersionFolderId(id));
+export function mergeAlbumOrderFromCloud(
+  previousIds: string[],
+  incomingTrackIds: string[],
+  nestedTrackIds: string[] = [],
+): string[] {
+  const nested = new Set(nestedTrackIds);
+  const next = incomingTrackIds.filter(
+    (id) => !isSeparatorId(id) && !isVersionFolderId(id) && !nested.has(id),
+  );
   let lastIncomingIndex = -1;
   for (const id of previousIds) {
     if (isSeparatorId(id) || isVersionFolderId(id)) {

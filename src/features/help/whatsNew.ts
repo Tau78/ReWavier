@@ -94,6 +94,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Rispondi nella chat',
         body: 'Tocchi un appunto e vedi la conversazione: i tuoi messaggi a destra, gli altri a sinistra. Rispondi c’è già dal primo. Salva e l’ascolto riparte.',
       },
+      {
+        title: 'Cartelle album in comune',
+        body: 'Metti insieme le versioni di un brano o cambi l’ordine: resta sul telefono e lo vede chi ha la cartella Drive. Il loop A–B già viaggia con gli appunti.',
+      },
     ],
   },
 ];
