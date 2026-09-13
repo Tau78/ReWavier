@@ -9,13 +9,19 @@ import { useSessionStore } from '../store/sessionStore';
 import {
   GOOGLE_DRIVE_EXTRA_PARAMS,
   GOOGLE_IDENTITY_EXTRA_PARAMS,
-  ANDROID_GOOGLE_REDIRECT_URI,
+  ANDROID_GOOGLE_RETURN_URI,
+  EXPO_IOS_GOOGLE_CLIENT_ID,
+  STORE_IOS_GOOGLE_CLIENT_ID,
+  WEB_GOOGLE_CLIENT_ID,
   googleAccessTokenFromResult,
   googleAuthNeedsCodeExchange,
   googleAuthPromptFailedMessage,
   googleExchangeIsReady,
   googleTokenHasDriveScope,
+  iosGoogleRedirectUri,
+  pickGoogleClientIds,
   resolveGoogleOAuthRedirectUri,
+  reversedGoogleClientScheme,
   snapshotGoogleExchange,
   type GoogleExchangeExtras,
 } from './googleAuthResult';
@@ -56,28 +62,31 @@ function readClientIds() {
     googleAndroidClientId?: string;
   };
   const storeIos = validClientId(
-    extra.googleIosClientId || process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    extra.googleIosClientId ||
+      process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
+      STORE_IOS_GOOGLE_CLIENT_ID,
   );
   const expoIos = validClientId(
-    extra.googleExpoIosClientId || process.env.EXPO_PUBLIC_GOOGLE_EXPO_IOS_CLIENT_ID,
+    extra.googleExpoIosClientId ||
+      process.env.EXPO_PUBLIC_GOOGLE_EXPO_IOS_CLIENT_ID ||
+      EXPO_IOS_GOOGLE_CLIENT_ID,
   );
   const android = validClientId(
     extra.googleAndroidClientId || process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
   );
-  const web = validClientId(extra.googleWebClientId || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID);
+  const web = validClientId(
+    extra.googleWebClientId || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || WEB_GOOGLE_CLIENT_ID,
+  );
   const inExpoGo = Constants.appOwnership === 'expo';
-  const iosClientId = inExpoGo ? undefined : storeIos ?? expoIos;
-  const clientId =
-    Platform.OS === 'android'
-      ? android ?? web
-      : inExpoGo
-        ? web ?? expoIos ?? storeIos
-        : iosClientId ?? web;
   return {
-    iosClientId,
-    androidClientId: android,
-    webClientId: web,
-    clientId,
+    ...pickGoogleClientIds({
+      platform: Platform.OS,
+      inExpoGo,
+      storeIos,
+      expoIos,
+      android,
+      web,
+    }),
     inExpoGo,
   };
 }
@@ -283,38 +292,54 @@ export function isGoogleConfigured(): boolean {
 function useGoogleAuthRequest(kind: GoogleAuthKind) {
   const ids = readClientIds();
   const clientId = ids.clientId;
+  const iosRedirect = ids.iosClientId ? iosGoogleRedirectUri(ids.iosClientId) : undefined;
   const redirectUri = resolveGoogleOAuthRedirectUri({
     platform: Platform.OS,
     iosClientId: ids.iosClientId,
-    customSchemeUri: AuthSession.makeRedirectUri({
-      scheme: 'rewavier',
-      path: 'oauth',
-      native: ANDROID_GOOGLE_REDIRECT_URI,
-    }),
+    customSchemeUri:
+      iosRedirect ??
+      AuthSession.makeRedirectUri({
+        scheme: 'rewavier',
+        path: 'oauth',
+        native: ANDROID_GOOGLE_RETURN_URI,
+      }),
   });
 
   // Stable config so a loading-state re-render does not mint a new PKCE verifier mid-login.
-  // Omit empty androidClientId: Expo treats '' as the client and skips the web fallback.
+  // Standalone iOS: only the iOS client. A web client + custom scheme is Error 400.
   const authRequestConfig = useMemo(() => {
     const config: Parameters<typeof Google.useAuthRequest>[0] = {
-      webClientId: ids.webClientId,
-      clientId: clientId ?? ids.webClientId,
+      clientId,
       redirectUri,
       language: 'it',
       shouldAutoExchangeCode: false,
       scopes: kind === 'drive' ? DRIVE_SCOPES : IDENTITY_SCOPES,
       extraParams: kind === 'drive' ? GOOGLE_DRIVE_EXTRA_PARAMS : GOOGLE_IDENTITY_EXTRA_PARAMS,
     };
-    if (ids.iosClientId) {
+    if (ids.iosClientId && Platform.OS === 'ios' && !ids.inExpoGo) {
       config.iosClientId = ids.iosClientId;
+    } else if (ids.webClientId) {
+      config.webClientId = ids.webClientId;
     }
     if (ids.androidClientId) {
       config.androidClientId = ids.androidClientId;
     }
     return config;
-  }, [kind, ids.iosClientId, ids.androidClientId, ids.webClientId, clientId, redirectUri]);
+  }, [kind, ids.iosClientId, ids.androidClientId, ids.webClientId, ids.inExpoGo, clientId, redirectUri]);
 
-  const [request, , promptAsync] = Google.useAuthRequest(authRequestConfig);
+  const redirectUriOptions = useMemo(
+    () =>
+      ids.iosClientId && Platform.OS === 'ios'
+        ? {
+            native: iosGoogleRedirectUri(ids.iosClientId),
+            scheme: reversedGoogleClientScheme(ids.iosClientId),
+            path: 'oauthredirect',
+          }
+        : { native: ANDROID_GOOGLE_RETURN_URI, scheme: 'rewavier', path: 'oauth' },
+    [ids.iosClientId],
+  );
+
+  const [request, , promptAsync] = Google.useAuthRequest(authRequestConfig, redirectUriOptions);
   const requestRef = useRef(request);
   requestRef.current = request;
   const promptAsyncRef = useRef(promptAsync);
@@ -335,8 +360,21 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
         // Custom Tabs warmup is optional
       }
       try {
-        // Same Android task so Google can return into the app (else AuthSession is `dismiss`).
-        return await promptAsyncRef.current({ createTask: false, showInRecents: true });
+        const request = requestRef.current;
+        const authUrl = request?.url;
+        if (!request || !authUrl) {
+          throw new Error(notReady);
+        }
+        // Google sees the HTTPS redirect; the bounce page opens this custom scheme.
+        const browserResult = await WebBrowser.openAuthSessionAsync(
+          authUrl,
+          ANDROID_GOOGLE_RETURN_URI,
+          { createTask: false, showInRecents: true },
+        );
+        if (browserResult.type !== 'success') {
+          return { type: browserResult.type };
+        }
+        return request.parseReturnUrl(browserResult.url);
       } finally {
         try {
           await WebBrowser.coolDownAsync();

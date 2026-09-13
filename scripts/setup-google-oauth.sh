@@ -26,7 +26,7 @@ gcloud services enable \
 echo
 echo "Apro la console per i client OAuth (30 secondi):"
 echo "1) Crea client iOS  → Bundle ID: $BUNDLE_ID"
-echo "2) Crea client Web  → URI di reindirizzamento: rewavier://oauth"
+echo "2) Crea client Web  → URI di reindirizzamento: https://eventi.musicproeventi.it/ReWavier/oauth.html"
 echo "3) Crea client Android → package $BUNDLE_ID + impronta SHA-1 della firma Play/EAS"
 echo "4) Schermata consenso: pubblica in Produzione, nome ReWavier,"
 echo "   privacy https://eventi.musicproeventi.it/ReWavier/Privacy.html"

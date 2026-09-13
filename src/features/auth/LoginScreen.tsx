@@ -13,6 +13,7 @@ import {
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { applyExpoUpdateIfReady } from '../../app/applyExpoUpdate';
 import { googleAuthPromptFailedMessage } from '../../auth/googleAuthResult';
 import { isGoogleConfigured, useGoogleSignIn } from '../../auth/useGoogleSignIn';
 import { useSessionStore } from '../../store/sessionStore';
@@ -118,6 +119,7 @@ export function LoginScreen() {
 
   useEffect(() => {
     mountedRef.current = true;
+    void applyExpoUpdateIfReady();
     return () => {
       mountedRef.current = false;
     };
