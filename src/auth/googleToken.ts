@@ -1,8 +1,11 @@
+import { DriveSlowError, isAbortError } from '../domain/albumRefresh';
 import {
   clearGoogleToken,
   loadGoogleToken,
   saveGoogleToken,
 } from '../files/sessionPersist';
+
+const TOKEN_REFRESH_TIMEOUT_MS = 15_000;
 
 export type GoogleAuth = {
   accessToken: string;
@@ -47,11 +50,24 @@ async function refreshAccess(auth: GoogleAuth): Promise<GoogleAuth> {
     grant_type: 'refresh_token',
     refresh_token: auth.refreshToken,
   });
-  const response = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: body.toString(),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TOKEN_REFRESH_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (isAbortError(error) || controller.signal.aborted) {
+      throw new DriveSlowError();
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!response.ok) {
     throw new Error('Sessione Google scaduta. Accedi di nuovo con Google.');
   }

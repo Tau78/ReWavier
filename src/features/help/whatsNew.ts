@@ -75,7 +75,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Aggiorna da Drive',
-        body: 'Tocchi Aggiorna e arrivano anche le versioni (01, 02, 03): restano brani distinti da confrontare. Se non c’è niente di nuovo, te lo dice una volta.',
+        body: 'Tocchi Aggiorna e controlla questo album subito. Arrivano anche le versioni (01, 02, 03). Se non c’è niente di nuovo, te lo dice una volta.',
       },
       {
         title: 'Appunto per intero',

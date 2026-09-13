@@ -19,12 +19,7 @@ import {
   type DriveAlbumPeek,
   type SyncDriveAlbumResult,
 } from '../../cloud/syncEngine';
-import {
-  ALBUM_REFRESH_TIMEOUT_MS,
-  DRIVE_SLOW_MESSAGE,
-  isDriveSlowError,
-  withTimeout,
-} from '../../domain/albumRefresh';
+import { DRIVE_SLOW_MESSAGE, isDriveSlowError } from '../../domain/albumRefresh';
 import { canWriteWithRole, folderRoleLine, roleOfAlbum } from '../../domain/folderRole';
 import { orderedAlbumItemIds } from '../../domain/albumOrder';
 import { playableAlbumTrackIds, versionFolderById, type AlbumListReorderItem } from '../../domain/albumVersions';
@@ -214,7 +209,7 @@ export function CollectionScreen() {
   const peekAlbum = useCallback(async (): Promise<DriveAlbumPeek> => {
     const empty: DriveAlbumPeek = { newRemoteCount: 0, changedTrackIds: [] };
     // Allow peek while syncing — returning empty made Aggiorna look dead.
-    if (!isDriveAlbum || isCollectionDownloadBusy()) {
+    if (!isDriveAlbum || isCollectionDownloadBusy() || albumRefreshJobRef.current) {
       return empty;
     }
     if (peekJobRef.current) {
@@ -371,7 +366,7 @@ export function CollectionScreen() {
           notesPulled: 0,
         };
         if (isDriveAlbum) {
-          syncResult = await withTimeout(syncDriveAlbum(id), ALBUM_REFRESH_TIMEOUT_MS);
+          syncResult = await syncDriveAlbum(id);
         }
         if (!mountedRef.current) {
           return;

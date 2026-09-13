@@ -1,11 +1,37 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const DRIVE_LIST_TIMEOUT_MS = 20_000;
 const ALBUM_REFRESH_TIMEOUT_MS = 40_000;
+const ALBUM_REFRESH_WAIT_FULL_MS = 0;
+const ALBUM_REFRESH_WAIT_SAME_ALBUM_MS = 12_000;
 const DRIVE_SLOW_MESSAGE = 'Drive non risponde. Riprova tra poco.';
+
+function albumRefreshWaitMs(prevKind) {
+  if (prevKind === 'album') {
+    return ALBUM_REFRESH_WAIT_SAME_ALBUM_MS;
+  }
+  return ALBUM_REFRESH_WAIT_FULL_MS;
+}
 
 assert.ok(DRIVE_LIST_TIMEOUT_MS <= ALBUM_REFRESH_TIMEOUT_MS);
 assert.ok(DRIVE_SLOW_MESSAGE.includes('Riprova'));
+assert.equal(albumRefreshWaitMs('full'), 0);
+assert.equal(albumRefreshWaitMs(null), 0);
+assert.equal(albumRefreshWaitMs('album'), ALBUM_REFRESH_WAIT_SAME_ALBUM_MS);
+
+const collection = readFileSync(join(root, 'src/features/library/CollectionScreen.tsx'), 'utf8');
+assert.doesNotMatch(collection, /withTimeout\(\s*syncDriveAlbum/);
+assert.match(collection, /syncResult = await syncDriveAlbum\(id\)/);
+
+const engine = readFileSync(join(root, 'src/cloud/syncEngine.ts'), 'utf8');
+assert.match(engine, /runExclusiveAlbumWork/);
+assert.match(engine, /extras: false/);
+assert.doesNotMatch(engine, /const prev = cloudSyncJob;\s*\n\s*let outcome/);
 
 function isAbortError(error) {
   if (!error || typeof error !== 'object') {

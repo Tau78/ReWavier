@@ -1,10 +1,24 @@
 /** Drive listing HTTP: abort so the spinner can stop. */
 export const DRIVE_LIST_TIMEOUT_MS = 20_000;
 
-/** Whole Aggiorna listing (elenco + brani nuovi in lista). */
+/** Safety ceiling only — Aggiorna must not fail the whole album on this timer. */
 export const ALBUM_REFRESH_TIMEOUT_MS = 40_000;
 
+/** Do not sit behind a full-library Drive pass. */
+export const ALBUM_REFRESH_WAIT_FULL_MS = 0;
+
+/** Same album already listing — wait a bit, then list anyway. */
+export const ALBUM_REFRESH_WAIT_SAME_ALBUM_MS = 12_000;
+
 export const DRIVE_SLOW_MESSAGE = 'Drive non risponde. Riprova tra poco.';
+
+/** How long Aggiorna may wait for an in-flight pass before listing this album. */
+export function albumRefreshWaitMs(prevKind: 'full' | 'album' | null | undefined): number {
+  if (prevKind === 'album') {
+    return ALBUM_REFRESH_WAIT_SAME_ALBUM_MS;
+  }
+  return ALBUM_REFRESH_WAIT_FULL_MS;
+}
 
 export type AwaitJobResult = 'done' | 'timeout' | 'cancelled';
 
