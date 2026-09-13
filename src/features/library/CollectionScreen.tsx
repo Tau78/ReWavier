@@ -44,7 +44,7 @@ import { colors, layout } from '../../theme/colors';
 import { EmptyGraphic, KindRow } from '../../theme/graphics';
 import { CollectionMarkers } from './CollectionMarkers';
 import { CollectionDownloadButton } from './CollectionDownloadButton';
-import { AlbumHero } from './AlbumHero';
+import { AlbumHero, albumListMeta } from './AlbumHero';
 import { AlbumDocuments } from './AlbumDocuments';
 import { AlbumNotes } from './AlbumNotes';
 import { AlbumSeparatorRow, SEPARATOR_ROW_HEIGHT } from './AlbumSeparatorRow';
@@ -538,9 +538,16 @@ export function CollectionScreen() {
           <Text style={styles.back}>‹</Text>
         </Pressable>
         <View style={styles.headerText}>
-          <KindRow label={KIND_LABEL[kind]} />
-          {kind === 'album' ? null : (
+          {kind === 'album' ? (
+            <View style={styles.headerAlbumLine}>
+              <KindRow label={KIND_LABEL[kind]} />
+              <Text style={styles.headerAlbumName} numberOfLines={1}>
+                {title ?? 'Senza nome'}
+              </Text>
+            </View>
+          ) : (
             <>
+              <KindRow label={KIND_LABEL[kind]} />
               <Text style={styles.title} numberOfLines={1}>
                 {title ?? 'Senza nome'}
               </Text>
@@ -647,14 +654,25 @@ export function CollectionScreen() {
         {album ? (
           <AlbumHero
             album={album}
-            trackCount={tracks.length}
             isPlayingThisAlbum={isPlayingThisAlbum}
             onPlay={playAlbum}
           />
         ) : null}
         {album ? (
-          <View style={styles.sectionRow}>
-            <Text style={styles.sectionLabel}>Tracce</Text>
+          <View style={styles.toolbar}>
+            {canReorder && listItems.length > 1 ? (
+              <Pressable
+                onPress={() => useLibraryStore.getState().sortCollectionAlphabetically(kind, id)}
+                style={({ pressed }) => [styles.sortIconBtn, pressed && styles.sortBtnPressed]}
+                accessibilityRole="button"
+                accessibilityLabel="Ordina per nome"
+              >
+                <Text style={styles.sortGlyph}>A→Z</Text>
+              </Pressable>
+            ) : null}
+            <Text style={styles.toolbarMeta} numberOfLines={1}>
+              {albumListMeta(album, tracks.length)}
+            </Text>
             <Pressable
               onPress={() => setShowAlbumInfo((open) => !open)}
               hitSlop={layout.hitSlop}
@@ -680,9 +698,8 @@ export function CollectionScreen() {
             ) : null}
             {canReorder && listItems.length > 1 ? (
               <Text style={styles.infoLine}>
-                {album
-                  ? 'Tieni premuto e trascina per spostare. Sopra un altro: li metti insieme. Fuori dalla cartella di versioni: lo stacchi.'
-                  : 'Tieni premuto una traccia e trascinala per riordinare.'}
+                Tieni premuto e trascina per spostare. Sopra un altro: li metti insieme. Fuori dalla
+                cartella di versioni: lo stacchi.
               </Text>
             ) : null}
           </View>
@@ -690,7 +707,7 @@ export function CollectionScreen() {
         {!album && canReorder && listItems.length > 1 ? (
           <Text style={styles.hint}>Tieni premuto una traccia e trascinala per riordinare.</Text>
         ) : null}
-        {canReorder && listItems.length > 1 ? (
+        {!album && canReorder && listItems.length > 1 ? (
           <Pressable
             onPress={() => useLibraryStore.getState().sortCollectionAlphabetically(kind, id)}
             style={({ pressed }) => [styles.sortBtn, pressed && styles.sortBtnPressed]}
@@ -950,6 +967,21 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  headerAlbumLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 0,
+    marginTop: 8,
+  },
+  headerAlbumName: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
   title: {
     color: colors.text,
     fontSize: 22,
@@ -1003,12 +1035,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  sectionRow: {
+  toolbar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 4,
-    paddingBottom: 8,
+    gap: 10,
+    paddingHorizontal: 2,
+    paddingTop: 2,
+    paddingBottom: 12,
+  },
+  toolbarMeta: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  sortIconBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
   infoBtn: {
     width: 28,
@@ -1069,13 +1116,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: 13,
     fontWeight: '600',
-  },
-  sectionLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
   },
   scrollHost: {
     flex: 1,
