@@ -94,6 +94,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Rispondi nella chat',
         body: 'Tocchi un appunto e vedi la conversazione: i tuoi messaggi a destra, gli altri a sinistra. Rispondi c’è già dal primo. Salva e l’ascolto riparte.',
       },
+      {
+        title: 'Continua con Google su Android',
+        body: 'Tocchi Continua con Google e si apre la scelta dell’account. Poi torni nell’app.',
+      },
     ],
   },
 ];

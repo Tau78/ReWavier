@@ -13,6 +13,7 @@ import {
   EXPO_IOS_GOOGLE_CLIENT_ID,
   STORE_IOS_GOOGLE_CLIENT_ID,
   WEB_GOOGLE_CLIENT_ID,
+  androidGoogleNativeRedirectUri,
   googleAccessTokenFromResult,
   googleAuthNeedsCodeExchange,
   googleAuthPromptFailedMessage,
@@ -289,19 +290,34 @@ export function isGoogleConfigured(): boolean {
   return Boolean(ids.clientId);
 }
 
+async function waitForGoogleAuthRequest(
+  getRequest: () => AuthSession.AuthRequest | null | undefined,
+): Promise<AuthSession.AuthRequest | null | undefined> {
+  for (let attempt = 0; attempt < 15; attempt += 1) {
+    const request = getRequest();
+    if (request?.url) {
+      return request;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  }
+  return getRequest();
+}
+
 function useGoogleAuthRequest(kind: GoogleAuthKind) {
   const ids = readClientIds();
   const clientId = ids.clientId;
   const iosRedirect = ids.iosClientId ? iosGoogleRedirectUri(ids.iosClientId) : undefined;
+  const androidRedirect = androidGoogleNativeRedirectUri(ids.webClientId);
   const redirectUri = resolveGoogleOAuthRedirectUri({
     platform: Platform.OS,
     iosClientId: ids.iosClientId,
+    webClientId: ids.webClientId,
     customSchemeUri:
       iosRedirect ??
       AuthSession.makeRedirectUri({
         scheme: 'rewavier',
         path: 'oauth',
-        native: ANDROID_GOOGLE_RETURN_URI,
+        native: androidRedirect,
       }),
   });
 
@@ -327,17 +343,24 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
     return config;
   }, [kind, ids.iosClientId, ids.androidClientId, ids.webClientId, ids.inExpoGo, clientId, redirectUri]);
 
-  const redirectUriOptions = useMemo(
-    () =>
-      ids.iosClientId && Platform.OS === 'ios'
-        ? {
-            native: iosGoogleRedirectUri(ids.iosClientId),
-            scheme: reversedGoogleClientScheme(ids.iosClientId),
-            path: 'oauthredirect',
-          }
-        : { native: ANDROID_GOOGLE_RETURN_URI, scheme: 'rewavier', path: 'oauth' },
-    [ids.iosClientId],
-  );
+  const redirectUriOptions = useMemo(() => {
+    if (ids.iosClientId && Platform.OS === 'ios') {
+      return {
+        native: iosGoogleRedirectUri(ids.iosClientId),
+        scheme: reversedGoogleClientScheme(ids.iosClientId),
+        path: 'oauthredirect',
+      };
+    }
+    if (Platform.OS === 'android') {
+      const webId = ids.webClientId || WEB_GOOGLE_CLIENT_ID;
+      return {
+        native: androidGoogleNativeRedirectUri(webId),
+        scheme: reversedGoogleClientScheme(webId),
+        path: 'oauthredirect',
+      };
+    }
+    return { native: ANDROID_GOOGLE_RETURN_URI, scheme: 'rewavier', path: 'oauth' };
+  }, [ids.iosClientId, ids.webClientId]);
 
   const [request, , promptAsync] = Google.useAuthRequest(authRequestConfig, redirectUriOptions);
   const requestRef = useRef(request);
@@ -360,15 +383,15 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
         // Custom Tabs warmup is optional
       }
       try {
-        const request = requestRef.current;
+        const request = await waitForGoogleAuthRequest(() => requestRef.current);
         const authUrl = request?.url;
         if (!request || !authUrl) {
           throw new Error(notReady);
         }
-        // Google sees the HTTPS redirect; the bounce page opens this custom scheme.
+        // Google already allows the reversed Web-client scheme (same pattern as iOS).
         const browserResult = await WebBrowser.openAuthSessionAsync(
           authUrl,
-          ANDROID_GOOGLE_RETURN_URI,
+          androidRedirect,
           { createTask: false, showInRecents: true },
         );
         if (browserResult.type !== 'success') {

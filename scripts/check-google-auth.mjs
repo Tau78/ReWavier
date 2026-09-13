@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 
 const GOOGLE_IDENTITY_EXTRA_PARAMS = {
   prompt: 'select_account',
@@ -48,9 +49,15 @@ function reversedGoogleClientScheme(clientId) {
 const ANDROID_GOOGLE_REDIRECT_URI =
   'https://eventi.musicproeventi.it/ReWavier/oauth.html';
 const ANDROID_GOOGLE_RETURN_URI = 'rewavier://oauth';
+const WEB_GOOGLE_CLIENT_ID =
+  '1049963169218-k8i1dmlbsn1nqrv393u8pp111v7v2efc.apps.googleusercontent.com';
 
 function iosGoogleRedirectUri(iosClientId) {
   return `${reversedGoogleClientScheme(iosClientId)}:/oauthredirect`;
+}
+
+function androidGoogleNativeRedirectUri(webClientId) {
+  return `${reversedGoogleClientScheme(webClientId || WEB_GOOGLE_CLIENT_ID)}:/oauthredirect`;
 }
 
 function resolveGoogleOAuthRedirectUri(opts) {
@@ -58,7 +65,7 @@ function resolveGoogleOAuthRedirectUri(opts) {
     return iosGoogleRedirectUri(opts.iosClientId);
   }
   if (opts.platform === 'android') {
-    return ANDROID_GOOGLE_REDIRECT_URI;
+    return androidGoogleNativeRedirectUri(opts.webClientId);
   }
   return opts.customSchemeUri;
 }
@@ -174,19 +181,28 @@ assert.equal(googleTokenHasDriveScope(undefined), false);
 
 const iosId = '1049963169218-o6tcahpfsdijj2lm811bmjs4vjaglb7v.apps.googleusercontent.com';
 const custom = 'rewavier://oauth';
+const androidNative =
+  'com.googleusercontent.apps.1049963169218-k8i1dmlbsn1nqrv393u8pp111v7v2efc:/oauthredirect';
 assert.equal(ANDROID_GOOGLE_RETURN_URI, custom);
 assert.match(ANDROID_GOOGLE_REDIRECT_URI, /^https:\/\/eventi\.musicproeventi\.it\/ReWavier\/oauth\.html$/);
+assert.equal(androidGoogleNativeRedirectUri(), androidNative);
+assert.equal(androidGoogleNativeRedirectUri(WEB_GOOGLE_CLIENT_ID), androidNative);
 assert.equal(
   resolveGoogleOAuthRedirectUri({ platform: 'ios', iosClientId: iosId, customSchemeUri: custom }),
   'com.googleusercontent.apps.1049963169218-o6tcahpfsdijj2lm811bmjs4vjaglb7v:/oauthredirect',
 );
 assert.equal(
-  resolveGoogleOAuthRedirectUri({ platform: 'android', iosClientId: iosId, customSchemeUri: custom }),
-  ANDROID_GOOGLE_REDIRECT_URI,
+  resolveGoogleOAuthRedirectUri({
+    platform: 'android',
+    iosClientId: iosId,
+    webClientId: WEB_GOOGLE_CLIENT_ID,
+    customSchemeUri: custom,
+  }),
+  androidNative,
 );
 assert.equal(
   resolveGoogleOAuthRedirectUri({ platform: 'android', iosClientId: undefined, customSchemeUri: custom }),
-  ANDROID_GOOGLE_REDIRECT_URI,
+  androidNative,
 );
 assert.equal(
   resolveGoogleOAuthRedirectUri({
@@ -194,7 +210,7 @@ assert.equal(
     iosClientId: iosId,
     customSchemeUri: 'exp://192.168.1.2:8081/--/oauth',
   }),
-  ANDROID_GOOGLE_REDIRECT_URI,
+  androidNative,
 );
 assert.equal(googleAuthPromptFailedMessage({ type: 'dismiss' }), null);
 assert.equal(googleAuthPromptFailedMessage({ type: 'cancel' }), null);
@@ -229,6 +245,24 @@ assert.equal(
 assert.equal(
   pickGoogleClientIds({ platform: 'ios', inExpoGo: false, web }).clientId,
   undefined,
+);
+
+const require = createRequire(import.meta.url);
+const appConfig = require('../app.config.js');
+const androidFilters = JSON.stringify(appConfig.expo.android.intentFilters ?? []);
+assert.match(
+  androidFilters,
+  /com\.googleusercontent\.apps\.1049963169218-k8i1dmlbsn1nqrv393u8pp111v7v2efc/,
+);
+const googleFilter = (appConfig.expo.android.intentFilters ?? []).find((filter) =>
+  JSON.stringify(filter.data ?? []).includes(
+    'com.googleusercontent.apps.1049963169218-k8i1dmlbsn1nqrv393u8pp111v7v2efc',
+  ),
+);
+assert.equal(googleFilter?.data?.length, 1);
+assert.equal(
+  googleFilter?.data?.[0]?.scheme,
+  'com.googleusercontent.apps.1049963169218-k8i1dmlbsn1nqrv393u8pp111v7v2efc',
 );
 
 console.log('ok google auth snapshots the code; identity login skips Drive consent');

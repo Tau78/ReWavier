@@ -37,6 +37,7 @@ const androidClientId = isGoogleClientId(
   : '';
 const storeScheme = reversedGoogleScheme(iosClientId);
 const expoScheme = reversedGoogleScheme(expoIosClientId);
+const webScheme = reversedGoogleScheme(webClientId);
 const urlSchemes = ['rewavier'];
 if (storeScheme) {
   urlSchemes.push(storeScheme);
@@ -79,6 +80,15 @@ module.exports = {
             { scheme: 'rewavier', pathPrefix: '/oauth' },
           ],
         },
+        ...(webScheme
+          ? [
+              {
+                action: 'VIEW',
+                category: ['BROWSABLE', 'DEFAULT'],
+                data: [{ scheme: webScheme }],
+              },
+            ]
+          : []),
       ],
     },
   },

@@ -73,15 +73,19 @@ export function reversedGoogleClientScheme(clientId: string): string {
 }
 
 /**
- * Android talks to the Web client. Google blocks custom schemes on Web clients
- * (Error 400 invalid_request), so authorize + token use this HTTPS page.
- * The page then opens ANDROID_GOOGLE_RETURN_URI so the app can finish login.
+ * Bounce page if we ever need HTTPS. The Web client does not list this URI yet
+ * (Google returns redirect_uri_mismatch). Android uses the reversed Web scheme.
  */
 export const ANDROID_GOOGLE_REDIRECT_URI =
   'https://eventi.musicproeventi.it/ReWavier/oauth.html';
 
-/** Custom-scheme bounce target after the HTTPS page. AuthSession listens here. */
+/** Legacy custom-scheme bounce. Google blocks it on the Web client (invalid_request). */
 export const ANDROID_GOOGLE_RETURN_URI = 'rewavier://oauth';
+
+/** Redirect Google already accepts for the Web client (same pattern as iOS). */
+export function androidGoogleNativeRedirectUri(webClientId?: string): string {
+  return `${reversedGoogleClientScheme(webClientId || WEB_GOOGLE_CLIENT_ID)}:/oauthredirect`;
+}
 
 /** Store iOS client — used if Expo extra is missing (OTA / archive). */
 export const STORE_IOS_GOOGLE_CLIENT_ID =
@@ -98,18 +102,19 @@ export function iosGoogleRedirectUri(iosClientId: string): string {
 /**
  * Redirect URI sent to Google.
  * iOS store builds use the reversed iOS client scheme.
- * Android uses HTTPS (Web client); a custom scheme is Error 400.
+ * Android uses the reversed Web client scheme (Google already allows it).
  */
 export function resolveGoogleOAuthRedirectUri(opts: {
   platform: string;
   iosClientId?: string;
+  webClientId?: string;
   customSchemeUri: string;
 }): string {
   if (opts.platform === 'ios' && opts.iosClientId) {
     return iosGoogleRedirectUri(opts.iosClientId);
   }
   if (opts.platform === 'android') {
-    return ANDROID_GOOGLE_REDIRECT_URI;
+    return androidGoogleNativeRedirectUri(opts.webClientId);
   }
   return opts.customSchemeUri;
 }
