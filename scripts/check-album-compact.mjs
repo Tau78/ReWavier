@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const hero = readFileSync(join(root, 'src/features/library/AlbumHero.tsx'), 'utf8');
 const screen = readFileSync(join(root, 'src/features/library/CollectionScreen.tsx'), 'utf8');
+const row = readFileSync(join(root, 'src/features/library/TrackRow.tsx'), 'utf8');
 
 assert.match(hero, /export function albumListMeta/);
 assert.doesNotMatch(hero, /styles\.title/);
@@ -15,6 +16,8 @@ assert.match(screen, /headerAlbumName/);
 assert.match(screen, /toolbarMeta/);
 assert.match(screen, /sortIconBtn/);
 assert.match(screen, /albumListMeta/);
+assert.match(screen, /hideArtist/);
+assert.match(row, /hideArtist/);
 assert.doesNotMatch(screen, />Tracce</);
 assert.match(screen, /Ordina per nome/);
 

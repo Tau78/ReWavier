@@ -96,7 +96,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Album più compatto',
-        body: 'Il nome sta in alto. Sotto la copertina restano l’ordine A→Z e quante tracce ci sono, poi la lista.',
+        body: 'Il nome sta in alto. Sotto la copertina restano l’ordine A→Z e quante tracce ci sono, poi la lista. Sulle righe non si ripete il nome dell’album.',
       },
     ],
   },

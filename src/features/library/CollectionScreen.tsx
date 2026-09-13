@@ -835,6 +835,7 @@ export function CollectionScreen() {
                   <View style={styles.versionChild}>
                     <TrackRow
                       track={item.track}
+                      hideArtist
                       active={
                         item.track.id === playerTrackId ||
                         versionFolderById(album!, item.folderId)?.chosenId === item.track.id
@@ -882,6 +883,7 @@ export function CollectionScreen() {
                 ) : (
                   <TrackRow
                     track={item.track}
+                    hideArtist={kind === 'album'}
                     active={item.track.id === playerTrackId}
                     noteCount={
                       (markersByTrackId[item.track.id] ?? []).filter((marker) => marker.hidden !== true)
