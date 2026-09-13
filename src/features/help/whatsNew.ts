@@ -81,6 +81,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Appunto per intero',
         body: 'Tieni premuto un appunto sull’onda, anche sul dettaglio: lo leggi tutto, anche se sul fumetto è tagliato.',
       },
+      {
+        title: 'Rispondi nella chat',
+        body: 'Tocchi un appunto e vedi la conversazione: i tuoi messaggi a destra, gli altri a sinistra. Rispondi c’è già dal primo. Salva e l’ascolto riparte.',
+      },
     ],
   },
 ];

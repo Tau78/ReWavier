@@ -1,4 +1,4 @@
-import { markerAuthorLabel, markerColor, markerPreviewText } from './markers';
+import { markerAuthorLabel, markerColor, markerPreviewText, visibleMarkers } from './markers';
 import {
   clampTime,
   formatTimecode,
@@ -109,6 +109,15 @@ export function markersNearTime(
   return markers
     .filter((marker) => Math.abs(marker.timestampMs - ms) <= windowMs)
     .sort((a, b) => a.createdAt - b.createdAt || a.timestampMs - b.timestampMs);
+}
+
+/** All visible notes on this moment, oldest first — the chat thread. */
+export function conversationAtTime(
+  markers: Marker[],
+  ms: number,
+  windowMs = THREAD_WINDOW_MS,
+): Marker[] {
+  return visibleMarkers(markersNearTime(markers, ms, windowMs));
 }
 
 export type RecapRow = {

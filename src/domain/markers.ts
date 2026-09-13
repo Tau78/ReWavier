@@ -36,6 +36,26 @@ export function markerAuthorLabel(marker: Marker): string {
   return name || 'Tu';
 }
 
+/** Notes without author are treated as yours (old appunti on this phone). */
+export function isOwnMarker(
+  marker: Pick<Marker, 'authorId' | 'authorName'>,
+  user: Pick<SessionUser, 'id' | 'displayName'> | null,
+): boolean {
+  if (marker.authorId) {
+    return Boolean(user?.id && marker.authorId === user.id);
+  }
+  if (!marker.authorName?.trim()) {
+    return true;
+  }
+  const mine = user?.displayName?.trim();
+  return Boolean(mine && mine === marker.authorName.trim());
+}
+
+/** Rispondi is visible from the first saved note, so the thread looks like a chat. */
+export function canShowNoteReply(folderReadOnly: boolean, conversationCount: number): boolean {
+  return !folderReadOnly && conversationCount > 0;
+}
+
 export function markerPreviewText(text: string): string {
   const flat = text.replace(/\s+/g, ' ').trim();
   if (!flat) {

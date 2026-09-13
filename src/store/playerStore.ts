@@ -224,6 +224,15 @@ function mockDrivesPlayback(state: Pick<PlayerState, 'track'>): boolean {
   return !trackHasPlayableUri(state.track);
 }
 
+function captureResumeAfterBubble(state: PlayerState) {
+  const playing = mockDrivesPlayback(state)
+    ? engine().isPlaying()
+    : state.isPlaying;
+  if (playing) {
+    resumeAfterBubble = true;
+  }
+}
+
 function restorePlaybackAfterBubble() {
   if (!resumeAfterBubble) {
     return;
@@ -679,9 +688,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     const state = get();
     suppressPausePrompt(4000);
     clearHoleTimer();
-    resumeAfterBubble = mockDrivesPlayback(state)
-      ? engine().isPlaying()
-      : state.isPlaying;
+    captureResumeAfterBubble(state);
     pauseEngines(state);
     if (trackHasPlayableUri(state.track) && state.loadState !== 'ready') {
       set({ isPlaying: false });
@@ -706,7 +713,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       return;
     }
     clearHoleTimer();
-    resumeAfterBubble = false;
+    captureResumeAfterBubble(state);
     pendingPlay = false;
     pauseEngines(state);
     if (trackHasPlayableUri(state.track) && state.loadState !== 'ready') {
@@ -759,6 +766,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
         };
       });
       persistMarkers(get().track.id, next);
+      resumeAfterBubble = true;
       set({
         markers: next,
         bubble: { ...HIDDEN_BUBBLE },
@@ -780,6 +788,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     );
     const next = [...markers, marker];
     persistMarkers(get().track.id, next);
+    resumeAfterBubble = true;
     set({
       markers: next,
       bubble: { ...HIDDEN_BUBBLE },
@@ -968,7 +977,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     const state = get();
     suppressPausePrompt(4000);
     clearHoleTimer();
-    resumeAfterBubble = false;
+    captureResumeAfterBubble(state);
     pendingPlay = false;
     pauseEngines(state);
     if (trackHasPlayableUri(state.track) && state.loadState !== 'ready') {

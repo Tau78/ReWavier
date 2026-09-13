@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -15,13 +16,14 @@ import { albumContainsTrackId } from '../../domain/albumVersions';
 import { canWriteWithRole, roleOfAlbum } from '../../domain/folderRole';
 import {
   canEditMarkerInAlbum,
+  canShowNoteReply,
+  isOwnMarker,
   isPlaceholderMarker,
   markerAuthorLabel,
   markerColor,
-  visibleMarkers,
 } from '../../domain/markers';
 import { formatTimecode } from '../../domain/models';
-import { markersNearTime } from '../../domain/practice';
+import { conversationAtTime } from '../../domain/practice';
 import { shareMarkerClip } from '../../files/shareMarkerClip';
 import { useLibraryStore } from '../../store/libraryStore';
 import { usePlayerStore } from '../../store/playerStore';
@@ -72,15 +74,32 @@ export function NoteBubble() {
 
   const isEditing = bubble.markerId != null;
   const current = markers.find((marker) => marker.id === bubble.markerId);
-  const thread = visibleMarkers(markersNearTime(markers, bubble.timestampMs)).filter(
-    (marker) => marker.id !== bubble.markerId,
-  );
+  const conversation = conversationAtTime(markers, bubble.timestampMs);
   const folderRole = useLibraryStore((state) =>
     roleOfAlbum(state.albums.find((album) => albumContainsTrackId(album, track.id))),
   );
   const folderReadOnly = !canWriteWithRole(folderRole);
   const readOnly =
     folderReadOnly || (isEditing && current != null && !canEditMarkerInAlbum(current, user, folderRole));
+  const inputRef = useRef<TextInput>(null);
+  const [chatView, setChatView] = useState(false);
+
+  useEffect(() => {
+    if (!bubble.visible) {
+      return;
+    }
+    setChatView(Boolean(bubble.markerId) && conversation.length > 0);
+    // Solo quando la scheda si apre: Rispondi e il tap sul messaggio cambiano chatView a mano.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bubble.visible]);
+
+  useEffect(() => {
+    if (!bubble.visible || chatView || readOnly) {
+      return;
+    }
+    const timer = setTimeout(() => inputRef.current?.focus(), 40);
+    return () => clearTimeout(timer);
+  }, [bubble.visible, chatView, readOnly]);
   const prompt = bubble.placeholderPrompt?.trim() ?? '';
   const showingStamp =
     isEditing &&
@@ -88,8 +107,17 @@ export function NoteBubble() {
     isPlaceholderMarker(current) &&
     bubble.draft.trim() === current.text.trim();
   const canSave =
-    !readOnly && (bubble.draft.trim().length > 0 || (!isEditing && prompt.length > 0));
-  const canReply = !folderReadOnly && (isEditing || thread.length > 0);
+    !readOnly &&
+    (chatView || bubble.draft.trim().length > 0 || (!isEditing && prompt.length > 0));
+  const canReply = canShowNoteReply(folderReadOnly, conversation.length);
+  const threadItems = chatView
+    ? conversation
+    : conversation.filter((item) => item.id !== bubble.markerId);
+
+  const startReply = () => {
+    setChatView(false);
+    replyAt(bubble.timestampMs);
+  };
   const addedLabel =
     isEditing && current?.createdAt
       ? formatNoteAddedAt(current.createdAt)
@@ -98,11 +126,15 @@ export function NoteBubble() {
         : 'adesso';
   const title = readOnly
     ? `Sola lettura${current?.authorName ? ` · ${current.authorName}` : ''}`
-    : isEditing
+    : conversation.length > 0
       ? current?.hidden
         ? 'Storico · nascosto'
-        : 'Modifica appunto'
-      : 'Nuovo appunto';
+        : 'Conversazione'
+      : isEditing
+        ? current?.hidden
+          ? 'Storico · nascosto'
+          : 'Modifica appunto'
+        : 'Nuovo appunto';
 
   const persistNote = () => {
     if (!canSave) {
@@ -169,44 +201,59 @@ export function NoteBubble() {
                 ) : null}
               </View>
 
-              {thread.length > 0 ? (
-                <View style={styles.thread} accessibilityLabel="Altri appunti sullo stesso momento">
-                  <Text style={styles.threadTitle}>Stesso momento</Text>
+              {threadItems.length > 0 ? (
+                <View style={styles.thread} accessibilityLabel="Conversazione su questo momento">
+                  <Text style={styles.threadTitle}>
+                    {conversation.length === 1 ? 'Conversazione' : `${conversation.length} messaggi`}
+                  </Text>
                   <ScrollView
-                    style={thread.length > THREAD_VISIBLE_ROWS ? styles.threadList : undefined}
+                    style={threadItems.length > THREAD_VISIBLE_ROWS ? styles.threadList : undefined}
                     contentContainerStyle={styles.threadRows}
                     keyboardShouldPersistTaps="handled"
                     nestedScrollEnabled
-                    showsVerticalScrollIndicator={thread.length > THREAD_VISIBLE_ROWS}
+                    showsVerticalScrollIndicator={threadItems.length > THREAD_VISIBLE_ROWS}
                   >
-                    {thread.map((marker) => {
-                      const who = markerAuthorLabel(marker);
+                    {threadItems.map((marker) => {
+                      const mine = isOwnMarker(marker, user);
+                      const who = mine ? 'Tu' : markerAuthorLabel(marker);
                       const pinColor = markerColor(marker);
-                      const whoLine = who === 'Tu' ? 'Tu dici:' : `${who} dice:`;
+                      const selected = marker.id === bubble.markerId;
                       return (
                         <Pressable
                           key={marker.id}
-                          onPress={() => openMarker(marker.id)}
+                          onPress={() => {
+                            openMarker(marker.id);
+                            setChatView(!mine);
+                          }}
                           accessibilityRole="button"
                           accessibilityLabel={
-                            who === 'Tu' ? 'Apri il tuo appunto' : `Apri l'appunto di ${who}`
+                            mine ? 'Modifica il tuo appunto' : `Messaggio di ${who}`
                           }
                           style={({ pressed }) => [
-                            styles.threadRow,
+                            styles.chatRow,
+                            mine ? styles.chatRowMine : styles.chatRowOther,
                             pressed && styles.threadRowPressed,
                           ]}
                         >
-                          <View style={[styles.threadDot, { backgroundColor: pinColor }]} />
-                          <View style={styles.threadCopy}>
-                            <Text style={[styles.threadWho, { color: pinColor }]} numberOfLines={1}>
-                              {whoLine}
-                            </Text>
+                          <View
+                            style={[
+                              styles.chatBubble,
+                              mine ? styles.chatBubbleMine : styles.chatBubbleOther,
+                              !mine && { borderLeftColor: pinColor, backgroundColor: `${pinColor}26` },
+                              selected && styles.chatBubbleSelected,
+                            ]}
+                          >
+                            {mine ? null : (
+                              <Text style={[styles.threadWho, { color: pinColor }]} numberOfLines={1}>
+                                {who}
+                              </Text>
+                            )}
                             <Text
                               style={[
-                                styles.threadText,
+                                styles.chatText,
+                                mine && styles.chatTextMine,
                                 isPlaceholderMarker(marker) && styles.stampText,
                               ]}
-                              numberOfLines={1}
                             >
                               {marker.text.trim() || '—'}
                             </Text>
@@ -221,7 +268,7 @@ export function NoteBubble() {
               <View style={styles.chipRow}>
                 {canReply ? (
                   <Pressable
-                    onPress={() => replyAt(bubble.timestampMs)}
+                    onPress={startReply}
                     hitSlop={layout.hitSlop}
                     accessibilityRole="button"
                     accessibilityLabel="Rispondi sullo stesso momento"
@@ -242,13 +289,30 @@ export function NoteBubble() {
               </View>
 
               <TextInput
-                style={[styles.input, showingStamp && styles.stampInput]}
-                value={bubble.draft}
-                onChangeText={setDraft}
-                placeholder={isEditing ? 'Scrivi qui il tuo appunto…' : prompt || 'Scrivi qui il tuo appunto…'}
+                ref={inputRef}
+                style={[styles.input, showingStamp && !chatView && styles.stampInput]}
+                value={chatView ? '' : bubble.draft}
+                onChangeText={(text) => {
+                  if (chatView) {
+                    startReply();
+                  }
+                  setDraft(text);
+                }}
+                onFocus={() => {
+                  if (chatView) {
+                    startReply();
+                  }
+                }}
+                placeholder={
+                  chatView || (conversation.length > 0 && !isEditing)
+                    ? 'Scrivi la tua risposta…'
+                    : isEditing
+                      ? 'Scrivi qui il tuo appunto…'
+                      : prompt || 'Scrivi qui il tuo appunto…'
+                }
                 placeholderTextColor={colors.textMuted}
                 multiline
-                autoFocus={!readOnly}
+                autoFocus={false}
                 editable={!readOnly}
                 textAlignVertical="top"
                 selectionColor={colors.accent}
@@ -267,7 +331,7 @@ export function NoteBubble() {
                 </Pressable>
 
                 <View style={styles.actionsRight}>
-                  {isEditing && !readOnly ? (
+                  {isEditing && !readOnly && !chatView ? (
                     <Pressable
                       onPress={() => {
                         if (bubble.markerId) {
@@ -283,7 +347,7 @@ export function NoteBubble() {
                     </Pressable>
                   ) : null}
 
-                  {isEditing && !readOnly ? (
+                  {isEditing && !readOnly && !chatView ? (
                     <Pressable
                       onPress={onDelete}
                       hitSlop={layout.hitSlop}
@@ -423,39 +487,55 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   threadList: {
-    maxHeight: 184,
+    maxHeight: 240,
   },
   threadRows: {
     gap: 8,
   },
-  threadRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    paddingVertical: 2,
-  },
   threadRowPressed: {
     opacity: 0.7,
   },
-  threadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginTop: 5,
+  chatRow: {
+    width: '100%',
   },
-  threadCopy: {
-    flex: 1,
-    minWidth: 0,
+  chatRowMine: {
+    alignItems: 'flex-end',
+  },
+  chatRowOther: {
+    alignItems: 'flex-start',
+  },
+  chatBubble: {
+    maxWidth: '82%',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  chatBubbleMine: {
+    backgroundColor: colors.accent,
+    borderBottomRightRadius: 4,
+  },
+  chatBubbleOther: {
+    backgroundColor: colors.surface,
+    borderBottomLeftRadius: 4,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.marker,
+  },
+  chatBubbleSelected: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.text,
+  },
+  chatText: {
+    fontSize: 15,
+    lineHeight: 20,
+    color: colors.text,
+  },
+  chatTextMine: {
+    color: colors.text,
   },
   threadWho: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
-  },
-  threadText: {
-    marginTop: 1,
-    fontSize: 14,
-    lineHeight: 18,
-    color: colors.text,
+    marginBottom: 2,
   },
   stampText: {
     color: colors.textMuted,
