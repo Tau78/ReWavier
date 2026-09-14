@@ -1,1 +1,1 @@
-In an album the player is clearer and resumes where you left off. Refresh from Drive lines up the tracks. Long-press a note to read it in full.
+On Android, Continue with Google brings you back into the app. Close and reopen twice if you are still on 1.0.4. In an album the player is clearer. Refresh from Drive lines up the tracks.

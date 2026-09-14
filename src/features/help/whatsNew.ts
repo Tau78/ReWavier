@@ -87,7 +87,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Continua con Google',
-        body: 'Su Android, Continua con Google torna nell’app. Se vedi ancora un errore, chiudi ReWavier e riaprila due volte: arriva l’aggiornamento.',
+        body: 'Su Android, tocca Continua con Google, scegli l’account e torni nell’app. Chiudi ReWavier e riaprila due volte: arriva l’aggiornamento, senza aspettare il Play Store.',
       },
     ],
   },
@@ -100,7 +100,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Continua con Google su Android',
-        body: 'Tocchi Continua con Google, scegli l’account e torni nell’app. Se hai la 1.0.4, aggiorna dal Play Store e riapri l’app due volte.',
+        body: 'Tocchi Continua con Google, scegli l’account e torni nell’app. Sulla 1.0.4 basta chiudere e riaprire due volte. Sulla 1.0.5 del Play Store l’accesso resta anche dopo l’aggiornamento.',
       },
       {
         title: 'Cartelle album in comune',
