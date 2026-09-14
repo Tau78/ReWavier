@@ -174,6 +174,22 @@ export function pickGoogleClientIds(input: {
   };
 }
 
+/** Secret only for confidential clients (Desktop / Web). iOS public clients omit it. */
+export function googleClientSecretForExchange(
+  clientId: string,
+  secrets: { desktop?: string; web?: string },
+): string | undefined {
+  const desktop = secrets.desktop?.trim();
+  const web = secrets.web?.trim();
+  if (desktop && clientId === DESKTOP_GOOGLE_CLIENT_ID) {
+    return desktop;
+  }
+  if (web && clientId === WEB_GOOGLE_CLIENT_ID) {
+    return web;
+  }
+  return undefined;
+}
+
 /** User-facing line when Google returns an error (not cancel / dismiss). */
 export function googleAuthPromptFailedMessage(result: {
   type: string;

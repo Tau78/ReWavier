@@ -19,6 +19,7 @@ import {
   googleAccessTokenFromResult,
   googleAuthNeedsCodeExchange,
   googleAuthPromptFailedMessage,
+  googleClientSecretForExchange,
   googleExchangeIsReady,
   googleTokenHasDriveScope,
   iosGoogleRedirectUri,
@@ -57,10 +58,18 @@ function validClientId(value?: string): string | undefined {
   return CLIENT_ID_RE.test(trimmed) ? trimmed : undefined;
 }
 
-function readWebClientSecret(): string | undefined {
-  const extra = (Constants.expoConfig?.extra ?? {}) as { googleWebClientSecret?: string };
-  const trimmed = extra.googleWebClientSecret?.trim() || process.env.GOOGLE_WEB_CLIENT_SECRET?.trim();
-  return trimmed || undefined;
+function readGoogleClientSecrets(): { desktop?: string; web?: string } {
+  const extra = (Constants.expoConfig?.extra ?? {}) as {
+    googleWebClientSecret?: string;
+    googleDesktopClientSecret?: string;
+  };
+  return {
+    desktop:
+      extra.googleDesktopClientSecret?.trim() ||
+      process.env.GOOGLE_DESKTOP_CLIENT_SECRET?.trim() ||
+      undefined,
+    web: extra.googleWebClientSecret?.trim() || process.env.GOOGLE_WEB_CLIENT_SECRET?.trim() || undefined,
+  };
 }
 
 function readClientIds() {
@@ -70,6 +79,7 @@ function readClientIds() {
     googleWebClientId?: string;
     googleAndroidClientId?: string;
     googleWebClientSecret?: string;
+    googleDesktopClientSecret?: string;
   };
   const storeIos = validClientId(
     extra.googleIosClientId ||
@@ -214,7 +224,7 @@ async function tokensFromGoogleResult(
         extras.redirectUri,
         extras.codeVerifier,
         scopes,
-        clientId === WEB_GOOGLE_CLIENT_ID ? readWebClientSecret() : undefined,
+        googleClientSecretForExchange(clientId, readGoogleClientSecrets()),
       );
       accessToken = exchanged.accessToken || accessToken;
       idToken = exchanged.idToken ?? idToken;

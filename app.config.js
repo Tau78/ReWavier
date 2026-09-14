@@ -61,6 +61,7 @@ module.exports = {
       googleExpoIosClientId: expoIosClientId,
       googleAndroidClientId: androidClientId,
       googleWebClientId: webClientId,
+      googleDesktopClientSecret: (process.env.GOOGLE_DESKTOP_CLIENT_SECRET || '').trim(),
       iosBuildNumber: appJson.expo.ios?.buildNumber ?? '',
     },
     ios: {

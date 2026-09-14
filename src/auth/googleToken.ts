@@ -1,9 +1,13 @@
 import { DriveSlowError, isAbortError } from '../domain/albumRefresh';
 import {
+  googleClientSecretForExchange,
+} from './googleAuthResult';
+import {
   clearGoogleToken,
   loadGoogleToken,
   saveGoogleToken,
 } from '../files/sessionPersist';
+import Constants from 'expo-constants';
 
 const TOKEN_REFRESH_TIMEOUT_MS = 15_000;
 
@@ -45,11 +49,22 @@ async function refreshAccess(auth: GoogleAuth): Promise<GoogleAuth> {
   if (!auth.refreshToken || !auth.clientId) {
     throw new Error('Sessione Google scaduta. Accedi di nuovo con Google.');
   }
+  const extra = (Constants.expoConfig?.extra ?? {}) as {
+    googleDesktopClientSecret?: string;
+    googleWebClientSecret?: string;
+  };
+  const secret = googleClientSecretForExchange(auth.clientId, {
+    desktop: extra.googleDesktopClientSecret,
+    web: extra.googleWebClientSecret,
+  });
   const body = new URLSearchParams({
     client_id: auth.clientId,
     grant_type: 'refresh_token',
     refresh_token: auth.refreshToken,
   });
+  if (secret) {
+    body.set('client_secret', secret);
+  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TOKEN_REFRESH_TIMEOUT_MS);
   let response: Response;

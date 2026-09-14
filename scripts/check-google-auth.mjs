@@ -260,6 +260,24 @@ assert.equal(
   undefined,
 );
 
+function googleClientSecretForExchange(clientId, secrets) {
+  const desktop = secrets.desktop?.trim();
+  const webSecret = secrets.web?.trim();
+  if (desktop && clientId === DESKTOP_GOOGLE_CLIENT_ID) {
+    return desktop;
+  }
+  if (webSecret && clientId === WEB_GOOGLE_CLIENT_ID) {
+    return webSecret;
+  }
+  return undefined;
+}
+assert.equal(
+  googleClientSecretForExchange(DESKTOP_GOOGLE_CLIENT_ID, { desktop: 'desk', web: 'web' }),
+  'desk',
+);
+assert.equal(googleClientSecretForExchange(WEB_GOOGLE_CLIENT_ID, { desktop: 'desk', web: 'web' }), 'web');
+assert.equal(googleClientSecretForExchange(iosId, { desktop: 'desk', web: 'web' }), undefined);
+
 const require = createRequire(import.meta.url);
 const appConfig = require('../app.config.js');
 assert.equal(appConfig.expo.extra.googleWebClientId, WEB_GOOGLE_CLIENT_ID);

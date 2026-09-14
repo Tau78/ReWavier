@@ -100,7 +100,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Continua con Google su Android',
-        body: 'Tocchi Continua con Google, scegli l’account e torni nell’app. Se hai la 1.0.4, aggiorna dal negozio.',
+        body: 'Tocchi Continua con Google, scegli l’account e torni nell’app. Se hai la 1.0.4, aggiorna dal Play Store e riapri l’app due volte.',
       },
       {
         title: 'Cartelle album in comune',
