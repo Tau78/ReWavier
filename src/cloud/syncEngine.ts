@@ -556,6 +556,7 @@ async function syncOneDriveAlbum(
 
   if (options?.extras === false) {
     store.touchAlbumSync(album.id);
+    await refreshAlbumDriveRole(album.id);
     return { added, removed, versioned, notesPulled, needsFolderLink: false, aborted: false };
   }
 

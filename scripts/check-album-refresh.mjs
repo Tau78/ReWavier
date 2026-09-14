@@ -23,6 +23,7 @@ assert.ok(DRIVE_SLOW_MESSAGE.includes('Riprova'));
 assert.equal(albumRefreshWaitMs('full'), 0);
 assert.equal(albumRefreshWaitMs(null), 0);
 assert.equal(albumRefreshWaitMs('album'), ALBUM_REFRESH_WAIT_SAME_ALBUM_MS);
+assert.ok(albumRefreshWaitMs('album') < ALBUM_REFRESH_TIMEOUT_MS);
 
 const collection = readFileSync(join(root, 'src/features/library/CollectionScreen.tsx'), 'utf8');
 assert.doesNotMatch(collection, /withTimeout\(\s*syncDriveAlbum/);
