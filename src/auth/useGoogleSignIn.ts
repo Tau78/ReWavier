@@ -10,9 +10,12 @@ import {
   GOOGLE_DRIVE_EXTRA_PARAMS,
   GOOGLE_IDENTITY_EXTRA_PARAMS,
   ANDROID_GOOGLE_RETURN_URI,
+  DESKTOP_GOOGLE_CLIENT_ID,
   EXPO_IOS_GOOGLE_CLIENT_ID,
   STORE_IOS_GOOGLE_CLIENT_ID,
   WEB_GOOGLE_CLIENT_ID,
+  androidGoogleNativeRedirectUri,
+  androidUsesNativeGoogleRedirect,
   googleAccessTokenFromResult,
   googleAuthNeedsCodeExchange,
   googleAuthPromptFailedMessage,
@@ -54,12 +57,19 @@ function validClientId(value?: string): string | undefined {
   return CLIENT_ID_RE.test(trimmed) ? trimmed : undefined;
 }
 
+function readWebClientSecret(): string | undefined {
+  const extra = (Constants.expoConfig?.extra ?? {}) as { googleWebClientSecret?: string };
+  const trimmed = extra.googleWebClientSecret?.trim() || process.env.GOOGLE_WEB_CLIENT_SECRET?.trim();
+  return trimmed || undefined;
+}
+
 function readClientIds() {
   const extra = (Constants.expoConfig?.extra ?? {}) as {
     googleIosClientId?: string;
     googleExpoIosClientId?: string;
     googleWebClientId?: string;
     googleAndroidClientId?: string;
+    googleWebClientSecret?: string;
   };
   const storeIos = validClientId(
     extra.googleIosClientId ||
@@ -152,19 +162,22 @@ async function exchangeGoogleCode(
   redirectUri: string,
   codeVerifier: string,
   scopes: string[],
+  clientSecret?: string,
 ): Promise<AuthSession.TokenResponse> {
-  return AuthSession.exchangeCodeAsync(
-    {
-      clientId,
-      code,
-      redirectUri,
-      scopes,
-      extraParams: {
-        code_verifier: codeVerifier,
-      },
-    },
-    { tokenEndpoint: GOOGLE_TOKEN_ENDPOINT },
-  );
+  const extraParams: Record<string, string> = {
+    code_verifier: codeVerifier,
+  };
+  const request: AuthSession.AccessTokenRequestConfig = {
+    clientId,
+    code,
+    redirectUri,
+    scopes,
+    extraParams,
+  };
+  if (clientSecret) {
+    request.clientSecret = clientSecret;
+  }
+  return AuthSession.exchangeCodeAsync(request, { tokenEndpoint: GOOGLE_TOKEN_ENDPOINT });
 }
 
 async function tokensFromGoogleResult(
@@ -201,6 +214,7 @@ async function tokensFromGoogleResult(
         extras.redirectUri,
         extras.codeVerifier,
         scopes,
+        clientId === WEB_GOOGLE_CLIENT_ID ? readWebClientSecret() : undefined,
       );
       accessToken = exchanged.accessToken || accessToken;
       idToken = exchanged.idToken ?? idToken;
@@ -308,18 +322,26 @@ async function waitForGoogleAuthRequest(
 
 function useGoogleAuthRequest(kind: GoogleAuthKind) {
   const ids = readClientIds();
-  const clientId = ids.clientId;
+  const useNativeAndroidGoogle =
+    Platform.OS === 'android' &&
+    !ids.inExpoGo &&
+    androidUsesNativeGoogleRedirect(Constants.nativeBuildVersion);
+  const androidNativeClientId = ids.androidClientId || DESKTOP_GOOGLE_CLIENT_ID;
+  const clientId = useNativeAndroidGoogle ? androidNativeClientId : ids.clientId;
   const iosRedirect = ids.iosClientId ? iosGoogleRedirectUri(ids.iosClientId) : undefined;
+  const androidNativeRedirect = androidGoogleNativeRedirectUri(androidNativeClientId);
   const redirectUri = resolveGoogleOAuthRedirectUri({
     platform: Platform.OS,
     iosClientId: ids.iosClientId,
     webClientId: ids.webClientId,
+    androidClientId: androidNativeClientId,
+    androidNative: useNativeAndroidGoogle,
     customSchemeUri:
       iosRedirect ??
       AuthSession.makeRedirectUri({
         scheme: 'rewavier',
         path: 'oauth',
-        native: ANDROID_GOOGLE_RETURN_URI,
+        native: useNativeAndroidGoogle ? androidNativeRedirect : ANDROID_GOOGLE_RETURN_URI,
       }),
   });
 
@@ -336,14 +358,26 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
     };
     if (ids.iosClientId && Platform.OS === 'ios' && !ids.inExpoGo) {
       config.iosClientId = ids.iosClientId;
+    } else if (useNativeAndroidGoogle) {
+      config.androidClientId = androidNativeClientId;
     } else if (ids.webClientId) {
       config.webClientId = ids.webClientId;
     }
-    if (ids.androidClientId) {
+    if (ids.androidClientId && !useNativeAndroidGoogle) {
       config.androidClientId = ids.androidClientId;
     }
     return config;
-  }, [kind, ids.iosClientId, ids.androidClientId, ids.webClientId, ids.inExpoGo, clientId, redirectUri]);
+  }, [
+    kind,
+    ids.iosClientId,
+    ids.androidClientId,
+    ids.webClientId,
+    ids.inExpoGo,
+    clientId,
+    redirectUri,
+    useNativeAndroidGoogle,
+    androidNativeClientId,
+  ]);
 
   const redirectUriOptions = useMemo(() => {
     if (ids.iosClientId && Platform.OS === 'ios') {
@@ -353,8 +387,15 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
         path: 'oauthredirect',
       };
     }
+    if (useNativeAndroidGoogle) {
+      return {
+        native: androidNativeRedirect,
+        scheme: reversedGoogleClientScheme(androidNativeClientId),
+        path: 'oauthredirect',
+      };
+    }
     return { native: ANDROID_GOOGLE_RETURN_URI, scheme: 'rewavier', path: 'oauth' };
-  }, [ids.iosClientId]);
+  }, [ids.iosClientId, useNativeAndroidGoogle, androidNativeClientId, androidNativeRedirect]);
 
   const [request, , promptAsync] = Google.useAuthRequest(authRequestConfig, redirectUriOptions);
   const requestRef = useRef(request);
@@ -382,12 +423,11 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
         if (!request || !authUrl) {
           throw new Error(notReady);
         }
-        // Google sees the HTTPS redirect; the bounce page opens rewavier://oauth.
-        const browserResult = await WebBrowser.openAuthSessionAsync(
-          authUrl,
-          ANDROID_GOOGLE_RETURN_URI,
-          { createTask: false, showInRecents: true },
-        );
+        const returnUri = useNativeAndroidGoogle ? androidNativeRedirect : ANDROID_GOOGLE_RETURN_URI;
+        const browserResult = await WebBrowser.openAuthSessionAsync(authUrl, returnUri, {
+          createTask: false,
+          showInRecents: true,
+        });
         if (browserResult.type !== 'success') {
           return { type: browserResult.type };
         }

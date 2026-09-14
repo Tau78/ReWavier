@@ -11,6 +11,9 @@ function reversedGoogleScheme(clientId) {
   return `com.googleusercontent.apps.${clientId.replace(/\.apps\.googleusercontent\.com$/i, '')}`;
 }
 
+const DESKTOP_GOOGLE_CLIENT_ID =
+  '1049963169218-k8i1dmlbsn1nqrv393u8pp111v7v2efc.apps.googleusercontent.com';
+
 const iosClientId = isGoogleClientId(
   process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || appJson.expo.extra?.googleIosClientId || '',
 )
@@ -35,8 +38,12 @@ const androidClientId = isGoogleClientId(
 )
   ? process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || appJson.expo.extra?.googleAndroidClientId
   : '';
+const desktopClientId = isGoogleClientId(DESKTOP_GOOGLE_CLIENT_ID)
+  ? DESKTOP_GOOGLE_CLIENT_ID
+  : '';
 const storeScheme = reversedGoogleScheme(iosClientId);
 const expoScheme = reversedGoogleScheme(expoIosClientId);
+const androidNativeScheme = reversedGoogleScheme(androidClientId || desktopClientId);
 const urlSchemes = ['rewavier'];
 if (storeScheme) {
   urlSchemes.push(storeScheme);
@@ -79,6 +86,15 @@ module.exports = {
             { scheme: 'rewavier', pathPrefix: '/oauth' },
           ],
         },
+        ...(androidNativeScheme
+          ? [
+              {
+                action: 'VIEW',
+                category: ['BROWSABLE', 'DEFAULT'],
+                data: [{ scheme: androidNativeScheme }],
+              },
+            ]
+          : []),
       ],
     },
   },

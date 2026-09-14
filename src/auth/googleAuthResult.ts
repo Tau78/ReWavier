@@ -79,9 +79,18 @@ export const ANDROID_GOOGLE_REDIRECT_URI =
 /** Custom-scheme bounce after the HTTPS page. The Play binary already listens here. */
 export const ANDROID_GOOGLE_RETURN_URI = 'rewavier://oauth';
 
-/** Reversed scheme — iOS / Desktop clients only. A Web client rejects it. */
-export function androidGoogleNativeRedirectUri(webClientId?: string): string {
-  return `${reversedGoogleClientScheme(webClientId || WEB_GOOGLE_CLIENT_ID)}:/oauthredirect`;
+/** Desktop client — Google accepts the reversed scheme without a secret. */
+export const DESKTOP_GOOGLE_CLIENT_ID =
+  '1049963169218-k8i1dmlbsn1nqrv393u8pp111v7v2efc.apps.googleusercontent.com';
+
+/** Play 1.0.5+ binaries include this scheme. Older Play builds do not. */
+export const ANDROID_GOOGLE_NATIVE_MIN_VERSION_CODE = 11;
+
+export function androidUsesNativeGoogleRedirect(
+  nativeBuildVersion?: string | number | null,
+): boolean {
+  const code = Number(nativeBuildVersion);
+  return Number.isFinite(code) && code >= ANDROID_GOOGLE_NATIVE_MIN_VERSION_CODE;
 }
 
 /** Store iOS client — used if Expo extra is missing (OTA / archive). */
@@ -99,21 +108,31 @@ export function iosGoogleRedirectUri(iosClientId: string): string {
 /**
  * Redirect URI sent to Google.
  * iOS store builds use the reversed iOS client scheme.
- * Android uses the HTTPS bounce page on the Web application client.
+ * Android Play 1.0.5+ uses the Desktop client reversed scheme (no secret).
+ * Older Play builds keep the HTTPS bounce page on the Web application client.
  */
 export function resolveGoogleOAuthRedirectUri(opts: {
   platform: string;
   iosClientId?: string;
   webClientId?: string;
+  androidClientId?: string;
+  androidNative?: boolean;
   customSchemeUri: string;
 }): string {
   if (opts.platform === 'ios' && opts.iosClientId) {
     return iosGoogleRedirectUri(opts.iosClientId);
   }
+  if (opts.platform === 'android' && opts.androidNative) {
+    return androidGoogleNativeRedirectUri(opts.androidClientId || DESKTOP_GOOGLE_CLIENT_ID);
+  }
   if (opts.platform === 'android') {
     return ANDROID_GOOGLE_REDIRECT_URI;
   }
   return opts.customSchemeUri;
+}
+
+export function androidGoogleNativeRedirectUri(clientId?: string): string {
+  return `${reversedGoogleClientScheme(clientId || DESKTOP_GOOGLE_CLIENT_ID)}:/oauthredirect`;
 }
 
 /** Which Google client to send. Standalone iOS never falls back to the web client. */
