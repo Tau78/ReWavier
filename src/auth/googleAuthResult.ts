@@ -104,6 +104,9 @@ export const ANDROID_GOOGLE_REDIRECT_URI =
 /** Custom-scheme bounce after the HTTPS page. The Play binary already listens here. */
 export const ANDROID_GOOGLE_RETURN_URI = 'rewavier://oauth';
 
+export const ANDROID_GOOGLE_PICKER_URL =
+  'https://eventi.musicproeventi.it/ReWavier/picker.html';
+
 /** Play 1.0.5 exchanges the Google code here so the secret never sits in the app. */
 export const ANDROID_GOOGLE_EXCHANGE_URL =
   'https://eventi.musicproeventi.it/ReWavier/oauth-exchange.php';
