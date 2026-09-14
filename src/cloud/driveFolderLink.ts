@@ -66,3 +66,17 @@ export function parseDriveFolderLink(input: string): string | null {
   }
   return null;
 }
+
+/**
+ * Shared tab must not list My Drive folders.
+ * A Shared Drive item has `driveId`. A folder someone shared with you is not owned by you.
+ */
+export function folderBelongsOnSharedTab(file: {
+  driveId?: string | null;
+  ownedByMe?: boolean | null;
+}): boolean {
+  if (file.driveId) {
+    return true;
+  }
+  return file.ownedByMe === false;
+}

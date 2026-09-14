@@ -81,4 +81,17 @@ assert.equal(parseDriveFolderLink('DPB'), null);
 assert.equal(parseDriveFolderLink('cartella band'), null);
 assert.equal(parseDriveFolderLink(''), null);
 
+function folderBelongsOnSharedTab(file) {
+  if (file.driveId) {
+    return true;
+  }
+  return file.ownedByMe === false;
+}
+
+assert.equal(folderBelongsOnSharedTab({ ownedByMe: true }), false);
+assert.equal(folderBelongsOnSharedTab({}), false);
+assert.equal(folderBelongsOnSharedTab({ ownedByMe: false }), true);
+assert.equal(folderBelongsOnSharedTab({ ownedByMe: true, driveId: '0ANsharedDriveRoot12' }), true);
+assert.equal(folderBelongsOnSharedTab({ driveId: '0ANsharedDriveRoot12' }), true);
+
 console.log('ok drive folder link parser');

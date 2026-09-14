@@ -428,9 +428,11 @@ export function DriveFolderScreen() {
                   ? 'Apri'
                   : 'sharedKind' in folder && folder.sharedKind === 'shared-drive'
                     ? 'Drive condiviso · tocca per aprire'
-                    : 'sharedKind' in folder && folder.sharedKind === 'shared-folder'
-                      ? 'Condivisa con te · tocca per aprire'
-                      : 'Cartella Drive · tocca per aprire'}
+                    : 'sharedKind' in folder && folder.driveId
+                      ? 'Nel Drive condiviso · tocca per aprire'
+                      : 'sharedKind' in folder && folder.sharedKind === 'shared-folder'
+                        ? 'Condivisa con te · tocca per aprire'
+                        : 'Cartella Drive · tocca per aprire'}
               </Text>
             </Pressable>
           ))}

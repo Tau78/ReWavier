@@ -14,7 +14,7 @@ import { throwIfDownloadPaused, useDownloadProgressStore } from '../store/downlo
 
 import { googleTokenHasDriveScope } from '../auth/googleAuthResult';
 import { getValidGoogleAccessToken, loadGoogleAuth } from '../auth/googleToken';
-import { parseDriveFolderLink } from './driveFolderLink';
+import { folderBelongsOnSharedTab, parseDriveFolderLink } from './driveFolderLink';
 import { roleFromDriveCapabilities, type FolderRole } from '../domain/folderRole';
 
 const DRIVE = 'https://www.googleapis.com/drive/v3';
@@ -37,6 +37,7 @@ export type DriveFile = {
   size?: string;
   /** Present on items that live in a Shared Drive. */
   driveId?: string;
+  ownedByMe?: boolean;
 };
 
 export function isDriveFolder(file: Pick<DriveFile, 'mimeType'>): boolean {
@@ -205,25 +206,25 @@ export async function listSharedDriveEntries(query?: string): Promise<SharedDriv
     // Listing Shared Drive roots needs a broader Google permission than drive.file.
   }
 
-  const folderQ = encodeURIComponent(
-    `mimeType = 'application/vnd.google-apps.folder' and trashed = false${nameContainsFilter(rawQuery)}`,
+  const folderFields = 'files(id,name,mimeType,modifiedTime,driveId,ownedByMe)';
+  const inSharedDrivesQ = encodeURIComponent(
+    `mimeType = 'application/vnd.google-apps.folder' and trashed = false and not 'me' in owners${nameContainsFilter(rawQuery)}`,
   );
-  const folderFields = 'files(id,name,mimeType,modifiedTime,driveId)';
-  const across = [
-    `/files?q=${folderQ}&pageSize=40&fields=${folderFields}&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives`,
-    `/files?q=${folderQ}&pageSize=40&fields=${folderFields}&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=user`,
-  ];
   const sharedWithMeQ = encodeURIComponent(
-    `mimeType = 'application/vnd.google-apps.folder' and trashed = false and sharedWithMe = true${nameContainsFilter(rawQuery)}`,
+    `mimeType = 'application/vnd.google-apps.folder' and trashed = false and sharedWithMe = true and not 'me' in owners${nameContainsFilter(rawQuery)}`,
   );
-  const [fromAll, fromUser, fromSharedWithMe] = await Promise.all([
-    listFoldersQuiet(across[0]),
-    listFoldersQuiet(across[1]),
+  const [fromSharedDrives, fromSharedWithMe] = await Promise.all([
+    listFoldersQuiet(
+      `/files?q=${inSharedDrivesQ}&pageSize=40&fields=${folderFields}&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives`,
+    ),
     listFoldersQuiet(
       `/files?q=${sharedWithMeQ}&pageSize=40&fields=${folderFields}&supportsAllDrives=true&includeItemsFromAllDrives=true`,
     ),
   ]);
-  for (const folder of [...fromAll, ...fromUser, ...fromSharedWithMe]) {
+  for (const folder of [...fromSharedDrives, ...fromSharedWithMe]) {
+    if (!folderBelongsOnSharedTab(folder)) {
+      continue;
+    }
     push({ ...folder, sharedKind: sharedKindFor(folder) });
   }
 
