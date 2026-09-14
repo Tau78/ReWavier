@@ -165,8 +165,8 @@ export function googleAuthPromptFailedMessage(result: {
     return null;
   }
   const raw = `${result.params?.error ?? ''} ${result.errorCode ?? ''}`.toLowerCase();
-  if (raw.includes('redirect_uri') || raw.includes('invalid_request')) {
-    return 'Google non ha riconosciuto l’app. Riprova, oppure entra con email.';
+  if (raw.includes('redirect_uri') || raw.includes('invalid_request') || raw.includes('access_denied')) {
+    return 'Google ha bloccato il collegamento. Usa «Collega da File», oppure riprova più tardi.';
   }
   if (result.type === 'error') {
     return 'Login Google non riuscito. Riprova, oppure entra con email.';

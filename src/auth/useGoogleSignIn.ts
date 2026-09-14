@@ -47,7 +47,7 @@ const DRIVE_SCOPES = [
 export type GoogleAuthKind = 'identity' | 'drive';
 
 const DRIVE_CONNECT_ERROR =
-  'Google non ha collegato Drive. Tocca di nuovo Continua con Google.';
+  'Google non ha collegato Drive. Nella schermata Google spunta la casella di Drive e tocca Continua. Oppure usa «Collega da File».';
 
 function validClientId(value?: string): string | undefined {
   const trimmed = value?.trim() ?? '';
@@ -259,7 +259,11 @@ export async function completeGoogleDriveConnect(
     DRIVE_SCOPES,
   );
   if (!tokens.accessToken || !googleTokenHasDriveScope(tokens.scope)) {
-    throw new Error(DRIVE_CONNECT_ERROR);
+    throw new Error(
+      tokens.accessToken && !googleTokenHasDriveScope(tokens.scope)
+        ? 'Hai dato l’ok a Google senza il permesso Drive. Riprova, spunta la casella Drive e tocca Continua.'
+        : DRIVE_CONNECT_ERROR,
+    );
   }
   const session = useSessionStore.getState();
   if (session.user) {

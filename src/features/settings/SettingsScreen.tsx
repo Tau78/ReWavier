@@ -288,7 +288,11 @@ export function SettingsScreen() {
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <SettingsSection
           title="Account"
-          summary={`${user?.displayName || 'Utente'} · ${providerLabel}`}
+          summary={
+            driveLinked
+              ? `${user?.displayName || 'Utente'} · Drive ok`
+              : `${user?.displayName || 'Utente'} · ${providerLabel}`
+          }
           open={open.account}
           onToggle={() => toggle('account')}
         >
@@ -305,13 +309,21 @@ export function SettingsScreen() {
             label="Album Drive"
             hint="Il permesso di scrivere in un album Drive arriva da come è stata condivisa quella cartella, non da un interruttore qui."
           />
-          {user?.provider === 'google' && !driveLinked ? (
+          {driveLinked ? (
+            <LinkRow
+              label="Google Drive"
+              value="Collegato. Tocca per ricollegare se i brani non si aprono."
+              onPress={connectDrive}
+              accessibilityLabel="Ricollega Google Drive"
+            />
+          ) : (
             <LinkRow
               label="Collega Google Drive"
-              value="Per aprire le cartelle Drive e tenere i brani allineati."
+              value="Per aprire le cartelle Drive e tenere i brani allineati. Nella schermata Google spunta la casella Drive."
               onPress={connectDrive}
+              accessibilityLabel="Collega Google Drive"
             />
-          ) : null}
+          )}
         </SettingsSection>
 
         <SettingsSection

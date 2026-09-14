@@ -86,7 +86,12 @@ export function OnboardingScreen() {
           Alert.alert('Drive', 'Google Drive è collegato. In Libreria scegli la cartella.');
         }
       } catch (error) {
-        Alert.alert('Drive', error instanceof Error ? error.message : 'Riprova');
+        Alert.alert(
+          'Drive',
+          error instanceof Error
+            ? `${error.message}\n\nIn alternativa tocca «Collega da File».`
+            : 'Google non ha collegato Drive. Tocca «Collega da File», oppure riprova più tardi.',
+        );
       }
     })();
   };
@@ -195,8 +200,9 @@ export function OnboardingScreen() {
               ) : (
                 <>
                   <Text style={styles.blockBody}>
-                    Se vuoi i brani da Drive, collegalo ora. Altrimenti puoi farlo dopo dalla
-                    libreria.
+                    Entri con Google per l’account. Per i brani su Drive serve un secondo
+                    permesso. Se Google lo blocca, usa «Collega da File» oppure fallo dopo
+                    dalla libreria.
                   </Text>
                   <Pressable onPress={onGoogleDrive} style={styles.google}>
                     <Text style={styles.googleLabel}>Collega Google Drive</Text>
