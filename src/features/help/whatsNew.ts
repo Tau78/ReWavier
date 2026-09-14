@@ -112,7 +112,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Drive della band',
-        body: 'Nei Drive condivisi tocca Scegli su Google: si aprono i Drive della band, non le tue cartelle. Scegli DPB e poi Scegli.',
+        body: 'Nei Drive condivisi vedi i Drive della band, come su iPhone. Se la lista è vuota, tocca Scegli su Google una volta: dalla volta dopo restano lì.',
       },
     ],
   },

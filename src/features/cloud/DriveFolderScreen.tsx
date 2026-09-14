@@ -9,11 +9,13 @@ import {
   listDriveFolders,
   listFolderChildren,
   listSharedDriveEntries,
+  rememberSharedDriveFromFolder,
   type DriveFile,
   type SharedDriveEntry,
 } from '../../cloud/driveApi';
 import { parseDriveFolderLink } from '../../cloud/driveFolderLink';
 import { pickSharedDriveFolder } from '../../cloud/drivePicker';
+import { pinsFromAlbums } from '../../cloud/sharedDriveCatalog';
 import { importDriveFolder } from '../../cloud/syncEngine';
 import { isAudioName } from '../../domain/audioFormats';
 import { isDownloadPausedError } from '../../domain/collectionDownloadVisual';
@@ -21,6 +23,7 @@ import { formatDownloadPercent } from '../../domain/downloadProgress';
 import { findTrackCoverFile, isAlbumCoverName, isImageName, isPdfName } from '../../domain/driveMedia';
 import type { RootStackParamList } from '../../navigation/types';
 import { useDownloadProgressStore } from '../../store/downloadProgressStore';
+import { useLibraryStore } from '../../store/libraryStore';
 import { colors, layout } from '../../theme/colors';
 import { EmptyGraphic, KindRow } from '../../theme/graphics';
 
@@ -104,7 +107,12 @@ export function DriveFolderScreen() {
     if (!opts?.silent) {
       setBusy(true);
     }
-    const load = which === 'shared' ? listSharedDriveEntries(trimmed || undefined) : listDriveFolders(trimmed || undefined);
+    const load =
+      which === 'shared'
+        ? listSharedDriveEntries(trimmed || undefined, {
+            knownDrives: pinsFromAlbums(useLibraryStore.getState().albums),
+          })
+        : listDriveFolders(trimmed || undefined);
     void load
       .then((hits) => {
         if (gen !== searchGen.current || which !== tabRef.current) {
@@ -152,7 +160,7 @@ export function DriveFolderScreen() {
     }
     setBusy(true);
     void pickSharedDriveFolder()
-      .then((folder) => {
+      .then(async (folder) => {
         if (!mountedRef.current) {
           return;
         }
@@ -164,6 +172,10 @@ export function DriveFolderScreen() {
           ...folder,
           sharedKind: folder.driveId && folder.driveId === folder.id ? 'shared-drive' : 'shared-folder',
         };
+        await rememberSharedDriveFromFolder(entry);
+        if (!mountedRef.current) {
+          return;
+        }
         openFolder(entry);
       })
       .catch((error) => {
@@ -185,6 +197,11 @@ export function DriveFolderScreen() {
         : undefined) ??
       folder.driveId ??
       stack[0]?.sharedDriveId;
+    if (folder.driveId || ('sharedKind' in folder && folder.sharedKind === 'shared-drive')) {
+      void rememberSharedDriveFromFolder(
+        'sharedKind' in folder ? folder : { ...folder, sharedKind: 'shared-folder' },
+      );
+    }
     setBusy(true);
     setStack((prev) => [...prev, { id: folder.id, name: folder.name, sharedDriveId }]);
     void withTimeout(

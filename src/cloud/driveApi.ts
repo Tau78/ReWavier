@@ -14,8 +14,20 @@ import { throwIfDownloadPaused, useDownloadProgressStore } from '../store/downlo
 
 import { googleTokenHasDriveScope } from '../auth/googleAuthResult';
 import { getValidGoogleAccessToken, loadGoogleAuth } from '../auth/googleToken';
+import { inboxDirectory } from '../files/libraryPaths';
 import { folderBelongsOnSharedTab, parseDriveFolderLink } from './driveFolderLink';
 import { roleFromDriveCapabilities, type FolderRole } from '../domain/folderRole';
+import {
+  SHARED_DRIVES_SIDECAR_NAME,
+  loadPinnedSharedDrives,
+  mergeSharedDrivePins,
+  parseSharedDriveCatalog,
+  rememberSharedDrives,
+  savePinnedSharedDrives,
+  serializeSharedDriveCatalog,
+  sortSharedDriveEntries,
+  type SharedDrivePin,
+} from './sharedDriveCatalog';
 
 const DRIVE = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
@@ -153,6 +165,118 @@ function sharedKindFor(file: Pick<DriveFile, 'id' | 'driveId'>): SharedDriveKind
   return file.driveId && file.driveId === file.id ? 'shared-drive' : 'shared-folder';
 }
 
+function entryFromPin(pin: SharedDrivePin): SharedDriveEntry {
+  return {
+    id: pin.id,
+    name: pin.name,
+    mimeType: DRIVE_FOLDER_MIME,
+    driveId: pin.id,
+    sharedKind: 'shared-drive',
+  };
+}
+
+async function driveGetText(path: string): Promise<string> {
+  const call = async (access: string) =>
+    fetchDrive(`${DRIVE}${path}`, {
+      headers: { Authorization: `Bearer ${access}` },
+    });
+  let response = await call(await token());
+  if (response.status === 401) {
+    response = await call(await getValidGoogleAccessToken(true));
+  }
+  if (!response.ok) {
+    throw new Error(driveErrorMessage(response.status));
+  }
+  return (await response.text()).trim();
+}
+
+async function findSharedDrivesSidecar(): Promise<DriveFile | null> {
+  const q = encodeURIComponent(`name = '${SHARED_DRIVES_SIDECAR_NAME}' and trashed = false`);
+  const files = await listFoldersQuiet(
+    `/files?q=${q}&pageSize=1&fields=files(id,name)&corpora=user&orderBy=${encodeURIComponent('modifiedTime desc')}`,
+  );
+  return files[0] ?? null;
+}
+
+async function readSharedDrivesSidecar(): Promise<SharedDrivePin[]> {
+  try {
+    const file = await findSharedDrivesSidecar();
+    if (!file) {
+      return [];
+    }
+    const raw = await driveGetText(`/files/${encodeURIComponent(file.id)}?alt=media`);
+    if (!raw) {
+      return [];
+    }
+    return parseSharedDriveCatalog(JSON.parse(raw) as unknown);
+  } catch {
+    return [];
+  }
+}
+
+async function writeSharedDrivesSidecar(pins: SharedDrivePin[]): Promise<void> {
+  if (pins.length === 0) {
+    return;
+  }
+  const tmp = new File(inboxDirectory(), 'shared-drives-sidecar.json');
+  try {
+    tmp.write(serializeSharedDriveCatalog(pins));
+    const existing = await findSharedDrivesSidecar();
+    if (existing) {
+      await updateDriveFileMedia(existing.id, tmp.uri, 'application/json');
+    } else {
+      await uploadDriveFile({
+        name: SHARED_DRIVES_SIDECAR_NAME,
+        folderId: 'root',
+        fileUri: tmp.uri,
+        mimeType: 'application/json',
+      });
+    }
+  } catch {
+    // drive.file may not write this file; the list on the phone still works.
+  } finally {
+    try {
+      if (tmp.exists) {
+        tmp.delete();
+      }
+    } catch {
+      // temp
+    }
+  }
+}
+
+function persistSharedDrivesInBackground(pins: SharedDrivePin[], mode: 'merge' | 'replace' = 'merge'): void {
+  if (pins.length === 0) {
+    return;
+  }
+  const save = mode === 'replace' ? savePinnedSharedDrives(pins) : rememberSharedDrives(pins);
+  void save.then((merged) => writeSharedDrivesSidecar(merged)).catch(() => undefined);
+}
+
+/** Remember a Shared Drive root so Drive Condivisi lists it like on iPhone. */
+export async function rememberSharedDriveFromFolder(
+  folder: Pick<DriveFile, 'id' | 'name' | 'driveId'> & { sharedKind?: SharedDriveKind },
+): Promise<void> {
+  const driveId =
+    folder.driveId ||
+    (folder.sharedKind === 'shared-drive' ? folder.id : undefined);
+  if (!driveId) {
+    return;
+  }
+  let name = folder.driveId && folder.driveId !== folder.id ? '' : folder.name;
+  if (!name) {
+    const root = await getDriveFile(driveId);
+    if (root?.name) {
+      name = root.name;
+    }
+  }
+  if (!name) {
+    name = folder.name;
+  }
+  const merged = await rememberSharedDrives([{ id: driveId, name }]);
+  void writeSharedDrivesSidecar(merged).catch(() => undefined);
+}
+
 async function listFoldersQuiet(path: string): Promise<DriveFile[]> {
   try {
     return (await driveGet<{ files?: DriveFile[] }>(path)).files ?? [];
@@ -162,7 +286,10 @@ async function listFoldersQuiet(path: string): Promise<DriveFile[]> {
 }
 
 /** Shared Drives (team) plus folders someone shared with you. */
-export async function listSharedDriveEntries(query?: string): Promise<SharedDriveEntry[]> {
+export async function listSharedDriveEntries(
+  query?: string,
+  extras?: { knownDrives?: SharedDrivePin[] },
+): Promise<SharedDriveEntry[]> {
   const rawQuery = query?.trim() ?? '';
   const needle = rawQuery.toLowerCase();
   const linkId = rawQuery ? parseDriveFolderLink(rawQuery) : null;
@@ -182,10 +309,20 @@ export async function listSharedDriveEntries(query?: string): Promise<SharedDriv
     const file = await getDriveFile(linkId);
     if (file && isDriveFolder(file)) {
       push({ ...file, sharedKind: sharedKindFor(file) });
+      void rememberSharedDriveFromFolder(file);
     }
     return out;
   }
 
+  const pinned = mergeSharedDrivePins(await loadPinnedSharedDrives(), extras?.knownDrives ?? []);
+  for (const pin of pinned) {
+    push(entryFromPin(pin));
+  }
+  if (!needle && extras?.knownDrives && extras.knownDrives.length > 0) {
+    persistSharedDrivesInBackground(extras.knownDrives);
+  }
+
+  let fromApi: SharedDrivePin[] = [];
   try {
     const driveQuery = needle
       ? `&q=${encodeURIComponent(`name contains '${needle.replace(/'/g, "\\'")}'`)}`
@@ -193,17 +330,28 @@ export async function listSharedDriveEntries(query?: string): Promise<SharedDriv
     const data = await driveGet<{ drives?: { id: string; name: string }[] }>(
       `/drives?pageSize=50&fields=drives(id,name)${driveQuery}`,
     );
-    for (const drive of data.drives ?? []) {
-      push({
-        id: drive.id,
-        name: drive.name,
-        mimeType: DRIVE_FOLDER_MIME,
-        driveId: drive.id,
-        sharedKind: 'shared-drive',
-      });
+    fromApi = (data.drives ?? [])
+      .filter((drive) => drive.id && drive.name)
+      .map((drive) => ({ id: drive.id, name: drive.name }));
+    for (const drive of fromApi) {
+      push(entryFromPin(drive));
     }
   } catch {
-    // Listing Shared Drive roots needs a broader Google permission than drive.file.
+    // Android Web/Desktop tokens often cannot list /drives with drive.file. Pins fill the gap.
+  }
+
+  if (fromApi.length > 0) {
+    persistSharedDrivesInBackground(fromApi, 'replace');
+  } else if (pinned.length === 0) {
+    const remote = await readSharedDrivesSidecar();
+    for (const pin of remote) {
+      push(entryFromPin(pin));
+    }
+    persistSharedDrivesInBackground(remote);
+  } else {
+    void readSharedDrivesSidecar()
+      .then((remote) => persistSharedDrivesInBackground(remote))
+      .catch(() => undefined);
   }
 
   const folderFields = 'files(id,name,mimeType,modifiedTime,driveId,ownedByMe)';
@@ -225,10 +373,13 @@ export async function listSharedDriveEntries(query?: string): Promise<SharedDriv
     if (!folderBelongsOnSharedTab(folder)) {
       continue;
     }
+    if (folder.driveId && seen.has(folder.driveId) && folder.id !== folder.driveId) {
+      continue;
+    }
     push({ ...folder, sharedKind: sharedKindFor(folder) });
   }
 
-  return out;
+  return sortSharedDriveEntries(out);
 }
 
 export async function fetchFolderRole(folderId: string): Promise<FolderRole> {
