@@ -112,7 +112,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Drive della band',
-        body: 'Nei Drive condivisi vedi i Drive della band, come su iPhone. Se la lista è vuota, tocca Scegli su Google una volta: dalla volta dopo restano lì.',
+        body: 'Nei Drive condivisi vedi i Drive della band. Tocca per aprire. Se la lista è vuota, tocca i Drive che usa la band: restano su questo telefono.',
       },
     ],
   },

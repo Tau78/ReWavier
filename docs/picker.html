@@ -26,6 +26,11 @@
       line-height: 1.5;
       padding: 2rem 1.25rem;
     }
+    body.embedded {
+      min-height: 0;
+      padding: 0.75rem 1rem 1.25rem;
+      align-items: flex-start;
+    }
     main { max-width: 22rem; text-align: center; }
     p { margin: 0 0 0.75rem; color: var(--muted); }
     a, button {
@@ -46,7 +51,7 @@
 <body>
   <main>
     <p id="status">Apro i Drive della band…</p>
-    <p id="hint">Se non si apre, tocca il pulsante.</p>
+    <p id="hint">Se non si apre, tocca il pulsante. Puoi sceglierne più di uno.</p>
     <button type="button" id="open">Mostra i Drive condivisi</button>
   </main>
   <script src="https://apis.google.com/js/api.js"></script>
@@ -57,6 +62,10 @@
       var params = new URLSearchParams(window.location.search || '');
       var hash = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
       var token = hash.get('access_token') || params.get('access_token') || '';
+      var embedded = params.get('embedded') === '1';
+      if (embedded && document.body) {
+        document.body.className += (document.body.className ? ' ' : '') + 'embedded';
+      }
       if (window.location.hash) {
         window.history.replaceState(null, '', window.location.pathname + window.location.search);
       }
@@ -80,6 +89,10 @@
       var openBtn = document.getElementById('open');
 
       function bounce(query) {
+        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+          window.ReactNativeWebView.postMessage(query);
+          return;
+        }
         var join = returnUri.indexOf('?') >= 0 ? '&' : '?';
         window.location.replace(returnUri + join + query);
       }
@@ -88,6 +101,93 @@
         if (status) {
           status.textContent = message;
         }
+      }
+
+      function bounceDrives(drives) {
+        var rows = [];
+        for (var i = 0; i < drives.length; i += 1) {
+          if (drives[i] && drives[i].id && drives[i].name) {
+            rows.push({ id: String(drives[i].id), name: String(drives[i].name) });
+          }
+        }
+        if (!rows.length) {
+          return false;
+        }
+        bounce('picked_drives_json=' + encodeURIComponent(JSON.stringify(rows)));
+        return true;
+      }
+
+      function authHeaders() {
+        return { Authorization: 'Bearer ' + token };
+      }
+
+      function fetchJson(url) {
+        return fetch(url, { headers: authHeaders() }).then(function (res) {
+          return res.ok ? res.json() : {};
+        });
+      }
+
+      function pinsFromFiles(files) {
+        var byId = {};
+        for (var i = 0; i < files.length; i += 1) {
+          var file = files[i];
+          if (!file || !file.driveId) {
+            continue;
+          }
+          if (!byId[file.driveId]) {
+            byId[file.driveId] = {
+              id: file.driveId,
+              name: file.id === file.driveId ? file.name || '' : '',
+            };
+          } else if (file.id === file.driveId && file.name) {
+            byId[file.driveId].name = file.name;
+          }
+        }
+        var ids = Object.keys(byId);
+        return Promise.all(
+          ids.map(function (id) {
+            if (byId[id].name) {
+              return byId[id];
+            }
+            return fetchJson(
+              'https://www.googleapis.com/drive/v3/files/' +
+                encodeURIComponent(id) +
+                '?supportsAllDrives=true&fields=id,name',
+            ).then(function (meta) {
+              var name = meta && meta.name ? String(meta.name) : '';
+              return name ? { id: id, name: name } : null;
+            }).catch(function () {
+              return null;
+            });
+          }),
+        ).then(function (rows) {
+          return rows.filter(function (row) {
+            return row && row.id && row.name;
+          });
+        });
+      }
+
+      function fetchDrivePins() {
+        if (!token) {
+          return Promise.resolve([]);
+        }
+        return fetchJson('https://www.googleapis.com/drive/v3/drives?pageSize=100&fields=drives(id,name)')
+          .then(function (data) {
+            var drives = (data && data.drives) || [];
+            if (drives.length) {
+              return drives;
+            }
+            return fetchJson(
+              'https://www.googleapis.com/drive/v3/files?q=' +
+                encodeURIComponent("mimeType = 'application/vnd.google-apps.folder' and trashed = false") +
+                '&pageSize=100&fields=files(id,name,driveId)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives',
+            ).then(function (listed) {
+              return pinsFromFiles((listed && listed.files) || []);
+            });
+          })
+          .catch(function () {
+            return [];
+          });
       }
 
       function pickerCallback(data) {
@@ -104,17 +204,28 @@
         }
         var docs = data[google.picker.Response.DOCUMENTS] || [];
         var ids = [];
+        var drives = [];
         for (var i = 0; i < docs.length; i += 1) {
           var id = docs[i][google.picker.Document.ID];
+          var name = docs[i][google.picker.Document.NAME] || '';
+          var driveId = docs[i].driveId || (docs[i].parentId && docs[i].parentId) || '';
           if (id) {
             ids.push(id);
           }
+          if (driveId && name) {
+            drives.push({ id: driveId === id ? id : driveId, name: name });
+          } else if (id && name && docs[i].mimeType === FOLDER) {
+            drives.push({ id: id, name: name });
+          }
         }
-        if (!ids.length) {
-          showError('Nessuna cartella scelta. Riprova.');
+        if (ids.length) {
+          bounce('picked_file_ids=' + encodeURIComponent(ids.join(',')));
           return;
         }
-        bounce('picked_file_ids=' + encodeURIComponent(ids.join(',')));
+        if (bounceDrives(drives)) {
+          return;
+        }
+        showError('Nessuna cartella scelta. Riprova.');
       }
 
       function createPicker() {
@@ -147,6 +258,9 @@
           .addView(shared)
           .addView(withMe)
           .setCallback(pickerCallback);
+        if (google.picker.Feature && google.picker.Feature.MULTISELECT_ENABLED) {
+          builder.enableFeature(google.picker.Feature.MULTISELECT_ENABLED);
+        }
         if (google.picker.Feature && google.picker.Feature.SUPPORT_DRIVES) {
           builder.enableFeature(google.picker.Feature.SUPPORT_DRIVES);
         }
@@ -157,11 +271,16 @@
       }
 
       function start() {
-        if (!window.gapi || !gapi.load) {
-          showError('Google non si è caricato. Tocca il pulsante.');
-          return;
-        }
-        gapi.load('picker', { callback: createPicker });
+        fetchDrivePins().then(function (drives) {
+          if (bounceDrives(drives)) {
+            return;
+          }
+          if (!window.gapi || !gapi.load) {
+            showError('Google non si è caricato. Tocca il pulsante.');
+            return;
+          }
+          gapi.load('picker', { callback: createPicker });
+        });
       }
 
       if (openBtn) {

@@ -1,3 +1,4 @@
+/** Pins saved on this phone. A copy on Drive helps the same Google account on another phone. */
 /** Keep `scripts/check-shared-drive-catalog.mjs` in sync. */
 
 import * as LegacyFS from 'expo-file-system/legacy';

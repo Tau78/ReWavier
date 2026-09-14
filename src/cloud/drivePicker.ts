@@ -27,6 +27,10 @@ export function parseReturnParams(url: string): URLSearchParams {
   if (!raw) {
     return params;
   }
+  if (!raw.includes('://') && !raw.startsWith('?') && !raw.startsWith('#') && raw.includes('=')) {
+    new URLSearchParams(raw).forEach((value, key) => params.set(key, value));
+    return params;
+  }
   const hashAt = raw.indexOf('#');
   const queryAt = raw.indexOf('?');
   const query =
@@ -48,6 +52,47 @@ export function parsePickedFileIds(url: string): string[] {
     .split(',')
     .map((id) => id.trim())
     .filter(Boolean);
+}
+
+export function parsePickedDrivePins(url: string): { id: string; name: string }[] {
+  const params = parseReturnParams(url);
+  const json = params.get('picked_drives_json') || '';
+  if (!json) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    const out: { id: string; name: string }[] = [];
+    const seen = new Set<string>();
+    for (const item of parsed) {
+      if (!item || typeof item !== 'object') {
+        continue;
+      }
+      const id = typeof (item as { id?: unknown }).id === 'string' ? (item as { id: string }).id.trim() : '';
+      const name =
+        typeof (item as { name?: unknown }).name === 'string' ? (item as { name: string }).name.trim() : '';
+      if (!id || !name || seen.has(id)) {
+        continue;
+      }
+      seen.add(id);
+      out.push({ id, name });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+export function sharedDrivePickerUrl(accessToken: string, extras?: { embedded?: boolean }): string {
+  const returnUri = pickerReturnUri();
+  const embedded = extras?.embedded ? '&embedded=1' : '';
+  return (
+    `${ANDROID_GOOGLE_PICKER_URL}?return=${encodeURIComponent(returnUri)}${embedded}` +
+    `#access_token=${encodeURIComponent(accessToken)}`
+  );
 }
 
 function validClientId(value?: string): string | undefined {
@@ -80,11 +125,39 @@ function pickerReturnUri(): string {
   return ANDROID_GOOGLE_RETURN_URI;
 }
 
+export type SharedDrivePickResult = {
+  folders: DriveFile[];
+  drives: { id: string; name: string }[];
+};
+
+export async function foldersFromPickerResult(raw: string): Promise<SharedDrivePickResult | null> {
+  const params = parseReturnParams(raw);
+  if ((params.get('error') || '').toLowerCase() === 'access_denied') {
+    return null;
+  }
+  const drives = parsePickedDrivePins(raw);
+  const folders: DriveFile[] = [];
+  const seen = new Set<string>();
+  for (const id of parsePickedFileIds(raw)) {
+    const file = await getDriveFile(id);
+    if (file && isDriveFolder(file) && !seen.has(file.id)) {
+      seen.add(file.id);
+      folders.push(file);
+    }
+  }
+  if (folders.length === 0 && drives.length === 0) {
+    throw new Error(
+      'Nella schermata Google apri i Drive condivisi, tocca il Drive della band e conferma.',
+    );
+  }
+  return { folders, drives };
+}
+
 /**
  * Opens a folder picker that lists Shared Drives (not My Drive).
  * Google’s own “Seleziona un elemento” stays on Il mio Drive; this page does not.
  */
-export async function pickSharedDriveFolder(): Promise<DriveFile | null> {
+export async function pickSharedDriveFolder(): Promise<SharedDrivePickResult | null> {
   let accessToken: string;
   try {
     accessToken = await getValidGoogleAccessToken();
@@ -92,9 +165,7 @@ export async function pickSharedDriveFolder(): Promise<DriveFile | null> {
     throw new Error('Collega Google Drive, poi tocca di nuovo Scegli su Google.');
   }
   const returnUri = pickerReturnUri();
-  const pickerUrl =
-    `${ANDROID_GOOGLE_PICKER_URL}?return=${encodeURIComponent(returnUri)}` +
-    `#access_token=${encodeURIComponent(accessToken)}`;
+  const pickerUrl = sharedDrivePickerUrl(accessToken);
   try {
     await WebBrowser.warmUpAsync();
   } catch {
@@ -117,21 +188,5 @@ export async function pickSharedDriveFolder(): Promise<DriveFile | null> {
       // optional
     }
   }
-  const params = parseReturnParams(returnUrl);
-  if ((params.get('error') || '').toLowerCase() === 'access_denied') {
-    return null;
-  }
-  const pickedIds = parsePickedFileIds(returnUrl);
-  if (pickedIds.length === 0) {
-    throw new Error(
-      'Nella schermata Google apri i Drive condivisi, tocca la cartella della band e conferma.',
-    );
-  }
-  for (const id of pickedIds) {
-    const file = await getDriveFile(id);
-    if (file && isDriveFolder(file)) {
-      return file;
-    }
-  }
-  throw new Error('Google non ha aperto la cartella. Scegli una cartella, non un file.');
+  return foldersFromPickerResult(returnUrl);
 }

@@ -285,6 +285,21 @@ async function listFoldersQuiet(path: string): Promise<DriveFile[]> {
   }
 }
 
+async function listDriveRootsQuiet(
+  path: string,
+  key: 'drives' | 'teamDrives',
+): Promise<SharedDrivePin[]> {
+  try {
+    const data = await driveGet<Record<string, { id?: string; name?: string }[] | undefined>>(path);
+    const rows = data[key] ?? [];
+    return rows
+      .filter((drive): drive is { id: string; name: string } => Boolean(drive.id && drive.name))
+      .map((drive) => ({ id: drive.id, name: drive.name }));
+  } catch {
+    return [];
+  }
+}
+
 /** Shared Drives (team) plus folders someone shared with you. */
 export async function listSharedDriveEntries(
   query?: string,
@@ -323,26 +338,24 @@ export async function listSharedDriveEntries(
   }
 
   let fromApi: SharedDrivePin[] = [];
-  try {
-    const driveQuery = needle
-      ? `&q=${encodeURIComponent(`name contains '${needle.replace(/'/g, "\\'")}'`)}`
-      : '';
-    const data = await driveGet<{ drives?: { id: string; name: string }[] }>(
-      `/drives?pageSize=50&fields=drives(id,name)${driveQuery}`,
+  const driveQuery = needle
+    ? `&q=${encodeURIComponent(`name contains '${needle.replace(/'/g, "\\'")}'`)}`
+    : '';
+  fromApi = await listDriveRootsQuiet(`/drives?pageSize=50&fields=drives(id,name)${driveQuery}`, 'drives');
+  if (fromApi.length === 0) {
+    fromApi = await listDriveRootsQuiet(
+      `/teamdrives?pageSize=50&fields=teamDrives(id,name)${driveQuery}`,
+      'teamDrives',
     );
-    fromApi = (data.drives ?? [])
-      .filter((drive) => drive.id && drive.name)
-      .map((drive) => ({ id: drive.id, name: drive.name }));
-    for (const drive of fromApi) {
-      push(entryFromPin(drive));
-    }
-  } catch {
-    // Android Web/Desktop tokens often cannot list /drives with drive.file. Pins fill the gap.
+  }
+  for (const drive of fromApi) {
+    push(entryFromPin(drive));
   }
 
   if (fromApi.length > 0) {
     persistSharedDrivesInBackground(fromApi, 'replace');
   } else if (pinned.length === 0) {
+    // Same Google account on another phone can reuse this list. Not required: each phone lists on its own.
     const remote = await readSharedDrivesSidecar();
     for (const pin of remote) {
       push(entryFromPin(pin));
@@ -369,10 +382,28 @@ export async function listSharedDriveEntries(
       `/files?q=${sharedWithMeQ}&pageSize=40&fields=${folderFields}&supportsAllDrives=true&includeItemsFromAllDrives=true`,
     ),
   ]);
-  for (const folder of [...fromSharedDrives, ...fromSharedWithMe]) {
-    if (!folderBelongsOnSharedTab(folder)) {
+  const listed = [...fromSharedDrives, ...fromSharedWithMe].filter(folderBelongsOnSharedTab);
+  const driveIds = new Set<string>();
+  for (const folder of listed) {
+    if (folder.driveId) {
+      driveIds.add(folder.driveId);
+    }
+  }
+  for (const id of driveIds) {
+    if (seen.has(id)) {
       continue;
     }
+    const asRoot = listed.find((folder) => folder.id === id);
+    let name = asRoot?.name ?? '';
+    if (!name) {
+      const meta = await getDriveFile(id);
+      name = meta?.name ?? listed.find((folder) => folder.driveId === id)?.name ?? '';
+    }
+    if (name) {
+      push(entryFromPin({ id, name }));
+    }
+  }
+  for (const folder of listed) {
     if (folder.driveId && seen.has(folder.driveId) && folder.id !== folder.driveId) {
       continue;
     }

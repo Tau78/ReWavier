@@ -4,6 +4,7 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { getValidGoogleAccessToken } from '../../auth/googleToken';
 import {
   isDriveFolder,
   listDriveFolders,
@@ -14,8 +15,12 @@ import {
   type SharedDriveEntry,
 } from '../../cloud/driveApi';
 import { parseDriveFolderLink } from '../../cloud/driveFolderLink';
-import { pickSharedDriveFolder } from '../../cloud/drivePicker';
-import { pinsFromAlbums } from '../../cloud/sharedDriveCatalog';
+import {
+  pickSharedDriveFolder,
+  type SharedDrivePickResult,
+} from '../../cloud/drivePicker';
+import { pinsFromAlbums, rememberSharedDrives } from '../../cloud/sharedDriveCatalog';
+import { SharedDrivePickerWebView } from './SharedDrivePickerWebView';
 import { importDriveFolder } from '../../cloud/syncEngine';
 import { isAudioName } from '../../domain/audioFormats';
 import { isDownloadPausedError } from '../../domain/collectionDownloadVisual';
@@ -68,6 +73,8 @@ export function DriveFolderScreen() {
   const [children, setChildren] = useState<DriveFile[]>([]);
   const [busy, setBusy] = useState(true);
   const [working, setWorking] = useState(false);
+  const [pickerToken, setPickerToken] = useState<string | null>(null);
+  const [pickerFailed, setPickerFailed] = useState(false);
   const downloadPercent = useDownloadProgressStore((s) => s.percent);
   const downloadActive = useDownloadProgressStore((s) => s.active);
   const catalogRef = useRef<SearchHit[]>([]);
@@ -87,6 +94,23 @@ export function DriveFolderScreen() {
   const subfolders = children.filter(isDriveFolder);
   const audios = children.filter((file) => isAudioName(file.name));
   const extras = children.filter((file) => isImageName(file.name) || isPdfName(file.name));
+
+  useEffect(() => {
+    if (tab !== 'shared' || browsing) {
+      return;
+    }
+    void getValidGoogleAccessToken()
+      .then((token) => {
+        if (mountedRef.current) {
+          setPickerToken(token);
+        }
+      })
+      .catch(() => {
+        if (mountedRef.current) {
+          setPickerToken(null);
+        }
+      });
+  }, [tab, browsing]);
 
   const extraLabel = (file: DriveFile): string => {
     if (isPdfName(file.name)) {
@@ -152,6 +176,7 @@ export function DriveFolderScreen() {
     setQuery('');
     catalogRef.current = [];
     setSearchHits([]);
+    setPickerFailed(false);
   };
 
   const pickOnGoogle = () => {
@@ -160,23 +185,15 @@ export function DriveFolderScreen() {
     }
     setBusy(true);
     void pickSharedDriveFolder()
-      .then(async (folder) => {
+      .then(async (result) => {
         if (!mountedRef.current) {
           return;
         }
-        if (!folder) {
+        if (!result) {
           setBusy(false);
           return;
         }
-        const entry: SharedDriveEntry = {
-          ...folder,
-          sharedKind: folder.driveId && folder.driveId === folder.id ? 'shared-drive' : 'shared-folder',
-        };
-        await rememberSharedDriveFromFolder(entry);
-        if (!mountedRef.current) {
-          return;
-        }
-        openFolder(entry);
+        await applyPickResult(result);
       })
       .catch((error) => {
         if (!mountedRef.current) {
@@ -185,6 +202,32 @@ export function DriveFolderScreen() {
         setBusy(false);
         Alert.alert('Drive', error instanceof Error ? error.message : 'Cartella non aperta. Riprova.');
       });
+  };
+
+  const applyPickResult = async (result: SharedDrivePickResult) => {
+    if (result.drives.length > 0) {
+      await rememberSharedDrives(result.drives);
+    }
+    for (const folder of result.folders) {
+      await rememberSharedDriveFromFolder({
+        ...folder,
+        sharedKind: folder.driveId && folder.driveId === folder.id ? 'shared-drive' : 'shared-folder',
+      });
+    }
+    if (!mountedRef.current) {
+      return;
+    }
+    if (result.folders.length === 1 && result.drives.length <= 1) {
+      const folder = result.folders[0];
+      const entry: SharedDriveEntry = {
+        ...folder,
+        sharedKind: folder.driveId && folder.driveId === folder.id ? 'shared-drive' : 'shared-folder',
+      };
+      openFolder(entry);
+      return;
+    }
+    setBusy(false);
+    loadSearch('', 'shared');
   };
 
   const openFolder = (folder: DriveFile | SharedDriveEntry) => {
@@ -335,6 +378,15 @@ export function DriveFolderScreen() {
     navigation.goBack();
   };
 
+  const showEmbeddedPicker =
+    !busy &&
+    !browsing &&
+    tab === 'shared' &&
+    searchHits.length === 0 &&
+    !query.trim() &&
+    Boolean(pickerToken) &&
+    !pickerFailed;
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
@@ -388,7 +440,9 @@ export function DriveFolderScreen() {
         {browsing
           ? 'Tocca Scegli per portare i brani. Una foto con lo stesso nome del brano ne è la copertina (anche GIF). cover.jpg è la copertina dell’album. I PDF finiscono in Documenti.'
           : tab === 'shared'
-            ? 'Tocca Scegli su Google e apri il Drive della band o della scuola. Poi tocca Scegli.'
+            ? searchHits.length > 0
+              ? 'Tocca un Drive per aprirlo. Poi tocca Scegli.'
+              : 'Tocca i Drive della band o della scuola. Restano su questo telefono.'
             : 'Cartelle sul tuo Drive. Aprine una per vedere cosa c’è dentro, poi tocca Scegli.'}
       </Text>
       {browsing ? null : (
@@ -406,7 +460,7 @@ export function DriveFolderScreen() {
           autoCapitalize="none"
         />
       )}
-      {browsing || tab !== 'shared' ? null : (
+      {browsing || tab !== 'shared' || showEmbeddedPicker ? null : (
         <Pressable
           onPress={pickOnGoogle}
           disabled={busy || working}
@@ -450,7 +504,23 @@ export function DriveFolderScreen() {
           ) : null}
         </View>
       ) : null}
-      {busy ? null : (
+      {busy ? null : showEmbeddedPicker && pickerToken ? (
+        <SharedDrivePickerWebView
+          accessToken={pickerToken}
+          onPicked={(result) => {
+            setBusy(true);
+            void applyPickResult(result).catch((error) => {
+              setBusy(false);
+              Alert.alert(
+                'Drive',
+                error instanceof Error ? error.message : 'Cartella non aperta. Riprova.',
+              );
+            });
+          }}
+          onCancel={() => setPickerFailed(true)}
+          onFailed={() => setPickerFailed(true)}
+        />
+      ) : (
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           {!browsing && searchHits.length === 0 ? (
             <View style={styles.emptyBox}>
@@ -641,7 +711,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  scroll: { paddingHorizontal: 16, paddingBottom: 32 },
+  scroll: { paddingHorizontal: 16, paddingBottom: 32, flexGrow: 1 },
   emptyBox: { alignItems: 'center', paddingVertical: 20 },
   empty: { color: colors.textMuted, fontSize: 14, paddingHorizontal: 16, textAlign: 'center' },
   row: {

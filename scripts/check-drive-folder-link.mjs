@@ -100,6 +100,10 @@ function parseReturnParams(url) {
   if (!raw) {
     return params;
   }
+  if (!raw.includes('://') && !raw.startsWith('?') && !raw.startsWith('#') && raw.includes('=')) {
+    new URLSearchParams(raw).forEach((value, key) => params.set(key, value));
+    return params;
+  }
   const hashAt = raw.indexOf('#');
   const queryAt = raw.indexOf('?');
   const query =
@@ -129,5 +133,35 @@ assert.deepEqual(
   ['0ANdrive'],
 );
 assert.deepEqual(parsePickedFileIds('rewavier://oauth'), []);
+assert.deepEqual(parsePickedFileIds('picked_file_ids=abc,def'), ['abc', 'def']);
+
+function parsePickedDrivePins(url) {
+  const params = parseReturnParams(url);
+  const json = params.get('picked_drives_json') || '';
+  if (!json) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(json);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .map((item) => ({
+        id: typeof item?.id === 'string' ? item.id.trim() : '',
+        name: typeof item?.name === 'string' ? item.name.trim() : '',
+      }))
+      .filter((item) => item.id && item.name);
+  } catch {
+    return [];
+  }
+}
+
+assert.deepEqual(
+  parsePickedDrivePins(
+    `rewavier://oauth?picked_drives_json=${encodeURIComponent(JSON.stringify([{ id: '0ANsharedDriveDpb12', name: 'DPB' }]))}`,
+  ),
+  [{ id: '0ANsharedDriveDpb12', name: 'DPB' }],
+);
 
 console.log('ok drive folder link parser');
