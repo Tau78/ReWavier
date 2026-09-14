@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import { Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
+import * as Updates from 'expo-updates';
 import * as WebBrowser from 'expo-web-browser';
 import Constants from 'expo-constants';
 
@@ -10,11 +11,13 @@ import {
   GOOGLE_DRIVE_EXTRA_PARAMS,
   GOOGLE_IDENTITY_EXTRA_PARAMS,
   ANDROID_GOOGLE_RETURN_URI,
+  ANDROID_GOOGLE_EXCHANGE_URL,
   DESKTOP_GOOGLE_CLIENT_ID,
   EXPO_IOS_GOOGLE_CLIENT_ID,
   STORE_IOS_GOOGLE_CLIENT_ID,
   WEB_GOOGLE_CLIENT_ID,
   androidGoogleNativeRedirectUri,
+  androidUsesNativeGoogleRedirect,
   googleAccessTokenFromResult,
   googleAuthNeedsCodeExchange,
   googleAuthPromptFailedMessage,
@@ -166,6 +169,37 @@ async function profileFromGoogle(
   return { email: '', name: 'Google', sub: `google-${Date.now()}` };
 }
 
+async function exchangeViaEventi(body: Record<string, string>): Promise<{
+  accessToken?: string;
+  idToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
+  scope?: string;
+}> {
+  const response = await fetch(ANDROID_GOOGLE_EXCHANGE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(body).toString(),
+  });
+  const json = (await response.json()) as {
+    access_token?: string;
+    id_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    scope?: string;
+  };
+  if (!response.ok || !json.access_token) {
+    throw new Error('exchange');
+  }
+  return {
+    accessToken: json.access_token,
+    idToken: json.id_token,
+    refreshToken: json.refresh_token,
+    expiresIn: json.expires_in,
+    scope: json.scope,
+  };
+}
+
 async function exchangeGoogleCode(
   code: string,
   clientId: string,
@@ -173,7 +207,26 @@ async function exchangeGoogleCode(
   codeVerifier: string,
   scopes: string[],
   clientSecret?: string,
-): Promise<AuthSession.TokenResponse> {
+): Promise<{
+  accessToken?: string;
+  idToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
+  scope?: string;
+}> {
+  if (clientId === DESKTOP_GOOGLE_CLIENT_ID) {
+    try {
+      return await exchangeViaEventi({
+        client_id: clientId,
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri,
+        code_verifier: codeVerifier,
+      });
+    } catch {
+      // Fall through to in-app exchange if the page is down.
+    }
+  }
   const extraParams: Record<string, string> = {
     code_verifier: codeVerifier,
   };
@@ -187,7 +240,16 @@ async function exchangeGoogleCode(
   if (clientSecret) {
     request.clientSecret = clientSecret;
   }
-  return AuthSession.exchangeCodeAsync(request, { tokenEndpoint: GOOGLE_TOKEN_ENDPOINT });
+  const exchanged = await AuthSession.exchangeCodeAsync(request, {
+    tokenEndpoint: GOOGLE_TOKEN_ENDPOINT,
+  });
+  return {
+    accessToken: exchanged.accessToken,
+    idToken: exchanged.idToken ?? undefined,
+    refreshToken: exchanged.refreshToken ?? undefined,
+    expiresIn: exchanged.expiresIn,
+    scope: exchanged.scope ?? undefined,
+  };
 }
 
 async function tokensFromGoogleResult(
@@ -334,10 +396,11 @@ async function waitForGoogleAuthRequest(
 
 function useGoogleAuthRequest(kind: GoogleAuthKind) {
   const ids = readClientIds();
-  // Play 1.0.4 and 1.0.5: HTTPS bounce + implicit tokens. Native Desktop
-  // code exchange needs a secret inside the store binary; that path failed in the field.
-  const useNativeAndroidGoogle = false;
-  const useAndroidHttpsImplicit = Platform.OS === 'android' && !ids.inExpoGo;
+  const useNativeAndroidGoogle =
+    Platform.OS === 'android' &&
+    !ids.inExpoGo &&
+    androidUsesNativeGoogleRedirect(undefined, Updates.runtimeVersion);
+  const useAndroidHttpsImplicit = Platform.OS === 'android' && !ids.inExpoGo && !useNativeAndroidGoogle;
   const androidNativeClientId = ids.androidClientId || DESKTOP_GOOGLE_CLIENT_ID;
   const clientId = useNativeAndroidGoogle ? androidNativeClientId : ids.clientId;
   const iosRedirect = ids.iosClientId ? iosGoogleRedirectUri(ids.iosClientId) : undefined;
@@ -369,7 +432,7 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
       extraParams: kind === 'drive' ? GOOGLE_DRIVE_EXTRA_PARAMS : GOOGLE_IDENTITY_EXTRA_PARAMS,
     };
     if (useAndroidHttpsImplicit) {
-      // 1.0.4 and 1.0.5: tokens on the HTTPS bounce page. No code exchange.
+      // Play 1.0.4: tokens on the HTTPS bounce page. No code exchange.
       config.responseType =
         kind === 'drive' ? AuthSession.ResponseType.Token : AuthSession.ResponseType.IdToken;
       config.usePKCE = false;

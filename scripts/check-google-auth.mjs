@@ -56,6 +56,8 @@ function reversedGoogleClientScheme(clientId) {
 const ANDROID_GOOGLE_REDIRECT_URI =
   'https://eventi.musicproeventi.it/ReWavier/oauth.html';
 const ANDROID_GOOGLE_RETURN_URI = 'rewavier://oauth';
+const ANDROID_GOOGLE_EXCHANGE_URL =
+  'https://eventi.musicproeventi.it/ReWavier/oauth-exchange.php';
 const WEB_GOOGLE_CLIENT_ID =
   '1049963169218-oglbjve738epat5bsm2fnbunsolfh4ed.apps.googleusercontent.com';
 const DESKTOP_GOOGLE_CLIENT_ID =
@@ -219,6 +221,7 @@ const custom = 'rewavier://oauth';
 const androidNative = androidGoogleNativeRedirectUri(DESKTOP_GOOGLE_CLIENT_ID);
 assert.equal(ANDROID_GOOGLE_RETURN_URI, custom);
 assert.match(ANDROID_GOOGLE_REDIRECT_URI, /^https:\/\/eventi\.musicproeventi\.it\/ReWavier\/oauth\.html$/);
+assert.match(ANDROID_GOOGLE_EXCHANGE_URL, /\/oauth-exchange\.php$/);
 assert.equal(androidUsesNativeGoogleRedirect(9), false);
 assert.equal(androidUsesNativeGoogleRedirect('10'), false);
 assert.equal(androidUsesNativeGoogleRedirect(11), true);

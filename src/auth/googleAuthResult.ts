@@ -87,7 +87,11 @@ export const ANDROID_GOOGLE_REDIRECT_URI =
 /** Custom-scheme bounce after the HTTPS page. The Play binary already listens here. */
 export const ANDROID_GOOGLE_RETURN_URI = 'rewavier://oauth';
 
-/** Desktop client — Google accepts the reversed scheme without a secret. */
+/** Play 1.0.5 exchanges the Google code here so the secret never sits in the app. */
+export const ANDROID_GOOGLE_EXCHANGE_URL =
+  'https://eventi.musicproeventi.it/ReWavier/oauth-exchange.php';
+
+/** Desktop client — reversed scheme is in the 1.0.5 Play binary. Token exchange needs a secret (server). */
 export const DESKTOP_GOOGLE_CLIENT_ID =
   '1049963169218-k8i1dmlbsn1nqrv393u8pp111v7v2efc.apps.googleusercontent.com';
 
@@ -141,9 +145,9 @@ export function iosGoogleRedirectUri(iosClientId: string): string {
 /**
  * Redirect URI sent to Google.
  * iOS store builds use the reversed iOS client scheme.
- * Android Play uses the HTTPS bounce page on the Web application client
- * (implicit token). Native Desktop code exchange needs a secret in the APK;
- * Play 1.0.4 and 1.0.5 both complete login without that exchange.
+ * Android Play 1.0.5+ uses the Desktop client reversed scheme; the code is
+ * exchanged on Eventi so Play does not need a secret in the store binary.
+ * Older Play builds keep the HTTPS bounce page on the Web application client.
  */
 export function resolveGoogleOAuthRedirectUri(opts: {
   platform: string;

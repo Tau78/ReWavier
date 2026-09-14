@@ -1,5 +1,7 @@
 import { DriveSlowError, isAbortError } from '../domain/albumRefresh';
 import {
+  ANDROID_GOOGLE_EXCHANGE_URL,
+  DESKTOP_GOOGLE_CLIENT_ID,
   googleClientSecretForExchange,
 } from './googleAuthResult';
 import {
@@ -53,28 +55,41 @@ async function refreshAccess(auth: GoogleAuth): Promise<GoogleAuth> {
     googleDesktopClientSecret?: string;
     googleWebClientSecret?: string;
   };
-  const secret = googleClientSecretForExchange(auth.clientId, {
-    desktop: extra.googleDesktopClientSecret,
-    web: extra.googleWebClientSecret,
-  });
-  const body = new URLSearchParams({
-    client_id: auth.clientId,
-    grant_type: 'refresh_token',
-    refresh_token: auth.refreshToken,
-  });
-  if (secret) {
-    body.set('client_secret', secret);
-  }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TOKEN_REFRESH_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: body.toString(),
-      signal: controller.signal,
-    });
+    if (auth.clientId === DESKTOP_GOOGLE_CLIENT_ID) {
+      response = await fetch(ANDROID_GOOGLE_EXCHANGE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: auth.clientId,
+          grant_type: 'refresh_token',
+          refresh_token: auth.refreshToken,
+        }).toString(),
+        signal: controller.signal,
+      });
+    } else {
+      const secret = googleClientSecretForExchange(auth.clientId, {
+        desktop: extra.googleDesktopClientSecret,
+        web: extra.googleWebClientSecret,
+      });
+      const body = new URLSearchParams({
+        client_id: auth.clientId,
+        grant_type: 'refresh_token',
+        refresh_token: auth.refreshToken,
+      });
+      if (secret) {
+        body.set('client_secret', secret);
+      }
+      response = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString(),
+        signal: controller.signal,
+      });
+    }
   } catch (error) {
     if (isAbortError(error) || controller.signal.aborted) {
       throw new DriveSlowError();
