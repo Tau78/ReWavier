@@ -2,7 +2,6 @@ import { useMemo, useRef } from 'react';
 import { Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
-import * as Updates from 'expo-updates';
 import * as WebBrowser from 'expo-web-browser';
 import Constants from 'expo-constants';
 
@@ -16,12 +15,12 @@ import {
   STORE_IOS_GOOGLE_CLIENT_ID,
   WEB_GOOGLE_CLIENT_ID,
   androidGoogleNativeRedirectUri,
-  androidUsesNativeGoogleRedirect,
   googleAccessTokenFromResult,
   googleAuthNeedsCodeExchange,
   googleAuthPromptFailedMessage,
   googleClientSecretForExchange,
   googleExchangeIsReady,
+  googleIdTokenFromResult,
   googleTokenHasDriveScope,
   iosGoogleRedirectUri,
   pickGoogleClientIds,
@@ -208,7 +207,7 @@ async function tokensFromGoogleResult(
     throw new Error(failMessage);
   }
 
-  let idToken = response.params.id_token ?? response.authentication?.idToken ?? undefined;
+  let idToken = googleIdTokenFromResult(response);
   let accessToken = googleAccessTokenFromResult(response);
   let refreshToken = response.authentication?.refreshToken ?? response.params.refresh_token;
   let expiresIn = response.authentication?.expiresIn;
@@ -233,7 +232,9 @@ async function tokensFromGoogleResult(
       expiresIn = exchanged.expiresIn ?? expiresIn;
       scope = exchanged.scope ?? scope;
     } catch {
-      throw new Error(failMessage);
+      if (!idToken && !accessToken) {
+        throw new Error(failMessage);
+      }
     }
   }
 
@@ -333,12 +334,10 @@ async function waitForGoogleAuthRequest(
 
 function useGoogleAuthRequest(kind: GoogleAuthKind) {
   const ids = readClientIds();
-  const useNativeAndroidGoogle =
-    Platform.OS === 'android' &&
-    !ids.inExpoGo &&
-    androidUsesNativeGoogleRedirect(Constants.nativeBuildVersion, Updates.runtimeVersion);
-  const useAndroidHttpsImplicit =
-    Platform.OS === 'android' && !ids.inExpoGo && !useNativeAndroidGoogle;
+  // Play 1.0.4 and 1.0.5: HTTPS bounce + implicit tokens. Native Desktop
+  // code exchange needs a secret inside the store binary; that path failed in the field.
+  const useNativeAndroidGoogle = false;
+  const useAndroidHttpsImplicit = Platform.OS === 'android' && !ids.inExpoGo;
   const androidNativeClientId = ids.androidClientId || DESKTOP_GOOGLE_CLIENT_ID;
   const clientId = useNativeAndroidGoogle ? androidNativeClientId : ids.clientId;
   const iosRedirect = ids.iosClientId ? iosGoogleRedirectUri(ids.iosClientId) : undefined;
@@ -370,8 +369,7 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
       extraParams: kind === 'drive' ? GOOGLE_DRIVE_EXTRA_PARAMS : GOOGLE_IDENTITY_EXTRA_PARAMS,
     };
     if (useAndroidHttpsImplicit) {
-      // Play 1.0.4 cannot catch the Desktop scheme and the Web client secret is invalid.
-      // Implicit tokens come back on the HTTPS bounce page — no code exchange.
+      // 1.0.4 and 1.0.5: tokens on the HTTPS bounce page. No code exchange.
       config.responseType =
         kind === 'drive' ? AuthSession.ResponseType.Token : AuthSession.ResponseType.IdToken;
       config.usePKCE = false;
@@ -452,7 +450,28 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
         if (browserResult.type !== 'success') {
           return { type: browserResult.type };
         }
-        return request.parseReturnUrl(browserResult.url);
+        const parsed = request.parseReturnUrl(browserResult.url);
+        if (parsed.type !== 'success' && parsed.type !== 'error') {
+          return parsed;
+        }
+        const hasIdentity = Boolean(
+          parsed.params.id_token ||
+            parsed.params.access_token ||
+            parsed.params.code ||
+            parsed.authentication?.idToken ||
+            parsed.authentication?.accessToken,
+        );
+        if (parsed.type === 'error' && hasIdentity) {
+          return {
+            type: 'success' as const,
+            error: null,
+            errorCode: parsed.errorCode,
+            params: parsed.params,
+            authentication: parsed.authentication,
+            url: parsed.url,
+          };
+        }
+        return parsed;
       } finally {
         try {
           await WebBrowser.coolDownAsync();

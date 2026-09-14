@@ -100,7 +100,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Continua con Google su Android',
-        body: 'Tocchi Continua con Google, scegli l’account e torni nell’app. Sulla 1.0.4 basta chiudere e riaprire due volte. Sulla 1.0.5 del Play Store l’accesso resta anche dopo l’aggiornamento.',
+        body: 'Tocchi Continua con Google, scegli l’account e torni nell’app. Sulla 1.0.4 e sulla 1.0.5: chiudi ReWavier e riaprila due volte, poi riprova.',
       },
       {
         title: 'Cartelle album in comune',
