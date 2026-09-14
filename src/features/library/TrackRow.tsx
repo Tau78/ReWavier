@@ -24,6 +24,7 @@ export function TrackRow({
   onArtwork,
   onSwipeDelete,
   swipeEnabled = true,
+  hideArtist = false,
 }: {
   track: Track;
   noteCount: number;
@@ -39,6 +40,8 @@ export function TrackRow({
   onSwipeDelete?: () => void;
   /** False while reorder/drag is active so swipe does not compete with Pan. */
   swipeEnabled?: boolean;
+  /** Inside an album the name is already in the header. */
+  hideArtist?: boolean;
 }) {
   const downloaded = isDownloaded(track);
   const playerDurationMs = usePlayerStore((state) =>
@@ -74,7 +77,9 @@ export function TrackRow({
       accessibilityLabel={
         blocked
           ? `${track.title}, in aggiornamento. Aspetta che sia di nuovo pronto.`
-          : `${track.title}, ${track.artist}`
+          : hideArtist
+            ? track.title
+            : `${track.title}, ${track.artist}`
       }
       accessibilityState={{ disabled: blocked }}
     >
@@ -133,9 +138,11 @@ export function TrackRow({
                 {showCreated ? createdLabel : formatTimecode(durationMs)}
               </Text>
             </Pressable>
-            <Text style={styles.sub} numberOfLines={1}>
-              {track.artist}
-            </Text>
+            {hideArtist ? null : (
+              <Text style={styles.sub} numberOfLines={1}>
+                {track.artist}
+              </Text>
+            )}
             <Text style={styles.notes} numberOfLines={1}>
               {noteCount === 0 ? 'Nessun appunto' : `${noteCount} appunti`}
             </Text>

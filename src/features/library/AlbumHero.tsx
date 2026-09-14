@@ -18,31 +18,28 @@ function PlayIcon({ paused }: { paused: boolean }) {
   return <View style={styles.playGlyph} accessibilityElementsHidden />;
 }
 
+export function albumListMeta(album: Album, trackCount: number): string {
+  const countLabel = `${trackCount} ${trackCount === 1 ? 'traccia' : 'tracce'}`;
+  const artist = album.artist?.trim() ?? '';
+  const artistRepeatsDrive =
+    !artist || artist.toLowerCase() === 'drive' || artist === album.name;
+  if (album.origin === 'drive') {
+    return artistRepeatsDrive ? `Drive · ${countLabel}` : `${artist} · ${countLabel}`;
+  }
+  return artistRepeatsDrive ? countLabel : `${artist} · ${countLabel}`;
+}
+
 export function AlbumHero({
   album,
-  trackCount,
   isPlayingThisAlbum,
   onPlay,
 }: {
   album: Album;
-  trackCount: number;
   isPlayingThisAlbum: boolean;
   onPlay: () => void;
 }) {
   const letter = (album.name.trim()[0] || 'A').toUpperCase();
   const artworkUri = resolveLibraryUri(album.artworkUri);
-  const countLabel = `${trackCount} ${trackCount === 1 ? 'traccia' : 'tracce'}`;
-  const artist = album.artist?.trim() ?? '';
-  const artistRepeatsDrive =
-    !artist || artist.toLowerCase() === 'drive' || artist === album.name;
-  const meta =
-    album.origin === 'drive'
-      ? artistRepeatsDrive
-        ? `Drive · ${countLabel}`
-        : `${artist} · ${countLabel}`
-      : artistRepeatsDrive
-        ? countLabel
-        : `${artist} · ${countLabel}`;
 
   const pickArtwork = async () => {
     try {
@@ -102,12 +99,6 @@ export function AlbumHero({
           <PlayIcon paused={isPlayingThisAlbum} />
         </Pressable>
       </View>
-      <Text style={styles.title} numberOfLines={2}>
-        {album.name}
-      </Text>
-      <Text style={styles.meta} numberOfLines={1}>
-        {meta}
-      </Text>
     </View>
   );
 }
@@ -117,13 +108,13 @@ const ART = 236;
 const styles = StyleSheet.create({
   wrap: {
     alignItems: 'center',
-    paddingTop: 8,
-    paddingBottom: 18,
+    paddingTop: 4,
+    paddingBottom: 10,
   },
   artWrap: {
     width: ART,
     height: ART,
-    marginBottom: 16,
+    marginBottom: 8,
   },
   artHit: {
     width: ART,
@@ -204,18 +195,5 @@ const styles = StyleSheet.create({
     height: 18,
     borderRadius: 1.5,
     backgroundColor: colors.text,
-  },
-  title: {
-    color: colors.text,
-    fontSize: 26,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-    textAlign: 'center',
-    paddingHorizontal: 12,
-  },
-  meta: {
-    marginTop: 6,
-    color: colors.textMuted,
-    fontSize: 14,
   },
 });

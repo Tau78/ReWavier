@@ -91,6 +91,7 @@ export function VersionFolderRow({
             <View key={track.id} style={styles.child}>
               <TrackRow
                 track={track}
+                hideArtist
                 active={track.id === playerTrackId || track.id === folder.chosenId}
                 noteCount={noteCountOf(track.id)}
                 downloading={downloadingOf(track.id)}
