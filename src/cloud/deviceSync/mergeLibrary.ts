@@ -1,4 +1,5 @@
 import type { Album, AlbumDocument, Folder, Playlist, SmartPlaylist } from '../../domain/library';
+import { isSeparatorId, isVersionFolderId } from '../../domain/library';
 import { mergeLyricAnnotations } from '../../domain/lyrics';
 import { mergeMarkers } from '../mergeNotes';
 import { optionalTrackText, type Marker, type Track } from '../../domain/models';
@@ -133,23 +134,44 @@ function mergeAlbums(local: Album[], remote: Album[], idRemap: Map<string, strin
   const byId = new Map(local.map((album) => [album.id, album]));
   for (const incoming of remote) {
     const existing = byId.get(incoming.id);
+    const remapIds = (ids: string[]) => ids.map((id) => remapTrackId(id, idRemap));
+    const remapFolders = (folders: Album['versionFolders']) =>
+      folders?.map((folder) => ({
+        ...folder,
+        trackIds: remapIds(folder.trackIds),
+        chosenId: remapTrackId(folder.chosenId, idRemap),
+      }));
     if (!existing) {
       byId.set(incoming.id, {
         ...incoming,
-        trackIds: incoming.trackIds.map((id) => remapTrackId(id, idRemap)),
+        trackIds: remapIds(incoming.trackIds),
+        versionFolders: remapFolders(incoming.versionFolders),
       });
       continue;
     }
+    const incomingNewer = (incoming.orderUpdatedAt ?? 0) > (existing.orderUpdatedAt ?? 0);
     const trackIds = [...existing.trackIds];
-    for (const id of incoming.trackIds) {
-      const remapped = remapTrackId(id, idRemap);
-      if (!trackIds.includes(remapped)) {
-        trackIds.push(remapped);
+    if (!incomingNewer) {
+      const nested = new Set((existing.versionFolders ?? []).flatMap((folder) => folder.trackIds));
+      for (const id of incoming.trackIds) {
+        const remapped = remapTrackId(id, idRemap);
+        if (isSeparatorId(remapped) || isVersionFolderId(remapped) || nested.has(remapped)) {
+          continue;
+        }
+        if (!trackIds.includes(remapped)) {
+          trackIds.push(remapped);
+        }
       }
     }
+    const versionFolders = incomingNewer
+      ? remapFolders(incoming.versionFolders)
+      : existing.versionFolders;
     byId.set(existing.id, {
       ...existing,
-      trackIds,
+      trackIds: incomingNewer ? remapIds(incoming.trackIds) : trackIds,
+      versionFolders,
+      separators: incomingNewer ? incoming.separators ?? existing.separators : existing.separators,
+      orderUpdatedAt: incomingNewer ? incoming.orderUpdatedAt : existing.orderUpdatedAt,
       notes: existing.notes || incoming.notes,
       notesUpdatedAt: Math.max(existing.notesUpdatedAt ?? 0, incoming.notesUpdatedAt ?? 0) || undefined,
       artworkUri: existing.artworkUri || incoming.artworkUri,

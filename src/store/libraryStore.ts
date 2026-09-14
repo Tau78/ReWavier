@@ -21,8 +21,10 @@ import {
 } from '../domain/library';
 import {
   albumHasCustomOrder,
+  applyAlbumOrderFile,
   orderedAlbumItemIds,
   sortTracksAlphabetically,
+  type AlbumOrderFile,
 } from '../domain/albumOrder';
 import {
   albumContainsTrackId,
@@ -179,6 +181,7 @@ export type LibraryActions = {
     trackIds: string[],
     extras?: { updatedAt?: number; fromCloud?: boolean },
   ) => void;
+  applyCloudAlbumOrder: (albumId: string, parsed: AlbumOrderFile) => void;
   sortCollectionAlphabetically: (kind: CollectionKind, id: string) => void;
   reattachLocalAudio: () => void;
   hydrate: () => Promise<void>;
@@ -209,6 +212,11 @@ function refuseAlbumWrite(albumId: string): boolean {
   }
   Alert.alert(FOLDER_READ_ONLY_MESSAGE);
   return true;
+}
+
+function shareAlbumLayout(albumId: string) {
+  void flushLibraryPersist();
+  void import('../cloud/syncEngine').then((mod) => mod.pushAlbumOrder(albumId)).catch(() => undefined);
 }
 
 function refuseTrackWrite(trackId: string): boolean {
@@ -682,6 +690,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           : album,
       ),
     }));
+    shareAlbumLayout(albumId);
     return separatorId;
   },
 
@@ -701,10 +710,12 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
               separators: (album.separators ?? []).map((item) =>
                 item.id === separatorId ? { ...item, name: trimmed } : item,
               ),
+              orderUpdatedAt: Date.now(),
             }
           : album,
       ),
     }));
+    shareAlbumLayout(albumId);
   },
 
   deleteAlbumSeparator(albumId, separatorId) {
@@ -723,6 +734,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           : album,
       ),
     }));
+    shareAlbumLayout(albumId);
   },
 
   dropAlbumVersion(albumId, sourceId, targetId) {
@@ -747,6 +759,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         return named;
       }),
     }));
+    if (changed) {
+      shareAlbumLayout(albumId);
+    }
     return changed;
   },
 
@@ -762,6 +777,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         return applyAlbumListReorder(album, items);
       }),
     }));
+    shareAlbumLayout(albumId);
   },
 
   unpackAlbumVersionFolder(albumId, folderId) {
@@ -776,6 +792,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         return unpackVersionFolder(album, folderId) ?? album;
       }),
     }));
+    shareAlbumLayout(albumId);
   },
 
   renameAlbumVersionFolder(albumId, folderId, name) {
@@ -790,6 +807,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         return renameVersionFolder(album, folderId, name) ?? album;
       }),
     }));
+    shareAlbumLayout(albumId);
   },
 
   chooseAlbumVersion(albumId, folderId, trackId) {
@@ -801,6 +819,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         return setVersionFolderChosen(album, folderId, trackId) ?? album;
       }),
     }));
+    shareAlbumLayout(albumId);
   },
 
   deleteAlbum(id) {
@@ -1513,9 +1532,15 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         : kind === 'playlist'
           ? get().playlists.find((playlist) => playlist.id === id)?.trackIds
           : get().albums.find((album) => album.id === id)?.trackIds;
+    const nestedIds =
+      kind === 'album'
+        ? (get().albums.find((album) => album.id === id)?.versionFolders ?? []).flatMap(
+            (folder) => folder.trackIds,
+          )
+        : [];
     const nextIds =
       kind === 'album' && extras.fromCloud && currentIds
-        ? mergeAlbumOrderFromCloud(currentIds, trackIds)
+        ? mergeAlbumOrderFromCloud(currentIds, trackIds, nestedIds)
         : trackIds;
     const same = (current: string[]) =>
       current.length === nextIds.length && current.every((trackId, index) => trackId === nextIds[index]);
@@ -1546,8 +1571,16 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       };
     });
     if (kind === 'album' && !extras.fromCloud) {
-      void import('../cloud/syncEngine').then((mod) => mod.pushAlbumOrder(id)).catch(() => undefined);
+      shareAlbumLayout(id);
     }
+  },
+
+  applyCloudAlbumOrder(albumId, parsed) {
+    set((state) => ({
+      albums: state.albums.map((album) =>
+        album.id === albumId ? applyAlbumOrderFile(album, state.tracks, parsed) : album,
+      ),
+    }));
   },
 
   deleteSmartPlaylist(id) {

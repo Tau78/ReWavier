@@ -170,6 +170,7 @@ export function applyAlbumVersionDrop(
       ...working,
       trackIds: top,
       versionFolders: pruneFolders(nextFolders, top),
+      orderUpdatedAt: Date.now(),
     });
   }
 
@@ -187,6 +188,7 @@ export function applyAlbumVersionDrop(
       ...working,
       trackIds: top,
       versionFolders: pruneFolders(nextFolders, top),
+      orderUpdatedAt: Date.now(),
     });
   }
 
@@ -204,6 +206,7 @@ export function applyAlbumVersionDrop(
       ...working,
       trackIds: top,
       versionFolders: pruneFolders(nextFolders, top),
+      orderUpdatedAt: Date.now(),
     });
   }
 
@@ -393,6 +396,7 @@ export function setVersionFolderChosen(album: Album, folderId: string, trackId: 
     versionFolders: (album.versionFolders ?? []).map((item) =>
       item.id === folderId ? { ...item, chosenId: trackId } : item,
     ),
+    orderUpdatedAt: Date.now(),
   };
 }
 
@@ -406,6 +410,7 @@ export function renameVersionFolder(album: Album, folderId: string, name: string
     versionFolders: (album.versionFolders ?? []).map((item) =>
       item.id === folderId ? { ...item, name: trimmed } : item,
     ),
+    orderUpdatedAt: Date.now(),
   };
 }
 

@@ -3,10 +3,9 @@ import { File } from 'expo-file-system';
 import { shouldSkipCloudSync } from '../auth/demoAccount';
 import {
   ORDER_FILE_NAME,
-  buildAlbumOrder,
+  buildAlbumOrderFile,
   isOrderManifestName,
   parseAlbumOrder,
-  sortTracksByOrder,
 } from '../domain/albumOrder';
 import {
   ALBUM_NOTES_FILE_NAME,
@@ -701,16 +700,7 @@ async function syncOneDriveAlbum(
     const localStamp = useLibraryStore.getState().albums.find((item) => item.id === album.id)
       ?.orderUpdatedAt ?? 0;
     if (parsed && parsed.updatedAt > localStamp) {
-      const ordered = sortTracksByOrder(
-        useLibraryStore.getState().tracksIn('album', album.id),
-        parsed.files,
-      );
-      store.setCollectionOrder(
-        'album',
-        album.id,
-        ordered.map((track) => track.id),
-        { updatedAt: parsed.updatedAt, fromCloud: true },
-      );
+      store.applyCloudAlbumOrder(album.id, parsed);
     } else if (localStamp > (parsed?.updatedAt ?? 0)) {
       await pushAlbumOrder(album.id);
     }
@@ -1139,12 +1129,16 @@ export async function pushAlbumOrder(albumId: string): Promise<void> {
   if (!(await hasDriveToken())) {
     return;
   }
-  const tracks = useLibraryStore.getState().tracksIn('album', albumId);
-  const updatedAt =
-    useLibraryStore.getState().albums.find((item) => item.id === albumId)?.orderUpdatedAt ??
-    Date.now();
+  const live = useLibraryStore.getState().albums.find((item) => item.id === albumId);
+  const updatedAt = live?.orderUpdatedAt ?? Date.now();
   const dest = new File(inboxDirectory(), `order-${albumId}.json`);
-  dest.write(JSON.stringify(buildAlbumOrder(tracks, updatedAt), null, 2));
+  dest.write(
+    JSON.stringify(
+      buildAlbumOrderFile(live, useLibraryStore.getState().tracks, updatedAt),
+      null,
+      2,
+    ),
+  );
   const existing = await findChildByName(album.driveFolderId, ORDER_FILE_NAME);
   if (existing) {
     await updateDriveFileMedia(existing.id, dest.uri, 'application/json');
