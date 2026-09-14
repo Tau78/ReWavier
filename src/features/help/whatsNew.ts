@@ -100,7 +100,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Continua con Google su Android',
-        body: 'Tocchi Continua con Google, scegli l’account e torni nell’app. Sulla 1.0.5 chiudi ReWavier e riaprila due volte, poi riprova. Sulla 1.0.4 fai lo stesso.',
+        body: 'Tocchi Continua con Google, scegli l’account e torni nell’app. Poi Collega Google Drive: chiudi ReWavier, riaprila due volte e riprova.',
       },
       {
         title: 'Cartelle album in comune',

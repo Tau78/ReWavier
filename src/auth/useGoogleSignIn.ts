@@ -8,7 +8,6 @@ import Constants from 'expo-constants';
 
 import { useSessionStore } from '../store/sessionStore';
 import {
-  GOOGLE_DRIVE_EXTRA_PARAMS,
   GOOGLE_IDENTITY_EXTRA_PARAMS,
   ANDROID_GOOGLE_RETURN_URI,
   ANDROID_GOOGLE_EXCHANGE_URL,
@@ -22,6 +21,7 @@ import {
   googleAuthNeedsCodeExchange,
   googleAuthPromptFailedMessage,
   googleClientSecretForExchange,
+  googleDriveAuthorizeExtraParams,
   googleExchangeIsReady,
   googleIdTokenFromResult,
   googleTokenHasDriveScope,
@@ -399,7 +399,10 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
   const useNativeAndroidGoogle =
     Platform.OS === 'android' &&
     !ids.inExpoGo &&
-    androidUsesNativeGoogleRedirect(undefined, Updates.runtimeVersion);
+    androidUsesNativeGoogleRedirect(
+      undefined,
+      Updates.runtimeVersion || Constants.expoConfig?.version,
+    );
   const useAndroidHttpsImplicit = Platform.OS === 'android' && !ids.inExpoGo && !useNativeAndroidGoogle;
   const androidNativeClientId = ids.androidClientId || DESKTOP_GOOGLE_CLIENT_ID;
   const clientId = useNativeAndroidGoogle ? androidNativeClientId : ids.clientId;
@@ -429,7 +432,10 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
       language: 'it',
       shouldAutoExchangeCode: false,
       scopes: kind === 'drive' ? DRIVE_SCOPES : IDENTITY_SCOPES,
-      extraParams: kind === 'drive' ? GOOGLE_DRIVE_EXTRA_PARAMS : GOOGLE_IDENTITY_EXTRA_PARAMS,
+      extraParams:
+        kind === 'drive'
+          ? googleDriveAuthorizeExtraParams(useAndroidHttpsImplicit)
+          : GOOGLE_IDENTITY_EXTRA_PARAMS,
     };
     if (useAndroidHttpsImplicit) {
       // Play 1.0.4: tokens on the HTTPS bounce page. No code exchange.

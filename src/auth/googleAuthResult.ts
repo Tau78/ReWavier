@@ -29,6 +29,23 @@ export const GOOGLE_DRIVE_EXTRA_PARAMS = {
   include_granted_scopes: 'true',
 } as const;
 
+/**
+ * Implicit token return cannot ask for offline access (Google 400).
+ * Play 1.0.4 and any Android still on the HTTPS bounce use this.
+ */
+export const GOOGLE_DRIVE_IMPLICIT_EXTRA_PARAMS = {
+  prompt: 'consent select_account',
+  include_granted_scopes: 'true',
+} as const;
+
+export function googleDriveAuthorizeExtraParams(implicit: boolean): {
+  prompt: string;
+  include_granted_scopes: string;
+  access_type?: string;
+} {
+  return implicit ? GOOGLE_DRIVE_IMPLICIT_EXTRA_PARAMS : GOOGLE_DRIVE_EXTRA_PARAMS;
+}
+
 /** @deprecated Use GOOGLE_DRIVE_EXTRA_PARAMS. Kept so older imports keep compiling. */
 export const GOOGLE_OAUTH_EXTRA_PARAMS = GOOGLE_DRIVE_EXTRA_PARAMS;
 
