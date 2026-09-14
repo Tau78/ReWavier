@@ -112,7 +112,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Drive della band',
-        body: 'Drive Condivisi mostra i Drive della band o della scuola, non le tue cartelle. Cerca il nome, oppure incolla il link che vedi su Drive.',
+        body: 'Nei Drive condivisi tocca Scegli su Google e apri il Drive della band. Poi tocca Scegli.',
       },
     ],
   },

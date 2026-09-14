@@ -94,4 +94,40 @@ assert.equal(folderBelongsOnSharedTab({ ownedByMe: false }), true);
 assert.equal(folderBelongsOnSharedTab({ ownedByMe: true, driveId: '0ANsharedDriveRoot12' }), true);
 assert.equal(folderBelongsOnSharedTab({ driveId: '0ANsharedDriveRoot12' }), true);
 
+function parseReturnParams(url) {
+  const raw = url.trim();
+  const params = new URLSearchParams();
+  if (!raw) {
+    return params;
+  }
+  const hashAt = raw.indexOf('#');
+  const queryAt = raw.indexOf('?');
+  const query =
+    queryAt >= 0 ? raw.slice(queryAt + 1, hashAt > queryAt ? hashAt : undefined) : '';
+  const hash = hashAt >= 0 ? raw.slice(hashAt + 1) : '';
+  new URLSearchParams(query).forEach((value, key) => params.set(key, value));
+  new URLSearchParams(hash).forEach((value, key) => {
+    if (!params.has(key)) {
+      params.set(key, value);
+    }
+  });
+  return params;
+}
+
+function parsePickedFileIds(url) {
+  const params = parseReturnParams(url);
+  const joined = params.get('picked_file_ids') || params.get('pickedFileIds') || '';
+  return joined
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+}
+
+assert.deepEqual(parsePickedFileIds('rewavier://oauth?picked_file_ids=abc,def'), ['abc', 'def']);
+assert.deepEqual(
+  parsePickedFileIds('https://eventi.musicproeventi.it/ReWavier/oauth.html#picked_file_ids=0ANdrive&access_token=tok'),
+  ['0ANdrive'],
+);
+assert.deepEqual(parsePickedFileIds('rewavier://oauth'), []);
+
 console.log('ok drive folder link parser');

@@ -13,6 +13,7 @@ import {
   type SharedDriveEntry,
 } from '../../cloud/driveApi';
 import { parseDriveFolderLink } from '../../cloud/driveFolderLink';
+import { pickSharedDriveFolder } from '../../cloud/drivePicker';
 import { importDriveFolder } from '../../cloud/syncEngine';
 import { isAudioName } from '../../domain/audioFormats';
 import { isDownloadPausedError } from '../../domain/collectionDownloadVisual';
@@ -143,6 +144,35 @@ export function DriveFolderScreen() {
     setQuery('');
     catalogRef.current = [];
     setSearchHits([]);
+  };
+
+  const pickOnGoogle = () => {
+    if (working || browsing) {
+      return;
+    }
+    setBusy(true);
+    void pickSharedDriveFolder()
+      .then((folder) => {
+        if (!mountedRef.current) {
+          return;
+        }
+        if (!folder) {
+          setBusy(false);
+          return;
+        }
+        const entry: SharedDriveEntry = {
+          ...folder,
+          sharedKind: folder.driveId && folder.driveId === folder.id ? 'shared-drive' : 'shared-folder',
+        };
+        openFolder(entry);
+      })
+      .catch((error) => {
+        if (!mountedRef.current) {
+          return;
+        }
+        setBusy(false);
+        Alert.alert('Drive', error instanceof Error ? error.message : 'Cartella non aperta. Riprova.');
+      });
   };
 
   const openFolder = (folder: DriveFile | SharedDriveEntry) => {
@@ -341,7 +371,7 @@ export function DriveFolderScreen() {
         {browsing
           ? 'Tocca Scegli per portare i brani. Una foto con lo stesso nome del brano ne è la copertina (anche GIF). cover.jpg è la copertina dell’album. I PDF finiscono in Documenti.'
           : tab === 'shared'
-            ? 'Drive della band o della scuola, e cartelle che ti hanno condiviso. Cerca il nome, oppure incolla il link della cartella (quello di Drive). Poi tocca Scegli.'
+            ? 'Tocca Scegli su Google e apri il Drive della band o della scuola. Poi tocca Scegli.'
             : 'Cartelle sul tuo Drive. Aprine una per vedere cosa c’è dentro, poi tocca Scegli.'}
       </Text>
       {browsing ? null : (
@@ -358,6 +388,21 @@ export function DriveFolderScreen() {
           autoCorrect={false}
           autoCapitalize="none"
         />
+      )}
+      {browsing || tab !== 'shared' ? null : (
+        <Pressable
+          onPress={pickOnGoogle}
+          disabled={busy || working}
+          accessibilityRole="button"
+          accessibilityLabel="Scegli su Google"
+          style={({ pressed }) => [
+            styles.pickBtn,
+            pressed && styles.pressed,
+            (busy || working) && styles.chooseOff,
+          ]}
+        >
+          <Text style={styles.pickLabel}>Scegli su Google</Text>
+        </Pressable>
       )}
       {busy ? <ActivityIndicator color={colors.accent} style={styles.spinner} /> : null}
       {working ? (
@@ -398,10 +443,10 @@ export function DriveFolderScreen() {
                   ? tab === 'shared' && parseDriveFolderLink(query)
                     ? 'Google non ha aperto questo link. Su Drive, apri la cartella, tocca Condividi e copia di nuovo il link, poi incollalo qui.'
                     : tab === 'shared'
-                      ? 'Nessun risultato. Incolla il link della cartella (su Drive: apri la cartella, tocca Condividi, Copia link).'
+                      ? 'Nessun risultato. Tocca Scegli su Google e apri il Drive della band.'
                       : 'Nessun risultato. Prova un altro nome.'
                   : tab === 'shared'
-                    ? 'Cerca il nome della cartella, oppure incolla il link che vedi su Drive. Essere gestore sul computer non basta: ReWavier apre solo la cartella che scegli qui.'
+                    ? 'Tocca Scegli su Google e apri il Drive della band o della scuola.'
                     : 'Nessuna cartella. Accedi con Google e crea o scegli una cartella sul tuo Drive.'}
               </Text>
             </View>
@@ -532,6 +577,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 16,
+  },
+  pickBtn: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 14,
+    backgroundColor: colors.accent,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  pickLabel: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
   },
   spinner: { marginTop: 24 },
   workingBox: {
