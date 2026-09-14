@@ -14,11 +14,12 @@ import { throwIfDownloadPaused, useDownloadProgressStore } from '../store/downlo
 
 import { googleTokenHasDriveScope } from '../auth/googleAuthResult';
 import { getValidGoogleAccessToken, loadGoogleAuth } from '../auth/googleToken';
+import { parseDriveFolderLink } from './driveFolderLink';
 import { roleFromDriveCapabilities, type FolderRole } from '../domain/folderRole';
 
 const DRIVE = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
-const DRIVE_FIELDS = 'id,name,mimeType,modifiedTime,md5Checksum,size';
+const DRIVE_FIELDS = 'id,name,mimeType,modifiedTime,md5Checksum,size,driveId';
 /** No byte progress for this long → abort (VPN / hung native download). */
 const DOWNLOAD_STALL_MS = 90_000;
 /** Absolute ceiling for one file download. */
@@ -34,6 +35,8 @@ export type DriveFile = {
   modifiedTime?: string;
   md5Checksum?: string;
   size?: string;
+  /** Present on items that live in a Shared Drive. */
+  driveId?: string;
 };
 
 export function isDriveFolder(file: Pick<DriveFile, 'mimeType'>): boolean {
@@ -145,54 +148,86 @@ export type SharedDriveKind = 'shared-drive' | 'shared-folder';
 
 export type SharedDriveEntry = DriveFile & { sharedKind: SharedDriveKind };
 
+function sharedKindFor(file: Pick<DriveFile, 'id' | 'driveId'>): SharedDriveKind {
+  return file.driveId && file.driveId === file.id ? 'shared-drive' : 'shared-folder';
+}
+
+async function listFoldersQuiet(path: string): Promise<DriveFile[]> {
+  try {
+    return (await driveGet<{ files?: DriveFile[] }>(path)).files ?? [];
+  } catch {
+    return [];
+  }
+}
+
 /** Shared Drives (team) plus folders someone shared with you. */
 export async function listSharedDriveEntries(query?: string): Promise<SharedDriveEntry[]> {
-  const needle = query?.trim().toLowerCase();
-  const matches = (name: string) => !needle || name.toLowerCase().includes(needle);
+  const rawQuery = query?.trim() ?? '';
+  const needle = rawQuery.toLowerCase();
+  const linkId = rawQuery ? parseDriveFolderLink(rawQuery) : null;
+  const matches = (name: string) => !needle || Boolean(linkId) || name.toLowerCase().includes(needle);
 
-  const drives: SharedDriveEntry[] = [];
+  const seen = new Set<string>();
+  const out: SharedDriveEntry[] = [];
+  const push = (entry: SharedDriveEntry) => {
+    if (seen.has(entry.id) || !matches(entry.name)) {
+      return;
+    }
+    seen.add(entry.id);
+    out.push(entry);
+  };
+
+  if (linkId) {
+    const file = await getDriveFile(linkId);
+    if (file && isDriveFolder(file)) {
+      push({ ...file, sharedKind: sharedKindFor(file) });
+    }
+    return out;
+  }
+
   try {
+    const driveQuery = needle
+      ? `&q=${encodeURIComponent(`name contains '${needle.replace(/'/g, "\\'")}'`)}`
+      : '';
     const data = await driveGet<{ drives?: { id: string; name: string }[] }>(
-      '/drives?pageSize=50&fields=drives(id,name)',
+      `/drives?pageSize=50&fields=drives(id,name)${driveQuery}`,
     );
     for (const drive of data.drives ?? []) {
-      if (!matches(drive.name)) {
-        continue;
-      }
-      drives.push({
+      push({
         id: drive.id,
         name: drive.name,
         mimeType: DRIVE_FOLDER_MIME,
+        driveId: drive.id,
         sharedKind: 'shared-drive',
       });
     }
   } catch {
-    // Shared Drive roots need broader Drive scope; with drive.file alone this often fails.
+    // Listing Shared Drive roots needs a broader Google permission than drive.file.
   }
 
-  const q = encodeURIComponent(
-    `mimeType = 'application/vnd.google-apps.folder' and trashed = false and sharedWithMe = true${nameContainsFilter(query)}`,
+  const folderQ = encodeURIComponent(
+    `mimeType = 'application/vnd.google-apps.folder' and trashed = false${nameContainsFilter(rawQuery)}`,
   );
-  const fields = 'files(id,name,mimeType,modifiedTime)';
-  const shared = `/files?q=${q}&pageSize=40&fields=${fields}&supportsAllDrives=true&includeItemsFromAllDrives=true`;
-  let folders: DriveFile[] = [];
-  try {
-    folders = (await driveGet<{ files?: DriveFile[] }>(shared)).files ?? [];
-  } catch {
-    folders = [];
+  const folderFields = 'files(id,name,mimeType,modifiedTime,driveId)';
+  const across = [
+    `/files?q=${folderQ}&pageSize=40&fields=${folderFields}&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives`,
+    `/files?q=${folderQ}&pageSize=40&fields=${folderFields}&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=user`,
+  ];
+  const sharedWithMeQ = encodeURIComponent(
+    `mimeType = 'application/vnd.google-apps.folder' and trashed = false and sharedWithMe = true${nameContainsFilter(rawQuery)}`,
+  );
+  const [fromAll, fromUser, fromSharedWithMe] = await Promise.all([
+    listFoldersQuiet(across[0]),
+    listFoldersQuiet(across[1]),
+    listFoldersQuiet(
+      `/files?q=${sharedWithMeQ}&pageSize=40&fields=${folderFields}&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+    ),
+  ]);
+  for (const folder of [...fromAll, ...fromUser, ...fromSharedWithMe]) {
+    push({ ...folder, sharedKind: sharedKindFor(folder) });
   }
 
-  const seen = new Set(drives.map((item) => item.id));
-  const extras: SharedDriveEntry[] = [];
-  for (const folder of folders) {
-    if (seen.has(folder.id) || !matches(folder.name)) {
-      continue;
-    }
-    seen.add(folder.id);
-    extras.push({ ...folder, sharedKind: 'shared-folder' });
-  }
-
-  return [...drives, ...extras];
+  return out;
 }
 
 export async function fetchFolderRole(folderId: string): Promise<FolderRole> {

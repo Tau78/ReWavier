@@ -12,6 +12,7 @@ import {
   type DriveFile,
   type SharedDriveEntry,
 } from '../../cloud/driveApi';
+import { parseDriveFolderLink } from '../../cloud/driveFolderLink';
 import { importDriveFolder } from '../../cloud/syncEngine';
 import { isAudioName } from '../../domain/audioFormats';
 import { isDownloadPausedError } from '../../domain/collectionDownloadVisual';
@@ -151,7 +152,9 @@ export function DriveFolderScreen() {
     const sharedDriveId =
       ('sharedKind' in folder && folder.sharedKind === 'shared-drive'
         ? folder.id
-        : undefined) ?? stack[0]?.sharedDriveId;
+        : undefined) ??
+      folder.driveId ??
+      stack[0]?.sharedDriveId;
     setBusy(true);
     setStack((prev) => [...prev, { id: folder.id, name: folder.name, sharedDriveId }]);
     void withTimeout(
@@ -338,7 +341,7 @@ export function DriveFolderScreen() {
         {browsing
           ? 'Tocca Scegli per portare i brani. Una foto con lo stesso nome del brano ne è la copertina (anche GIF). cover.jpg è la copertina dell’album. I PDF finiscono in Documenti.'
           : tab === 'shared'
-            ? 'Qui ci sono i Drive della band o della scuola, e le cartelle che ti hanno condiviso. Aprine una, poi tocca Scegli.'
+            ? 'Drive della band o della scuola, e cartelle che ti hanno condiviso. Cerca il nome, oppure incolla il link della cartella (quello di Drive). Poi tocca Scegli.'
             : 'Cartelle sul tuo Drive. Aprine una per vedere cosa c’è dentro, poi tocca Scegli.'}
       </Text>
       {browsing ? null : (
@@ -347,7 +350,9 @@ export function DriveFolderScreen() {
           value={query}
           onChangeText={onSearchChange}
           onSubmitEditing={() => loadSearch(query.trim(), tab)}
-          placeholder={tab === 'shared' ? 'Cerca un Drive o una cartella…' : 'Cerca cartella…'}
+          placeholder={
+            tab === 'shared' ? 'Nome o link della cartella Drive…' : 'Cerca cartella…'
+          }
           placeholderTextColor={colors.textMuted}
           returnKeyType="search"
           autoCorrect={false}
@@ -390,9 +395,13 @@ export function DriveFolderScreen() {
               <EmptyGraphic />
               <Text style={styles.empty}>
                 {query.trim()
-                  ? 'Nessun risultato. Prova un altro nome.'
+                  ? tab === 'shared' && parseDriveFolderLink(query)
+                    ? 'Google non ha aperto questo link. Su Drive, apri la cartella, tocca Condividi e copia di nuovo il link, poi incollalo qui.'
+                    : tab === 'shared'
+                      ? 'Nessun risultato. Incolla il link della cartella (su Drive: apri la cartella, tocca Condividi, Copia link).'
+                      : 'Nessun risultato. Prova un altro nome.'
                   : tab === 'shared'
-                    ? 'Nessun Drive condiviso. Se la band o la scuola ne ha uno, chiedi di esserci dentro.'
+                    ? 'Cerca il nome della cartella, oppure incolla il link che vedi su Drive. Essere gestore sul computer non basta: ReWavier apre solo la cartella che scegli qui.'
                     : 'Nessuna cartella. Accedi con Google e crea o scegli una cartella sul tuo Drive.'}
               </Text>
             </View>
