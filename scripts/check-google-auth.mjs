@@ -54,8 +54,25 @@ const WEB_GOOGLE_CLIENT_ID =
 const DESKTOP_GOOGLE_CLIENT_ID =
   '1049963169218-k8i1dmlbsn1nqrv393u8pp111v7v2efc.apps.googleusercontent.com';
 const ANDROID_GOOGLE_NATIVE_MIN_VERSION_CODE = 11;
+const ANDROID_GOOGLE_NATIVE_MIN_RUNTIME = '1.0.5';
 
-function androidUsesNativeGoogleRedirect(nativeBuildVersion) {
+function runtimeVersionGte(value, min) {
+  const left = value.split('.').map((part) => Number.parseInt(part, 10) || 0);
+  const right = min.split('.').map((part) => Number.parseInt(part, 10) || 0);
+  for (let i = 0; i < 3; i += 1) {
+    const delta = (left[i] ?? 0) - (right[i] ?? 0);
+    if (delta !== 0) {
+      return delta > 0;
+    }
+  }
+  return true;
+}
+
+function androidUsesNativeGoogleRedirect(nativeBuildVersion, runtimeVersion) {
+  const runtime = runtimeVersion?.trim();
+  if (runtime && runtimeVersionGte(runtime, ANDROID_GOOGLE_NATIVE_MIN_RUNTIME)) {
+    return true;
+  }
   const code = Number(nativeBuildVersion);
   return Number.isFinite(code) && code >= ANDROID_GOOGLE_NATIVE_MIN_VERSION_CODE;
 }
@@ -112,8 +129,8 @@ function googleAuthPromptFailedMessage(result) {
     return null;
   }
   const raw = `${result.params?.error ?? ''} ${result.errorCode ?? ''}`.toLowerCase();
-  if (raw.includes('redirect_uri') || raw.includes('invalid_request')) {
-    return 'Google non ha riconosciuto l’app. Riprova, oppure entra con email.';
+  if (raw.includes('redirect_uri') || raw.includes('invalid_request') || raw.includes('access_denied')) {
+    return 'Google ha bloccato il collegamento. Usa «Collega da File», oppure riprova più tardi.';
   }
   if (result.type === 'error') {
     return 'Login Google non riuscito. Riprova, oppure entra con email.';
@@ -199,6 +216,18 @@ assert.equal(androidUsesNativeGoogleRedirect(9), false);
 assert.equal(androidUsesNativeGoogleRedirect('10'), false);
 assert.equal(androidUsesNativeGoogleRedirect(11), true);
 assert.equal(androidUsesNativeGoogleRedirect('11'), true);
+assert.equal(androidUsesNativeGoogleRedirect(undefined, '1.0.4'), false);
+assert.equal(androidUsesNativeGoogleRedirect(9, '1.0.4'), false);
+assert.equal(androidUsesNativeGoogleRedirect(undefined, '1.0.5'), true);
+assert.equal(androidUsesNativeGoogleRedirect(undefined, '1.0.6'), true);
+assert.equal(
+  googleAuthNeedsCodeExchange({
+    type: 'success',
+    params: { id_token: 'jwt' },
+    authentication: null,
+  }),
+  false,
+);
 assert.equal(
   resolveGoogleOAuthRedirectUri({ platform: 'ios', iosClientId: iosId, customSchemeUri: custom }),
   'com.googleusercontent.apps.1049963169218-o6tcahpfsdijj2lm811bmjs4vjaglb7v:/oauthredirect',
@@ -229,11 +258,11 @@ assert.equal(googleAuthPromptFailedMessage({ type: 'dismiss' }), null);
 assert.equal(googleAuthPromptFailedMessage({ type: 'cancel' }), null);
 assert.equal(
   googleAuthPromptFailedMessage({ type: 'error', params: { error: 'redirect_uri_mismatch' } }),
-  'Google non ha riconosciuto l’app. Riprova, oppure entra con email.',
+  'Google ha bloccato il collegamento. Usa «Collega da File», oppure riprova più tardi.',
 );
 assert.equal(
   googleAuthPromptFailedMessage({ type: 'error', params: { error: 'invalid_request' } }),
-  'Google non ha riconosciuto l’app. Riprova, oppure entra con email.',
+  'Google ha bloccato il collegamento. Usa «Collega da File», oppure riprova più tardi.',
 );
 
 const storeIos = '1049963169218-o6tcahpfsdijj2lm811bmjs4vjaglb7v.apps.googleusercontent.com';

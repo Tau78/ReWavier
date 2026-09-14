@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import { Platform } from 'react-native';
 import * as AuthSession from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
+import * as Updates from 'expo-updates';
 import * as WebBrowser from 'expo-web-browser';
 import Constants from 'expo-constants';
 
@@ -335,7 +336,9 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
   const useNativeAndroidGoogle =
     Platform.OS === 'android' &&
     !ids.inExpoGo &&
-    androidUsesNativeGoogleRedirect(Constants.nativeBuildVersion);
+    androidUsesNativeGoogleRedirect(Constants.nativeBuildVersion, Updates.runtimeVersion);
+  const useAndroidHttpsImplicit =
+    Platform.OS === 'android' && !ids.inExpoGo && !useNativeAndroidGoogle;
   const androidNativeClientId = ids.androidClientId || DESKTOP_GOOGLE_CLIENT_ID;
   const clientId = useNativeAndroidGoogle ? androidNativeClientId : ids.clientId;
   const iosRedirect = ids.iosClientId ? iosGoogleRedirectUri(ids.iosClientId) : undefined;
@@ -366,6 +369,13 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
       scopes: kind === 'drive' ? DRIVE_SCOPES : IDENTITY_SCOPES,
       extraParams: kind === 'drive' ? GOOGLE_DRIVE_EXTRA_PARAMS : GOOGLE_IDENTITY_EXTRA_PARAMS,
     };
+    if (useAndroidHttpsImplicit) {
+      // Play 1.0.4 cannot catch the Desktop scheme and the Web client secret is invalid.
+      // Implicit tokens come back on the HTTPS bounce page — no code exchange.
+      config.responseType =
+        kind === 'drive' ? AuthSession.ResponseType.Token : AuthSession.ResponseType.IdToken;
+      config.usePKCE = false;
+    }
     if (ids.iosClientId && Platform.OS === 'ios' && !ids.inExpoGo) {
       config.iosClientId = ids.iosClientId;
     } else if (useNativeAndroidGoogle) {
@@ -386,6 +396,7 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
     clientId,
     redirectUri,
     useNativeAndroidGoogle,
+    useAndroidHttpsImplicit,
     androidNativeClientId,
   ]);
 

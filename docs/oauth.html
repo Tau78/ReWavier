@@ -50,9 +50,18 @@
   </main>
   <script>
     (function () {
-      var query = window.location.search || '';
-      var hash = window.location.hash || '';
-      var target = 'rewavier://oauth' + query + hash;
+      var search = window.location.search || '';
+      var hash = (window.location.hash || '').replace(/^#/, '');
+      var params = new URLSearchParams(search.charAt(0) === '?' ? search.slice(1) : search);
+      if (hash) {
+        new URLSearchParams(hash).forEach(function (value, key) {
+          if (key && !params.has(key)) {
+            params.set(key, value);
+          }
+        });
+      }
+      var query = params.toString();
+      var target = 'rewavier://oauth' + (query ? '?' + query : '');
       var link = document.getElementById('open');
       if (link) {
         link.setAttribute('href', target);

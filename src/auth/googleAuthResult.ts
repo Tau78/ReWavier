@@ -86,9 +86,34 @@ export const DESKTOP_GOOGLE_CLIENT_ID =
 /** Play 1.0.5+ binaries include this scheme. Older Play builds do not. */
 export const ANDROID_GOOGLE_NATIVE_MIN_VERSION_CODE = 11;
 
+/** Native scheme shipped with store version 1.0.5 (versionCode ≥ 11). */
+export const ANDROID_GOOGLE_NATIVE_MIN_RUNTIME = '1.0.5';
+
+function runtimeVersionGte(value: string, min: string): boolean {
+  const left = value.split('.').map((part) => Number.parseInt(part, 10) || 0);
+  const right = min.split('.').map((part) => Number.parseInt(part, 10) || 0);
+  for (let i = 0; i < 3; i += 1) {
+    const delta = (left[i] ?? 0) - (right[i] ?? 0);
+    if (delta !== 0) {
+      return delta > 0;
+    }
+  }
+  return true;
+}
+
+/**
+ * True only for the installed Play binary, not the OTA JS.
+ * `expo-constants` nativeBuildVersion is missing on SDK 54 Android;
+ * `expo-updates` runtimeVersion stays on the APK (1.0.4 vs 1.0.5).
+ */
 export function androidUsesNativeGoogleRedirect(
   nativeBuildVersion?: string | number | null,
+  runtimeVersion?: string | null,
 ): boolean {
+  const runtime = runtimeVersion?.trim();
+  if (runtime && runtimeVersionGte(runtime, ANDROID_GOOGLE_NATIVE_MIN_RUNTIME)) {
+    return true;
+  }
   const code = Number(nativeBuildVersion);
   return Number.isFinite(code) && code >= ANDROID_GOOGLE_NATIVE_MIN_VERSION_CODE;
 }
@@ -108,8 +133,9 @@ export function iosGoogleRedirectUri(iosClientId: string): string {
 /**
  * Redirect URI sent to Google.
  * iOS store builds use the reversed iOS client scheme.
- * Android Play 1.0.5+ uses the Desktop client reversed scheme (no secret).
- * Older Play builds keep the HTTPS bounce page on the Web application client.
+ * Android Play 1.0.5+ uses the Desktop client reversed scheme (Desktop secret).
+ * Older Play builds keep the HTTPS bounce page on the Web application client
+ * (implicit token — the Web client secret is not valid, so code exchange fails).
  */
 export function resolveGoogleOAuthRedirectUri(opts: {
   platform: string;
