@@ -17,11 +17,18 @@ function googleAccessTokenFromResult(result) {
   return result.authentication?.accessToken || result.params.access_token || undefined;
 }
 
+function googleIdTokenFromResult(result) {
+  return result.authentication?.idToken || result.params.id_token || undefined;
+}
+
 function googleAuthNeedsCodeExchange(result) {
   if (result.type !== 'success') {
     return false;
   }
-  return !googleAccessTokenFromResult(result) && Boolean(result.params.code);
+  if (googleAccessTokenFromResult(result) || googleIdTokenFromResult(result)) {
+    return false;
+  }
+  return Boolean(result.params.code);
 }
 
 function snapshotGoogleExchange(redirectUri, codeVerifier) {
@@ -224,6 +231,14 @@ assert.equal(
   googleAuthNeedsCodeExchange({
     type: 'success',
     params: { id_token: 'jwt' },
+    authentication: null,
+  }),
+  false,
+);
+assert.equal(
+  googleAuthNeedsCodeExchange({
+    type: 'success',
+    params: { code: 'abc', id_token: 'jwt' },
     authentication: null,
   }),
   false,

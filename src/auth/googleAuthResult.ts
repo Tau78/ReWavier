@@ -36,11 +36,19 @@ export function googleAccessTokenFromResult(result: GoogleAuthPayload): string |
   return result.authentication?.accessToken || result.params.access_token || undefined;
 }
 
+export function googleIdTokenFromResult(result: GoogleAuthPayload): string | undefined {
+  return result.authentication?.idToken || result.params.id_token || undefined;
+}
+
+/** Code exchange only if Google did not already return tokens. */
 export function googleAuthNeedsCodeExchange(result: GoogleAuthPayload): boolean {
   if (result.type !== 'success') {
     return false;
   }
-  return !googleAccessTokenFromResult(result) && Boolean(result.params.code);
+  if (googleAccessTokenFromResult(result) || googleIdTokenFromResult(result)) {
+    return false;
+  }
+  return Boolean(result.params.code);
 }
 
 export function snapshotGoogleExchange(
@@ -133,9 +141,9 @@ export function iosGoogleRedirectUri(iosClientId: string): string {
 /**
  * Redirect URI sent to Google.
  * iOS store builds use the reversed iOS client scheme.
- * Android Play 1.0.5+ uses the Desktop client reversed scheme (Desktop secret).
- * Older Play builds keep the HTTPS bounce page on the Web application client
- * (implicit token — the Web client secret is not valid, so code exchange fails).
+ * Android Play uses the HTTPS bounce page on the Web application client
+ * (implicit token). Native Desktop code exchange needs a secret in the APK;
+ * Play 1.0.4 and 1.0.5 both complete login without that exchange.
  */
 export function resolveGoogleOAuthRedirectUri(opts: {
   platform: string;
