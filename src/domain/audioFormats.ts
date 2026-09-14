@@ -21,6 +21,15 @@ export function isAudioName(fileName: string): boolean {
   return AUDIO_NAME.test(fileName);
 }
 
+/** Drive file: extension or Google audio MIME (name without .mp3). */
+export function isDriveAudio(file: { name: string; mimeType?: string }): boolean {
+  if (isAudioName(file.name)) {
+    return true;
+  }
+  const mime = file.mimeType?.toLowerCase() ?? '';
+  return mime.startsWith('audio/');
+}
+
 export function playableUri(track: {
   id?: string;
   fileUri?: string;

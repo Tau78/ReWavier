@@ -22,7 +22,7 @@ import {
 import { pinsFromAlbums, rememberSharedDrives } from '../../cloud/sharedDriveCatalog';
 import { SharedDrivePickerWebView } from './SharedDrivePickerWebView';
 import { importDriveFolder } from '../../cloud/syncEngine';
-import { isAudioName } from '../../domain/audioFormats';
+import { isDriveAudio } from '../../domain/audioFormats';
 import { isDownloadPausedError } from '../../domain/collectionDownloadVisual';
 import { formatDownloadPercent } from '../../domain/downloadProgress';
 import { findTrackCoverFile, isAlbumCoverName, isImageName, isPdfName } from '../../domain/driveMedia';
@@ -92,7 +92,7 @@ export function DriveFolderScreen() {
   const browsing = stack.length > 0;
   const current = stack[stack.length - 1];
   const subfolders = children.filter(isDriveFolder);
-  const audios = children.filter((file) => isAudioName(file.name));
+  const audios = children.filter((file) => isDriveAudio(file));
   const extras = children.filter((file) => isImageName(file.name) || isPdfName(file.name));
 
   useEffect(() => {

@@ -31,7 +31,11 @@ import {
 
 const DRIVE = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
-const DRIVE_FIELDS = 'id,name,mimeType,modifiedTime,md5Checksum,size,driveId';
+const DRIVE_FIELDS =
+  'id,name,mimeType,modifiedTime,md5Checksum,size,driveId,shortcutDetails(targetId,targetMimeType)';
+const DRIVE_CHILD_FIELDS =
+  'nextPageToken,files(id,name,mimeType,modifiedTime,md5Checksum,size,driveId,shortcutDetails(targetId,targetMimeType))';
+const DRIVE_SHORTCUT_MIME = 'application/vnd.google-apps.shortcut';
 /** No byte progress for this long → abort (VPN / hung native download). */
 const DOWNLOAD_STALL_MS = 90_000;
 /** Absolute ceiling for one file download. */
@@ -50,10 +54,24 @@ export type DriveFile = {
   /** Present on items that live in a Shared Drive. */
   driveId?: string;
   ownedByMe?: boolean;
+  shortcutDetails?: { targetId?: string; targetMimeType?: string };
 };
 
 export function isDriveFolder(file: Pick<DriveFile, 'mimeType'>): boolean {
   return file.mimeType === DRIVE_FOLDER_MIME;
+}
+
+/** Follow a Drive shortcut so import downloads the real audio/cover. */
+export function resolveDriveShortcut(file: DriveFile): DriveFile {
+  const targetId = file.shortcutDetails?.targetId?.trim();
+  if (file.mimeType !== DRIVE_SHORTCUT_MIME || !targetId) {
+    return file;
+  }
+  return {
+    ...file,
+    id: targetId,
+    mimeType: file.shortcutDetails?.targetMimeType || file.mimeType,
+  };
 }
 
 async function token(): Promise<string> {
@@ -426,9 +444,10 @@ export async function fetchFolderRole(folderId: string): Promise<FolderRole> {
 
 export async function getDriveFile(fileId: string): Promise<DriveFile | null> {
   try {
-    return await driveGet<DriveFile>(
+    const file = await driveGet<DriveFile>(
       `/files/${encodeURIComponent(fileId)}?supportsAllDrives=true&fields=${encodeURIComponent(DRIVE_FIELDS)}`,
     );
+    return resolveDriveShortcut(file);
   } catch {
     return null;
   }
@@ -477,29 +496,57 @@ export type DriveFolderChildrenResult = {
   truncated: boolean;
 };
 
-export async function listFolderChildren(
+async function listFolderChildrenWithExtra(
   folderId: string,
-  options?: { sharedDriveId?: string },
+  extra: string,
 ): Promise<DriveFolderChildrenResult> {
   const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
-  const driveScope = options?.sharedDriveId
-    ? `&corpora=drive&driveId=${encodeURIComponent(options.sharedDriveId)}`
-    : '';
   const files: DriveFile[] = [];
   let page: string | undefined;
   for (let i = 0; i < FOLDER_MAX_PAGES; i += 1) {
     const tokenParam = page ? `&pageToken=${encodeURIComponent(page)}` : '';
     const data = await driveGet<{ files?: DriveFile[]; nextPageToken?: string }>(
-      `/files?q=${q}&pageSize=100&fields=nextPageToken,files(id,name,mimeType,modifiedTime,md5Checksum,size)&supportsAllDrives=true&includeItemsFromAllDrives=true${driveScope}${tokenParam}`,
+      `/files?q=${q}&pageSize=100&fields=${DRIVE_CHILD_FIELDS}&supportsAllDrives=true&includeItemsFromAllDrives=true${extra}${tokenParam}`,
     );
-    files.push(...(data.files ?? []));
+    files.push(...(data.files ?? []).map(resolveDriveShortcut));
     page = data.nextPageToken;
     if (!page) {
       break;
     }
   }
-  // Still have nextPageToken after the page cap → incomplete folder listing.
   return { files, truncated: Boolean(page) };
+}
+
+export async function listFolderChildren(
+  folderId: string,
+  options?: { sharedDriveId?: string },
+): Promise<DriveFolderChildrenResult> {
+  const first = await listFolderChildrenWithExtra(folderId, '');
+  if (first.files.length > 0 || !options?.sharedDriveId) {
+    return first;
+  }
+  // corpora=drive often returns nothing with the same permission that still
+  // lists the folder’s children via supportsAllDrives alone.
+  try {
+    const scoped = await listFolderChildrenWithExtra(
+      folderId,
+      `&corpora=drive&driveId=${encodeURIComponent(options.sharedDriveId)}`,
+    );
+    if (scoped.files.length > 0) {
+      return scoped;
+    }
+  } catch {
+    // keep first
+  }
+  try {
+    const all = await listFolderChildrenWithExtra(folderId, '&corpora=allDrives');
+    if (all.files.length > 0) {
+      return all;
+    }
+  } catch {
+    // keep first
+  }
+  return first;
 }
 
 const TREE_MAX_NODES = 80;

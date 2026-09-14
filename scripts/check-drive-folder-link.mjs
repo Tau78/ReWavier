@@ -164,4 +164,28 @@ assert.deepEqual(
   [{ id: '0ANsharedDriveDpb12', name: 'DPB' }],
 );
 
+function resolveDriveShortcut(file) {
+  const targetId = file.shortcutDetails?.targetId?.trim();
+  if (file.mimeType !== 'application/vnd.google-apps.shortcut' || !targetId) {
+    return file;
+  }
+  return {
+    ...file,
+    id: targetId,
+    mimeType: file.shortcutDetails?.targetMimeType || file.mimeType,
+  };
+}
+
+function isDriveAudio(file) {
+  if (/\.(wav|aiff|aif|mp4|mp3|aac|m4a|caf|flac|ogg)$/i.test(file.name)) {
+    return true;
+  }
+  return (file.mimeType || '').toLowerCase().startsWith('audio/');
+}
+
+assert.equal(resolveDriveShortcut({ id: 'short', name: 'Take.mp3', mimeType: 'application/vnd.google-apps.shortcut', shortcutDetails: { targetId: 'realAudio1', targetMimeType: 'audio/mpeg' } }).id, 'realAudio1');
+assert.equal(isDriveAudio({ name: 'Take.mp3', mimeType: 'application/vnd.google-apps.folder' }), true);
+assert.equal(isDriveAudio({ name: 'Take 3', mimeType: 'audio/mpeg' }), true);
+assert.equal(isDriveAudio({ name: 'cover.jpg', mimeType: 'image/jpeg' }), false);
+
 console.log('ok drive folder link parser');
