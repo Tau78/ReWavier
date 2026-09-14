@@ -72,16 +72,17 @@ export function reversedGoogleClientScheme(clientId: string): string {
   return `com.googleusercontent.apps.${clientId.replace(/\.apps\.googleusercontent\.com$/i, '')}`;
 }
 
-/**
- * Android talks to the Web client. Google blocks custom schemes on Web clients
- * (Error 400 invalid_request), so authorize + token use this HTTPS page.
- * The page then opens ANDROID_GOOGLE_RETURN_URI so the app can finish login.
- */
+/** Web client authorize target. The bounce page then opens ANDROID_GOOGLE_RETURN_URI. */
 export const ANDROID_GOOGLE_REDIRECT_URI =
   'https://eventi.musicproeventi.it/ReWavier/oauth.html';
 
-/** Custom-scheme bounce target after the HTTPS page. AuthSession listens here. */
+/** Custom-scheme bounce after the HTTPS page. The Play binary already listens here. */
 export const ANDROID_GOOGLE_RETURN_URI = 'rewavier://oauth';
+
+/** Reversed scheme — iOS / Desktop clients only. A Web client rejects it. */
+export function androidGoogleNativeRedirectUri(webClientId?: string): string {
+  return `${reversedGoogleClientScheme(webClientId || WEB_GOOGLE_CLIENT_ID)}:/oauthredirect`;
+}
 
 /** Store iOS client — used if Expo extra is missing (OTA / archive). */
 export const STORE_IOS_GOOGLE_CLIENT_ID =
@@ -89,7 +90,7 @@ export const STORE_IOS_GOOGLE_CLIENT_ID =
 export const EXPO_IOS_GOOGLE_CLIENT_ID =
   '1049963169218-gpj1pb8omtfhuv76npnhjnsshkqc970g.apps.googleusercontent.com';
 export const WEB_GOOGLE_CLIENT_ID =
-  '1049963169218-k8i1dmlbsn1nqrv393u8pp111v7v2efc.apps.googleusercontent.com';
+  '1049963169218-oglbjve738epat5bsm2fnbunsolfh4ed.apps.googleusercontent.com';
 
 export function iosGoogleRedirectUri(iosClientId: string): string {
   return `${reversedGoogleClientScheme(iosClientId)}:/oauthredirect`;
@@ -98,11 +99,12 @@ export function iosGoogleRedirectUri(iosClientId: string): string {
 /**
  * Redirect URI sent to Google.
  * iOS store builds use the reversed iOS client scheme.
- * Android uses HTTPS (Web client); a custom scheme is Error 400.
+ * Android uses the HTTPS bounce page on the Web application client.
  */
 export function resolveGoogleOAuthRedirectUri(opts: {
   platform: string;
   iosClientId?: string;
+  webClientId?: string;
   customSchemeUri: string;
 }): string {
   if (opts.platform === 'ios' && opts.iosClientId) {

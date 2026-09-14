@@ -91,7 +91,7 @@
     },
     "android": {
       "package": "app.rewavier",
-      "versionCode": 9,
+      "versionCode": 10,
       "adaptiveIcon": {
         "backgroundColor": "#0D0D0F",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -147,7 +147,7 @@
     "extra": {
       "googleIosClientId": "1049963169218-o6tcahpfsdijj2lm811bmjs4vjaglb7v.apps.googleusercontent.com",
       "googleExpoIosClientId": "1049963169218-gpj1pb8omtfhuv76npnhjnsshkqc970g.apps.googleusercontent.com",
-      "googleWebClientId": "1049963169218-k8i1dmlbsn1nqrv393u8pp111v7v2efc.apps.googleusercontent.com",
+      "googleWebClientId": "1049963169218-oglbjve738epat5bsm2fnbunsolfh4ed.apps.googleusercontent.com",
       "eas": {
         "projectId": "ac1cc991-f41d-4b45-adcb-bc574afbce3c"
       }

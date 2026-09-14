@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 
 const GOOGLE_IDENTITY_EXTRA_PARAMS = {
   prompt: 'select_account',
@@ -48,9 +49,15 @@ function reversedGoogleClientScheme(clientId) {
 const ANDROID_GOOGLE_REDIRECT_URI =
   'https://eventi.musicproeventi.it/ReWavier/oauth.html';
 const ANDROID_GOOGLE_RETURN_URI = 'rewavier://oauth';
+const WEB_GOOGLE_CLIENT_ID =
+  '1049963169218-oglbjve738epat5bsm2fnbunsolfh4ed.apps.googleusercontent.com';
 
 function iosGoogleRedirectUri(iosClientId) {
   return `${reversedGoogleClientScheme(iosClientId)}:/oauthredirect`;
+}
+
+function androidGoogleNativeRedirectUri(webClientId) {
+  return `${reversedGoogleClientScheme(webClientId || WEB_GOOGLE_CLIENT_ID)}:/oauthredirect`;
 }
 
 function resolveGoogleOAuthRedirectUri(opts) {
@@ -174,14 +181,22 @@ assert.equal(googleTokenHasDriveScope(undefined), false);
 
 const iosId = '1049963169218-o6tcahpfsdijj2lm811bmjs4vjaglb7v.apps.googleusercontent.com';
 const custom = 'rewavier://oauth';
+const androidNative = `${reversedGoogleClientScheme(WEB_GOOGLE_CLIENT_ID)}:/oauthredirect`;
 assert.equal(ANDROID_GOOGLE_RETURN_URI, custom);
 assert.match(ANDROID_GOOGLE_REDIRECT_URI, /^https:\/\/eventi\.musicproeventi\.it\/ReWavier\/oauth\.html$/);
+assert.equal(androidGoogleNativeRedirectUri(), androidNative);
+assert.equal(androidGoogleNativeRedirectUri(WEB_GOOGLE_CLIENT_ID), androidNative);
 assert.equal(
   resolveGoogleOAuthRedirectUri({ platform: 'ios', iosClientId: iosId, customSchemeUri: custom }),
   'com.googleusercontent.apps.1049963169218-o6tcahpfsdijj2lm811bmjs4vjaglb7v:/oauthredirect',
 );
 assert.equal(
-  resolveGoogleOAuthRedirectUri({ platform: 'android', iosClientId: iosId, customSchemeUri: custom }),
+  resolveGoogleOAuthRedirectUri({
+    platform: 'android',
+    iosClientId: iosId,
+    webClientId: WEB_GOOGLE_CLIENT_ID,
+    customSchemeUri: custom,
+  }),
   ANDROID_GOOGLE_REDIRECT_URI,
 );
 assert.equal(
@@ -208,7 +223,7 @@ assert.equal(
 );
 
 const storeIos = '1049963169218-o6tcahpfsdijj2lm811bmjs4vjaglb7v.apps.googleusercontent.com';
-const web = '1049963169218-k8i1dmlbsn1nqrv393u8pp111v7v2efc.apps.googleusercontent.com';
+const web = WEB_GOOGLE_CLIENT_ID;
 const standaloneIos = pickGoogleClientIds({
   platform: 'ios',
   inExpoGo: false,
@@ -230,5 +245,12 @@ assert.equal(
   pickGoogleClientIds({ platform: 'ios', inExpoGo: false, web }).clientId,
   undefined,
 );
+
+const require = createRequire(import.meta.url);
+const appConfig = require('../app.config.js');
+assert.equal(appConfig.expo.extra.googleWebClientId, WEB_GOOGLE_CLIENT_ID);
+const androidFilters = JSON.stringify(appConfig.expo.android.intentFilters ?? []);
+assert.match(androidFilters, /rewavier/);
+assert.doesNotMatch(androidFilters, /com\.googleusercontent\.apps\./);
 
 console.log('ok google auth snapshots the code; identity login skips Drive consent');
