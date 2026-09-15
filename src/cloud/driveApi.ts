@@ -8,8 +8,7 @@ import {
   isDriveSlowError,
 } from '../domain/albumRefresh';
 import { DownloadPausedError, isDownloadPausedError } from '../domain/collectionDownloadVisual';
-import { softDownloadFraction } from '../domain/downloadProgress';
-import { ensureParentDirAsync } from '../files/fsSafe';
+import { ensureParentDirAsync, toFileUri } from '../files/fsSafe';
 import { throwIfDownloadPaused, useDownloadProgressStore } from '../store/downloadProgressStore';
 
 import { googleTokenHasDriveScope } from '../auth/googleAuthResult';
@@ -37,8 +36,6 @@ const DRIVE_FIELDS =
 const DRIVE_CHILD_FIELDS =
   'nextPageToken,files(id,name,mimeType,modifiedTime,md5Checksum,size,driveId,shortcutDetails(targetId,targetMimeType))';
 const DRIVE_SHORTCUT_MIME = 'application/vnd.google-apps.shortcut';
-/** No byte progress for this long → abort (VPN / hung native download). */
-const DOWNLOAD_STALL_MS = 90_000;
 /** Absolute ceiling for one file download. */
 const DOWNLOAD_HARD_MS = 12 * 60_000;
 const DOWNLOAD_TOO_SLOW = 'Drive ci ha messo troppo. Riprova.';
@@ -741,15 +738,94 @@ function friendlyDownloadError(error: unknown): Error {
   if (raw === DOWNLOAD_TOO_SLOW || /ci ha messo troppo/i.test(raw)) {
     return new Error(DOWNLOAD_TOO_SLOW);
   }
-  if (
-    /downloadAsync|does not exist|makeDirectory|ENOENT|Directory '/i.test(raw) ||
-    raw.includes('file://') ||
-    raw.includes('/Users/') ||
-    raw.includes('Containers/')
-  ) {
+  if (/Sessione Google scaduta|401|unauthorized/i.test(raw)) {
+    return new Error('Sessione Google scaduta. Accedi di nuovo con Google.');
+  }
+  if (/403|insufficient|permission|non vede|canDownload|non può scaricare/i.test(raw)) {
+    return new Error(
+      'ReWavier non può scaricare questo brano. In Impostazioni collega di nuovo Google Drive, oppure chiedi a chi gestisce il Drive della band.',
+    );
+  }
+  if (/downloadAsync|does not exist|makeDirectory|ENOENT|Directory '|missing|copy/i.test(raw)) {
     return new Error('Questo brano non è arrivato sul telefono. Riprova.');
   }
-  return error instanceof Error ? error : new Error('Questo brano non è arrivato sul telefono. Riprova.');
+  if (raw.includes('/Users/') || raw.includes('Containers/')) {
+    return new Error('Questo brano non è arrivato sul telefono. Riprova.');
+  }
+  if (raw && !raw.includes('file://') && raw.length < 180) {
+    return error instanceof Error ? error : new Error(raw);
+  }
+  return new Error('Questo brano non è arrivato sul telefono. Riprova.');
+}
+
+function mediaDownloadError(status: number): Error {
+  if (status === 401) {
+    return new Error('Sessione Google scaduta. Accedi di nuovo con Google.');
+  }
+  if (status === 403) {
+    return new Error(
+      'ReWavier non può scaricare questo brano. In Impostazioni collega di nuovo Google Drive, oppure chiedi a chi gestisce il Drive della band.',
+    );
+  }
+  if (status === 404) {
+    return new Error('Questo brano non c’è più su Drive.');
+  }
+  return new Error('Drive non ha scaricato il brano. Riprova.');
+}
+
+/** Write binary bytes to dest — new File API first, Legacy base64 fallback (Android). */
+async function writeDownloadBytes(destUri: string, bytes: Uint8Array): Promise<string> {
+  const uri = toFileUri(destUri);
+  try {
+    const dest = new File(uri);
+    if (dest.exists) {
+      try {
+        dest.delete();
+      } catch {
+        // overwrite below
+      }
+    }
+    dest.write(bytes);
+    if (dest.exists && (dest.size ?? bytes.byteLength) > 0) {
+      return dest.uri;
+    }
+  } catch {
+    // Legacy path below
+  }
+  const base64 = bytesToBase64(bytes);
+  await LegacyFS.writeAsStringAsync(uri, base64, {
+    encoding: LegacyFS.EncodingType.Base64,
+  });
+  const info = await LegacyFS.getInfoAsync(uri);
+  if (!info.exists || (typeof info.size === 'number' && info.size <= 0)) {
+    throw new Error('Questo brano non è arrivato sul telefono. Riprova.');
+  }
+  return uri;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  const chunk = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += chunk) {
+    const slice = bytes.subarray(i, i + chunk);
+    binary += String.fromCharCode.apply(null, Array.from(slice) as number[]);
+  }
+  if (typeof globalThis.btoa === 'function') {
+    return globalThis.btoa(binary);
+  }
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let out = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i]!;
+    const b = i + 1 < bytes.length ? bytes[i + 1]! : 0;
+    const c = i + 2 < bytes.length ? bytes[i + 2]! : 0;
+    const triple = (a << 16) | (b << 8) | c;
+    out += alphabet[(triple >> 18) & 63];
+    out += alphabet[(triple >> 12) & 63];
+    out += i + 1 < bytes.length ? alphabet[(triple >> 6) & 63] : '=';
+    out += i + 2 < bytes.length ? alphabet[triple & 63] : '=';
+  }
+  return out;
 }
 
 /** Parse Drive upload/update JSON body. Never throws SyntaxError — syncEngine can catch this. */
@@ -775,77 +851,41 @@ async function downloadDriveFileOnce(
   access: string,
   onProgress?: (fraction: number) => void,
 ): Promise<string> {
-  const url = `${DRIVE}/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`;
-  // downloadAsync (legacy) does not create parents — inbox is often missing on first import.
-  await ensureParentDirAsync(destUri);
-  const dest = new File(destUri);
-  if (dest.exists) {
-    dest.delete();
-  }
-  const headers = { Authorization: `Bearer ${access}` };
+  // Prefer fetch over the native resumable downloader: on Android that path
+  // often fails on Drive media redirects / Shared Drive auth.
+  const dest = toFileUri(destUri);
+  await ensureParentDirAsync(dest);
   throwIfDownloadPaused();
 
-  let lastBytes = 0;
-  let lastProgressAt = Date.now();
-  const startedAt = Date.now();
-  let abortedForStall = false;
+  const mediaUrl = (extra = '') =>
+    `${DRIVE}/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true${extra}`;
 
-  const resumable = LegacyFS.createDownloadResumable(url, destUri, { headers }, ({
-    totalBytesWritten,
-    totalBytesExpectedToWrite,
-  }) => {
-    if (totalBytesWritten > lastBytes) {
-      lastBytes = totalBytesWritten;
-      lastProgressAt = Date.now();
-    }
-    if (totalBytesExpectedToWrite > 0) {
-      onProgress?.(totalBytesWritten / totalBytesExpectedToWrite);
-      return;
-    }
-    if (totalBytesWritten > 0) {
-      onProgress?.(softDownloadFraction(totalBytesWritten));
-    }
-  });
-  useDownloadProgressStore.getState().setCurrentCancel(() => {
-    void resumable.pauseAsync();
-  });
+  const fetchMedia = async (url: string) =>
+    fetchDrive(
+      url,
+      { headers: { Authorization: `Bearer ${access}` } },
+      DOWNLOAD_HARD_MS,
+    );
 
-  const watch = setInterval(() => {
-    const now = Date.now();
-    if (now - lastProgressAt > DOWNLOAD_STALL_MS || now - startedAt > DOWNLOAD_HARD_MS) {
-      abortedForStall = true;
-      void resumable.pauseAsync();
-    }
-  }, 4_000);
-
-  try {
-    const result = await resumable.downloadAsync();
-    throwIfDownloadPaused();
-    if (abortedForStall) {
-      throw new Error(DOWNLOAD_TOO_SLOW);
-    }
-    if (result?.status === 401) {
-      throw new Error('Sessione Google scaduta. Accedi di nuovo con Google.');
-    }
-    if (!result || result.status !== 200) {
-      throw new Error('Drive non ha scaricato il brano. Riprova.');
-    }
-    if (dest.exists) {
-      return dest.uri;
-    }
-    return result.uri;
-  } catch (error) {
-    if (abortedForStall) {
-      throw new Error(DOWNLOAD_TOO_SLOW);
-    }
-    if (isDownloadPausedError(error) || useDownloadProgressStore.getState().pauseRequested) {
-      throw new DownloadPausedError();
-    }
-    throw friendlyDownloadError(error);
-  } finally {
-    clearInterval(watch);
-    useDownloadProgressStore.getState().setCurrentCancel(null);
+  let response = await fetchMedia(mediaUrl());
+  if (response.status === 403) {
+    response = await fetchMedia(mediaUrl('&acknowledgeAbuse=true'));
   }
+  throwIfDownloadPaused();
+  if (!response.ok) {
+    throw mediaDownloadError(response.status);
+  }
+
+  onProgress?.(0.15);
+  const buffer = await response.arrayBuffer();
+  throwIfDownloadPaused();
+  if (buffer.byteLength === 0) {
+    throw new Error('Drive non ha scaricato il brano. Riprova.');
+  }
+  onProgress?.(0.85);
+  const written = await writeDownloadBytes(dest, new Uint8Array(buffer));
+  onProgress?.(1);
+  return written;
 }
 
 export async function downloadDriveFile(

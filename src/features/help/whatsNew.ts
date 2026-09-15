@@ -111,8 +111,8 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         body: 'Il nome sta in alto. Sotto la copertina restano l’ordine A→Z e quante tracce ci sono, poi la lista. Sulle righe non si ripete il nome dell’album.',
       },
       {
-        title: 'Drive della band',
-        body: 'In Impostazioni tocca di nuovo Collega Google Drive e spunta tutte le caselle Drive. Poi in Drive Condivisi vedi i Drive della band e li apri senza uscire dall’app.',
+        title: 'Brani da Drive',
+        body: 'Tocchi Scegli su una cartella Drive e i brani arrivano sul telefono, anche dai Drive della band.',
       },
       {
         title: 'Album tolto, resta tolto',
