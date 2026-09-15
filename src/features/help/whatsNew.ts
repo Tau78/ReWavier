@@ -112,7 +112,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Drive della band',
-        body: 'Nei Drive condivisi vedi i Drive della band. Tocca per aprire. Se i brani sono nelle cartelle dentro, scegli anche quelle. L’album non resta vuoto in silenzio.',
+        body: 'Tocchi Drive Condivisi e vedi i Drive della band. Scrivi il nome della cartella, aprila e tocca Scegli.',
       },
     ],
   },

@@ -12,7 +12,7 @@ import {
   albumNotesFromRemote,
   isAlbumNotesFileName,
 } from '../domain/albumNotes';
-import { isAudioName, isDriveAudio, playableUri } from '../domain/audioFormats';
+import { isDriveAudio, playableUri } from '../domain/audioFormats';
 import {
   findAlbumCoverFile,
   findTrackCoverFile,

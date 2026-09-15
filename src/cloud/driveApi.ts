@@ -306,19 +306,111 @@ async function listFoldersQuiet(path: string): Promise<DriveFile[]> {
 async function listDriveRootsQuiet(
   path: string,
   key: 'drives' | 'teamDrives',
-): Promise<SharedDrivePin[]> {
+): Promise<{ pins: SharedDrivePin[]; next?: string }> {
   try {
-    const data = await driveGet<Record<string, { id?: string; name?: string }[] | undefined>>(path);
+    const data = await driveGet<
+      Record<string, { id?: string; name?: string }[] | undefined> & { nextPageToken?: string }
+    >(path);
     const rows = data[key] ?? [];
-    return rows
-      .filter((drive): drive is { id: string; name: string } => Boolean(drive.id && drive.name))
-      .map((drive) => ({ id: drive.id, name: drive.name }));
+    return {
+      pins: rows
+        .filter((drive): drive is { id: string; name: string } => Boolean(drive.id && drive.name))
+        .map((drive) => ({ id: drive.id, name: drive.name })),
+      next: data.nextPageToken,
+    };
   } catch {
-    return [];
+    return { pins: [] };
   }
 }
 
-/** Shared Drives (team) plus folders someone shared with you. */
+/**
+ * iPhone: GET /drives then filter names in the app.
+ * Do not send `q=` — Android tokens often return [] for that variant.
+ */
+async function listAllSharedDriveRoots(): Promise<SharedDrivePin[]> {
+  const out: SharedDrivePin[] = [];
+  const seen = new Set<string>();
+  let page: string | undefined;
+  for (let i = 0; i < 10; i += 1) {
+    const tokenParam = page ? `&pageToken=${encodeURIComponent(page)}` : '';
+    let batch = await listDriveRootsQuiet(
+      `/drives?pageSize=50&fields=nextPageToken,drives(id,name)${tokenParam}`,
+      'drives',
+    );
+    if (batch.pins.length === 0 && !page) {
+      batch = await listDriveRootsQuiet(
+        `/teamdrives?pageSize=50&fields=nextPageToken,teamDrives(id,name)${tokenParam}`,
+        'teamDrives',
+      );
+    }
+    for (const pin of batch.pins) {
+      if (seen.has(pin.id)) {
+        continue;
+      }
+      seen.add(pin.id);
+      out.push(pin);
+    }
+    page = batch.next;
+    if (!page) {
+      break;
+    }
+  }
+  return out;
+}
+
+/** When /drives is empty, recover Shared Drive roots from folders that have driveId. */
+async function inferSharedDriveRoots(nameQuery?: string): Promise<SharedDrivePin[]> {
+  const q = encodeURIComponent(
+    `mimeType = 'application/vnd.google-apps.folder' and trashed = false${nameContainsFilter(nameQuery)}`,
+  );
+  const files = await listFoldersQuiet(
+    `/files?q=${q}&pageSize=100&fields=files(id,name,driveId,ownedByMe)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives`,
+  );
+  const byId = new Map<string, string>();
+  for (const file of files) {
+    if (!file.driveId) {
+      continue;
+    }
+    if (file.id === file.driveId && file.name) {
+      byId.set(file.driveId, file.name);
+    } else if (!byId.has(file.driveId)) {
+      byId.set(file.driveId, '');
+    }
+  }
+  const unnamed = [...byId.entries()].filter(([, name]) => !name).map(([id]) => id);
+  const named = await Promise.all(
+    unnamed.map(async (id) => {
+      const meta = await getDriveFile(id);
+      return [id, meta?.name ?? ''] as const;
+    }),
+  );
+  for (const [id, name] of named) {
+    if (name) {
+      byId.set(id, name);
+    }
+  }
+  const pins: SharedDrivePin[] = [];
+  for (const [id, name] of byId) {
+    if (name) {
+      pins.push({ id, name });
+    }
+  }
+  return pins;
+}
+
+const SHARED_FOLDER_FIELDS = 'files(id,name,mimeType,modifiedTime,driveId,ownedByMe)';
+
+/** iPhone: folders someone shared with you (not a Team Drive root). */
+async function listSharedWithMeFolders(query?: string): Promise<DriveFile[]> {
+  const q = encodeURIComponent(
+    `mimeType = 'application/vnd.google-apps.folder' and trashed = false and sharedWithMe = true${nameContainsFilter(query)}`,
+  );
+  return listFoldersQuiet(
+    `/files?q=${q}&pageSize=40&fields=${SHARED_FOLDER_FIELDS}&supportsAllDrives=true&includeItemsFromAllDrives=true`,
+  );
+}
+
+/** Shared Drives (team) plus folders someone shared with you — same list as iPhone. */
 export async function listSharedDriveEntries(
   query?: string,
   extras?: { knownDrives?: SharedDrivePin[] },
@@ -355,25 +447,17 @@ export async function listSharedDriveEntries(
     persistSharedDrivesInBackground(extras.knownDrives);
   }
 
-  let fromApi: SharedDrivePin[] = [];
-  const driveQuery = needle
-    ? `&q=${encodeURIComponent(`name contains '${needle.replace(/'/g, "\\'")}'`)}`
-    : '';
-  fromApi = await listDriveRootsQuiet(`/drives?pageSize=50&fields=drives(id,name)${driveQuery}`, 'drives');
+  let fromApi = await listAllSharedDriveRoots();
   if (fromApi.length === 0) {
-    fromApi = await listDriveRootsQuiet(
-      `/teamdrives?pageSize=50&fields=teamDrives(id,name)${driveQuery}`,
-      'teamDrives',
-    );
+    fromApi = await inferSharedDriveRoots(rawQuery || undefined);
   }
   for (const drive of fromApi) {
     push(entryFromPin(drive));
   }
 
   if (fromApi.length > 0) {
-    persistSharedDrivesInBackground(fromApi, 'replace');
+    persistSharedDrivesInBackground(fromApi, rawQuery ? 'merge' : 'replace');
   } else if (pinned.length === 0) {
-    // Same Google account on another phone can reuse this list. Not required: each phone lists on its own.
     const remote = await readSharedDrivesSidecar();
     for (const pin of remote) {
       push(entryFromPin(pin));
@@ -385,42 +469,18 @@ export async function listSharedDriveEntries(
       .catch(() => undefined);
   }
 
-  const folderFields = 'files(id,name,mimeType,modifiedTime,driveId,ownedByMe)';
-  const inSharedDrivesQ = encodeURIComponent(
-    `mimeType = 'application/vnd.google-apps.folder' and trashed = false and not 'me' in owners${nameContainsFilter(rawQuery)}`,
-  );
-  const sharedWithMeQ = encodeURIComponent(
-    `mimeType = 'application/vnd.google-apps.folder' and trashed = false and sharedWithMe = true and not 'me' in owners${nameContainsFilter(rawQuery)}`,
-  );
-  const [fromSharedDrives, fromSharedWithMe] = await Promise.all([
-    listFoldersQuiet(
-      `/files?q=${inSharedDrivesQ}&pageSize=40&fields=${folderFields}&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives`,
-    ),
-    listFoldersQuiet(
-      `/files?q=${sharedWithMeQ}&pageSize=40&fields=${folderFields}&supportsAllDrives=true&includeItemsFromAllDrives=true`,
-    ),
+  const namedFoldersP = needle
+    ? listFoldersQuiet(
+        `/files?q=${encodeURIComponent(
+          `mimeType = 'application/vnd.google-apps.folder' and trashed = false${nameContainsFilter(rawQuery)}`,
+        )}&pageSize=40&fields=${SHARED_FOLDER_FIELDS}&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives`,
+      )
+    : Promise.resolve([] as DriveFile[]);
+  const [fromNamed, fromSharedWithMe] = await Promise.all([
+    namedFoldersP,
+    listSharedWithMeFolders(rawQuery || undefined),
   ]);
-  const listed = [...fromSharedDrives, ...fromSharedWithMe].filter(folderBelongsOnSharedTab);
-  const driveIds = new Set<string>();
-  for (const folder of listed) {
-    if (folder.driveId) {
-      driveIds.add(folder.driveId);
-    }
-  }
-  for (const id of driveIds) {
-    if (seen.has(id)) {
-      continue;
-    }
-    const asRoot = listed.find((folder) => folder.id === id);
-    let name = asRoot?.name ?? '';
-    if (!name) {
-      const meta = await getDriveFile(id);
-      name = meta?.name ?? listed.find((folder) => folder.driveId === id)?.name ?? '';
-    }
-    if (name) {
-      push(entryFromPin({ id, name }));
-    }
-  }
+  const listed = [...fromNamed, ...fromSharedWithMe].filter(folderBelongsOnSharedTab);
   for (const folder of listed) {
     if (folder.driveId && seen.has(folder.driveId) && folder.id !== folder.driveId) {
       continue;
