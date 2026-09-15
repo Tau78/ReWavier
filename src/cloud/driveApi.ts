@@ -325,18 +325,26 @@ async function listDriveRootsQuiet(
 
 /**
  * iPhone: GET /drives then filter names in the app.
- * Do not send `q=` — Android tokens often return [] for that variant.
+ * Do not send `name contains` — Android tokens often return [] for that variant.
+ * `hidden = false` is the default Shared Drives view on drive.google.com.
  */
 async function listAllSharedDriveRoots(): Promise<SharedDrivePin[]> {
   const out: SharedDrivePin[] = [];
   const seen = new Set<string>();
   let page: string | undefined;
+  const hiddenQ = `&q=${encodeURIComponent('hidden = false')}`;
   for (let i = 0; i < 10; i += 1) {
     const tokenParam = page ? `&pageToken=${encodeURIComponent(page)}` : '';
     let batch = await listDriveRootsQuiet(
-      `/drives?pageSize=50&fields=nextPageToken,drives(id,name)${tokenParam}`,
+      `/drives?pageSize=50&fields=nextPageToken,drives(id,name)${hiddenQ}${tokenParam}`,
       'drives',
     );
+    if (batch.pins.length === 0 && !page) {
+      batch = await listDriveRootsQuiet(
+        `/drives?pageSize=50&fields=nextPageToken,drives(id,name)${tokenParam}`,
+        'drives',
+      );
+    }
     if (batch.pins.length === 0 && !page) {
       batch = await listDriveRootsQuiet(
         `/teamdrives?pageSize=50&fields=nextPageToken,teamDrives(id,name)${tokenParam}`,
@@ -360,12 +368,19 @@ async function listAllSharedDriveRoots(): Promise<SharedDrivePin[]> {
 
 /** When /drives is empty, recover Shared Drive roots from folders that have driveId. */
 async function inferSharedDriveRoots(nameQuery?: string): Promise<SharedDrivePin[]> {
-  const q = encodeURIComponent(
-    `mimeType = 'application/vnd.google-apps.folder' and trashed = false${nameContainsFilter(nameQuery)}`,
+  const name = nameContainsFilter(nameQuery);
+  const folderQ = encodeURIComponent(
+    `mimeType = 'application/vnd.google-apps.folder' and trashed = false${name}`,
   );
-  const files = await listFoldersQuiet(
-    `/files?q=${q}&pageSize=100&fields=files(id,name,driveId,ownedByMe)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives`,
-  );
+  const anyQ = encodeURIComponent(`trashed = false${name}`);
+  const fields = 'files(id,name,driveId,ownedByMe)';
+  const extra = '&supportsAllDrives=true&includeItemsFromAllDrives=true';
+  const [allFolders, userFolders, anyFiles] = await Promise.all([
+    listFoldersQuiet(`/files?q=${folderQ}&pageSize=100&fields=${fields}${extra}&corpora=allDrives`),
+    listFoldersQuiet(`/files?q=${folderQ}&pageSize=100&fields=${fields}${extra}&corpora=user`),
+    listFoldersQuiet(`/files?q=${anyQ}&pageSize=100&fields=${fields}${extra}&corpora=allDrives`),
+  ]);
+  const files = [...allFolders, ...userFolders, ...anyFiles];
   const byId = new Map<string, string>();
   for (const file of files) {
     if (!file.driveId) {

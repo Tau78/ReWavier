@@ -120,6 +120,24 @@ async function refreshAccess(auth: GoogleAuth): Promise<GoogleAuth> {
   return next;
 }
 
+/** Email of the Google account tied to the Drive token (may differ from the app login). */
+export async function fetchGoogleDriveEmail(): Promise<string | null> {
+  try {
+    const access = await getValidGoogleAccessToken();
+    const response = await fetch('https://openidconnect.googleapis.com/v1/userinfo', {
+      headers: { Authorization: `Bearer ${access}` },
+    });
+    if (!response.ok) {
+      return null;
+    }
+    const json = (await response.json()) as { email?: string };
+    const email = json.email?.trim() ?? '';
+    return email || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getValidGoogleAccessToken(forceRefresh = false): Promise<string> {
   const auth = await loadGoogleAuth();
   if (!auth) {

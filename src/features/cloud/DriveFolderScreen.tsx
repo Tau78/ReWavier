@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,8 +13,11 @@ import {
   type DriveFile,
   type SharedDriveEntry,
 } from '../../cloud/driveApi';
-import { pinsFromAlbums } from '../../cloud/sharedDriveCatalog';
+import { fetchGoogleDriveEmail, getValidGoogleAccessToken } from '../../auth/googleToken';
+import { pinsFromAlbums, rememberSharedDrives } from '../../cloud/sharedDriveCatalog';
+import { type SharedDrivePickResult } from '../../cloud/drivePicker';
 import { importDriveFolder } from '../../cloud/syncEngine';
+import { SharedDrivePickerWebView } from './SharedDrivePickerWebView';
 import { isDriveAudio } from '../../domain/audioFormats';
 import { isDownloadPausedError } from '../../domain/collectionDownloadVisual';
 import { formatDownloadPercent } from '../../domain/downloadProgress';
@@ -66,6 +69,9 @@ export function DriveFolderScreen() {
   const [children, setChildren] = useState<DriveFile[]>([]);
   const [busy, setBusy] = useState(true);
   const [working, setWorking] = useState(false);
+  const [pickerToken, setPickerToken] = useState<string | null>(null);
+  const [pickerFailed, setPickerFailed] = useState(false);
+  const [googleEmail, setGoogleEmail] = useState<string | null>(null);
   const downloadPercent = useDownloadProgressStore((s) => s.percent);
   const downloadActive = useDownloadProgressStore((s) => s.active);
   const catalogRef = useRef<SearchHit[]>([]);
@@ -85,6 +91,34 @@ export function DriveFolderScreen() {
   const subfolders = children.filter(isDriveFolder);
   const audios = children.filter((file) => isDriveAudio(file));
   const extras = children.filter((file) => isImageName(file.name) || isPdfName(file.name));
+
+  useEffect(() => {
+    if (tab !== 'shared' || browsing) {
+      return;
+    }
+    void getValidGoogleAccessToken()
+      .then((token) => {
+        if (mountedRef.current) {
+          setPickerToken(token);
+        }
+      })
+      .catch(() => {
+        if (mountedRef.current) {
+          setPickerToken(null);
+        }
+      });
+    void fetchGoogleDriveEmail()
+      .then((email) => {
+        if (mountedRef.current) {
+          setGoogleEmail(email);
+        }
+      })
+      .catch(() => {
+        if (mountedRef.current) {
+          setGoogleEmail(null);
+        }
+      });
+  }, [tab, browsing]);
 
   const extraLabel = (file: DriveFile): string => {
     if (isPdfName(file.name)) {
@@ -150,6 +184,44 @@ export function DriveFolderScreen() {
     setQuery('');
     catalogRef.current = [];
     setSearchHits([]);
+    setPickerFailed(false);
+  };
+
+  const applyPickResult = async (result: SharedDrivePickResult) => {
+    if (result.drives.length > 0) {
+      await rememberSharedDrives(result.drives);
+    }
+    for (const folder of result.folders) {
+      await rememberSharedDriveFromFolder({
+        ...folder,
+        sharedKind: folder.driveId && folder.driveId === folder.id ? 'shared-drive' : 'shared-folder',
+      });
+    }
+    if (!mountedRef.current) {
+      return;
+    }
+    if (result.folders.length === 1 && result.drives.length <= 1) {
+      const folder = result.folders[0];
+      const entry: SharedDriveEntry = {
+        ...folder,
+        sharedKind: folder.driveId && folder.driveId === folder.id ? 'shared-drive' : 'shared-folder',
+      };
+      openFolder(entry);
+      return;
+    }
+    if (result.drives.length === 1 && result.folders.length === 0) {
+      const drive = result.drives[0];
+      openFolder({
+        id: drive.id,
+        name: drive.name,
+        mimeType: 'application/vnd.google-apps.folder',
+        driveId: drive.id,
+        sharedKind: 'shared-drive',
+      });
+      return;
+    }
+    setBusy(false);
+    loadSearch('', 'shared');
   };
 
   const openFolder = (folder: DriveFile | SharedDriveEntry) => {
@@ -300,6 +372,15 @@ export function DriveFolderScreen() {
     navigation.goBack();
   };
 
+  const showEmbeddedPicker =
+    Platform.OS === 'android' &&
+    !busy &&
+    !browsing &&
+    tab === 'shared' &&
+    searchHits.length === 0 &&
+    Boolean(pickerToken) &&
+    !pickerFailed;
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
@@ -353,7 +434,9 @@ export function DriveFolderScreen() {
         {browsing
           ? 'Tocca Scegli per portare i brani. Una foto con lo stesso nome del brano ne è la copertina (anche GIF). cover.jpg è la copertina dell’album. I PDF finiscono in Documenti.'
           : tab === 'shared'
-            ? 'Qui ci sono i Drive della band o della scuola, e le cartelle che ti hanno condiviso. Aprine una, poi tocca Scegli.'
+            ? googleEmail
+              ? `Drive di ${googleEmail}. Qui ci sono i Drive della band o della scuola. Aprine uno, poi tocca Scegli.`
+              : 'Qui ci sono i Drive della band o della scuola, e le cartelle che ti hanno condiviso. Aprine una, poi tocca Scegli.'
             : 'Cartelle sul tuo Drive. Aprine una per vedere cosa c’è dentro, poi tocca Scegli.'}
       </Text>
       {browsing ? null : (
@@ -398,7 +481,24 @@ export function DriveFolderScreen() {
           ) : null}
         </View>
       ) : null}
-      {busy ? null : (
+      {busy ? null : showEmbeddedPicker && pickerToken ? (
+        <SharedDrivePickerWebView
+          accessToken={pickerToken}
+          query={query}
+          onPicked={(result) => {
+            setBusy(true);
+            void applyPickResult(result).catch((error) => {
+              setBusy(false);
+              Alert.alert(
+                'Drive',
+                error instanceof Error ? error.message : 'Cartella non aperta. Riprova.',
+              );
+            });
+          }}
+          onCancel={() => setPickerFailed(true)}
+          onFailed={() => setPickerFailed(true)}
+        />
+      ) : (
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           {!browsing && searchHits.length === 0 ? (
             <View style={styles.emptyBox}>
@@ -407,7 +507,9 @@ export function DriveFolderScreen() {
                 {query.trim()
                   ? 'Nessun risultato. Prova un altro nome.'
                   : tab === 'shared'
-                    ? 'Nessun Drive condiviso. Se la band o la scuola ne ha uno, chiedi di esserci dentro.'
+                    ? googleEmail
+                      ? `Nessun Drive per ${googleEmail}. Scrivi il nome della cartella, oppure in Impostazioni collega l’accesso Google della band.`
+                      : 'Scrivi il nome del Drive o della cartella della band.'
                     : 'Nessuna cartella. Accedi con Google e crea o scegli una cartella sul tuo Drive.'}
               </Text>
             </View>
