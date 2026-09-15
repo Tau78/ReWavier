@@ -185,7 +185,8 @@ export function DriveFolderScreen() {
     if (!mountedRef.current) {
       return;
     }
-    if (result.folders.length === 1 && result.drives.length <= 1) {
+    // Prefer the folder the user picked (es. «#Album»), not only the Shared Drive root.
+    if (result.folders.length === 1) {
       const folder = result.folders[0];
       const entry: SharedDriveEntry = {
         ...folder,
@@ -194,7 +195,12 @@ export function DriveFolderScreen() {
       openFolder(entry);
       return;
     }
-    if (result.drives.length === 1 && result.folders.length === 0) {
+    if (result.folders.length > 1) {
+      setBusy(false);
+      loadSearch('', 'shared');
+      return;
+    }
+    if (result.drives.length === 1) {
       const drive = result.drives[0];
       openFolder({
         id: drive.id,
@@ -438,9 +444,9 @@ export function DriveFolderScreen() {
           ? 'Tocca Scegli per portare i brani. Una foto con lo stesso nome del brano ne è la copertina (anche GIF). cover.jpg è la copertina dell’album. I PDF finiscono in Documenti.'
           : tab === 'shared'
             ? googleEmail
-              ? `Drive di ${googleEmail}. Qui ci sono i Drive della band o della scuola. Aprine uno, poi tocca Scegli.`
-              : 'Qui ci sono i Drive della band o della scuola, e le cartelle che ti hanno condiviso. Aprine una, poi tocca Scegli.'
-            : 'Cartelle sul tuo Drive. Aprine una per vedere cosa c’è dentro, poi tocca Scegli.'}
+              ? `Drive di ${googleEmail}. Qui ci sono i Drive della band o della scuola. Se non li vedi, tocca Scegli su Google: apri il Drive, tocca la cartella dell’album e Seleziona (dentro vedi solo le cartelle).`
+              : 'Qui ci sono i Drive della band o della scuola. Se non li vedi, tocca Scegli su Google: apri il Drive, tocca la cartella dell’album e Seleziona.'
+            : 'Cartelle create da ReWavier sul tuo Drive (per esempio ReWavier e Audio), e altre che hai già aperto da qui. Aprine una, poi tocca Scegli.'}
       </Text>
       {browsing ? null : (
         <TextInput
@@ -491,11 +497,11 @@ export function DriveFolderScreen() {
               <EmptyGraphic />
               <Text style={styles.empty}>
                 {query.trim()
-                  ? 'Nessun risultato. Prova un altro nome.'
+                  ? 'Nessun risultato. Prova un altro nome, oppure Scegli su Google.'
                   : tab === 'shared'
                     ? googleEmail
-                      ? `Nessun Drive per ${googleEmail}. Tocca Scegli su Google, oppure in Impostazioni collega l’accesso Google della band.`
-                      : 'Tocca Scegli su Google, oppure scrivi il nome del Drive della band.'
+                      ? `Nessun Drive ancora per ${googleEmail}. Tocca Scegli su Google: apri il Drive della band, tocca la cartella dell’album e Seleziona.`
+                      : 'Tocca Scegli su Google: apri il Drive della band, tocca la cartella dell’album e Seleziona.'
                     : 'Nessuna cartella. Accedi con Google e crea o scegli una cartella sul tuo Drive.'}
               </Text>
               {tab === 'shared' ? (
@@ -511,10 +517,36 @@ export function DriveFolderScreen() {
               ) : null}
             </View>
           ) : null}
+          {!browsing && tab === 'shared' && searchHits.length > 0 ? (
+            <Pressable
+              onPress={pickOnGoogle}
+              disabled={working}
+              accessibilityRole="button"
+              accessibilityLabel="Scegli su Google"
+              style={({ pressed }) => [styles.googleBtnInline, pressed && styles.pressed]}
+            >
+              <Text style={styles.googleLabel}>Scegli su Google</Text>
+            </Pressable>
+          ) : null}
           {browsing && subfolders.length === 0 && audios.length === 0 && extras.length === 0 ? (
             <View style={styles.emptyBox}>
               <EmptyGraphic />
-              <Text style={styles.empty}>Questa cartella è vuota. Tocca Scegli se è quella giusta, o torna indietro.</Text>
+              <Text style={styles.empty}>
+                {tab === 'shared' || current?.sharedDriveId
+                  ? 'Qui non vedo i brani. Torna indietro e tocca Scegli su Google: apri questa cartella e tocca Seleziona. Poi in ReWavier tocca Scegli.'
+                  : 'Questa cartella è vuota. Tocca Scegli se è quella giusta, o torna indietro.'}
+              </Text>
+              {tab === 'shared' || current?.sharedDriveId ? (
+                <Pressable
+                  onPress={pickOnGoogle}
+                  disabled={working}
+                  accessibilityRole="button"
+                  accessibilityLabel="Scegli su Google"
+                  style={({ pressed }) => [styles.googleBtn, pressed && styles.pressed]}
+                >
+                  <Text style={styles.googleLabel}>Scegli su Google</Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
 
@@ -595,6 +627,15 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 12,
     backgroundColor: colors.accent,
+  },
+  googleBtnInline: {
+    alignSelf: 'stretch',
+    marginBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
   },
   googleLabel: { color: colors.text, fontSize: 15, fontWeight: '700' },
   tabs: {

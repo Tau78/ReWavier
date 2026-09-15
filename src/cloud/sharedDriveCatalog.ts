@@ -65,6 +65,35 @@ export function mergeSharedDrivePins(...groups: SharedDrivePin[][]): SharedDrive
   return [...byId.values()];
 }
 
+/** Drop or blank pins whose label looks like a nested album folder, not the Shared Drive root. */
+export function looksLikeNestedAlbumPinName(name: string): boolean {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return true;
+  }
+  if (trimmed.startsWith('#')) {
+    return true;
+  }
+  const lower = trimmed.toLowerCase();
+  return lower === 'album' || lower === 'albums';
+}
+
+/** Keep the Shared Drive id; clear a poisoned nested-folder label so the real name can be resolved. */
+export function scrubSharedDrivePins(pins: SharedDrivePin[]): SharedDrivePin[] {
+  const out: SharedDrivePin[] = [];
+  const seen = new Set<string>();
+  for (const pin of pins) {
+    const id = pin.id.trim();
+    if (!isSharedDrivePinId(id) || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    const name = looksLikeNestedAlbumPinName(pin.name) ? '' : pin.name.trim();
+    out.push({ id, name });
+  }
+  return out;
+}
+
 /** Unique Shared Drive roots already linked as albums on this phone.
  * Nested folders (es. «#Album» inside DPB) only contribute the Drive id — never the folder name. */
 export function pinsFromAlbums(
@@ -89,7 +118,10 @@ export function pinsFromAlbums(
       continue;
     }
     const label = (album.driveFolderName || album.name).trim();
-    if (!label) {
+    if (!label || looksLikeNestedAlbumPinName(label)) {
+      if (!byId.has(id)) {
+        byId.set(id, { id, name: '' });
+      }
       continue;
     }
     byId.set(id, { id, name: label });
@@ -124,7 +156,7 @@ export async function loadPinnedSharedDrives(): Promise<SharedDrivePin[]> {
     if (!raw) {
       return [];
     }
-    return parseSharedDriveCatalog(JSON.parse(raw) as unknown);
+    return scrubSharedDrivePins(parseSharedDriveCatalog(JSON.parse(raw) as unknown));
   } catch {
     return [];
   }
@@ -139,7 +171,8 @@ export async function savePinnedSharedDrives(pins: SharedDrivePin[]): Promise<Sh
 }
 
 async function writePinnedSharedDrives(merged: SharedDrivePin[]): Promise<SharedDrivePin[]> {
+  const clean = scrubSharedDrivePins(merged).filter((pin) => pin.name.trim());
   await ensureDirAsync(userLibraryDirectory().uri);
-  await LegacyFS.writeAsStringAsync(catalogFileUri(), serializeSharedDriveCatalog(merged));
-  return merged;
+  await LegacyFS.writeAsStringAsync(catalogFileUri(), serializeSharedDriveCatalog(clean));
+  return clean;
 }

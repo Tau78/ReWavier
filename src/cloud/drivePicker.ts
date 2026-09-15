@@ -153,7 +153,7 @@ export async function foldersFromPickerResult(raw: string): Promise<SharedDriveP
   }
   if (folders.length === 0 && drives.length === 0) {
     throw new Error(
-      'Nella schermata Google apri i Drive condivisi, tocca il Drive della band e conferma.',
+      'Nella schermata Google apri i Drive condivisi, tocca la cartella dell’album e Seleziona. Dentro vedi solo le cartelle: i brani arrivano dopo, in ReWavier.',
     );
   }
   return { folders, drives };

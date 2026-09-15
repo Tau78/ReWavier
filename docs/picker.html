@@ -54,7 +54,7 @@
 <body>
   <main>
     <p id="status">Apro i Drive della band…</p>
-    <p id="hint">Se non si apre, tocca il pulsante. Puoi sceglierne più di uno.</p>
+    <p id="hint">Apri il Drive, entra nella cartella dell’album e tocca Seleziona. Dentro vedi solo le cartelle: i brani arrivano dopo, in ReWavier.</p>
     <button type="button" id="open">Mostra i Drive condivisi</button>
   </main>
   <script src="https://apis.google.com/js/api.js"></script>
@@ -110,121 +110,21 @@
         }
       }
 
-      function bounceDrives(drives) {
-        var rows = [];
-        for (var i = 0; i < drives.length; i += 1) {
-          if (drives[i] && drives[i].id && drives[i].name) {
-            rows.push({ id: String(drives[i].id), name: String(drives[i].name) });
-          }
+      function pinFromDoc(doc) {
+        if (!doc) {
+          return null;
         }
-        if (!rows.length) {
-          return false;
+        var id = doc[google.picker.Document.ID];
+        if (!id) {
+          return null;
         }
-        bounce('picked_drives_json=' + encodeURIComponent(JSON.stringify(rows)));
-        return true;
-      }
-
-      function authHeaders() {
-        return { Authorization: 'Bearer ' + token };
-      }
-
-      function fetchJson(url) {
-        return fetch(url, { headers: authHeaders() }).then(function (res) {
-          return res.ok ? res.json() : {};
-        });
-      }
-
-      function pinsFromFiles(files) {
-        var byId = {};
-        for (var i = 0; i < files.length; i += 1) {
-          var file = files[i];
-          if (!file || !file.driveId) {
-            continue;
-          }
-          if (!byId[file.driveId]) {
-            byId[file.driveId] = {
-              id: file.driveId,
-              name: file.id === file.driveId ? file.name || '' : '',
-            };
-          } else if (file.id === file.driveId && file.name) {
-            byId[file.driveId].name = file.name;
-          }
+        var name = doc[google.picker.Document.NAME] || '';
+        var driveId = doc.driveId || '';
+        // Only the Shared Drive root itself — never a nested folder name (es. «#Album»).
+        if (driveId && driveId === id && name) {
+          return { id: String(driveId), name: String(name) };
         }
-        var ids = Object.keys(byId);
-        return Promise.all(
-          ids.map(function (id) {
-            if (byId[id].name) {
-              return byId[id];
-            }
-            return fetchJson(
-              'https://www.googleapis.com/drive/v3/files/' +
-                encodeURIComponent(id) +
-                '?supportsAllDrives=true&fields=id,name',
-            ).then(function (meta) {
-              var name = meta && meta.name ? String(meta.name) : '';
-              return name ? { id: id, name: name } : null;
-            }).catch(function () {
-              return null;
-            });
-          }),
-        ).then(function (rows) {
-          return rows.filter(function (row) {
-            return row && row.id && row.name;
-          });
-        });
-      }
-
-      function nameMatches(name) {
-        if (!nameQuery) {
-          return true;
-        }
-        return String(name || '').toLowerCase().indexOf(nameQuery.toLowerCase()) >= 0;
-      }
-
-      function fetchDrivePins() {
-        if (!token) {
-          return Promise.resolve([]);
-        }
-        var hidden = encodeURIComponent('hidden = false');
-        return fetchJson(
-          'https://www.googleapis.com/drive/v3/drives?pageSize=100&fields=drives(id,name)&q=' + hidden,
-        )
-          .then(function (data) {
-            var drives = ((data && data.drives) || []).filter(function (row) {
-              return row && nameMatches(row.name);
-            });
-            if (drives.length) {
-              return drives;
-            }
-            return fetchJson('https://www.googleapis.com/drive/v3/drives?pageSize=100&fields=drives(id,name)');
-          })
-          .then(function (data) {
-            if (Array.isArray(data)) {
-              return data.filter(function (row) {
-                return row && nameMatches(row.name);
-              });
-            }
-            var drives = ((data && data.drives) || []).filter(function (row) {
-              return row && nameMatches(row.name);
-            });
-            if (drives.length) {
-              return drives;
-            }
-            var folderQ = "mimeType = 'application/vnd.google-apps.folder' and trashed = false";
-            if (nameQuery) {
-              folderQ += " and name contains '" + nameQuery.replace(/'/g, "\\'") + "'";
-            }
-            return fetchJson(
-              'https://www.googleapis.com/drive/v3/files?q=' +
-                encodeURIComponent(folderQ) +
-                '&pageSize=100&fields=files(id,name,driveId)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives',
-            ).then(function (listed) {
-              return pinsFromFiles((listed && listed.files) || []);
-            });
-          })
-          .catch(function () {
-            return [];
-          });
+        return null;
       }
 
       function pickerCallback(data) {
@@ -242,24 +142,27 @@
         var docs = data[google.picker.Response.DOCUMENTS] || [];
         var ids = [];
         var drives = [];
+        var seenDrive = {};
         for (var i = 0; i < docs.length; i += 1) {
           var id = docs[i][google.picker.Document.ID];
-          var name = docs[i][google.picker.Document.NAME] || '';
-          var driveId = docs[i].driveId || (docs[i].parentId && docs[i].parentId) || '';
           if (id) {
             ids.push(id);
           }
-          if (driveId && name) {
-            drives.push({ id: driveId === id ? id : driveId, name: name });
-          } else if (id && name && docs[i].mimeType === FOLDER) {
-            drives.push({ id: id, name: name });
+          var pin = pinFromDoc(docs[i]);
+          if (pin && !seenDrive[pin.id]) {
+            seenDrive[pin.id] = true;
+            drives.push(pin);
           }
         }
+        var parts = [];
         if (ids.length) {
-          bounce('picked_file_ids=' + encodeURIComponent(ids.join(',')));
-          return;
+          parts.push('picked_file_ids=' + encodeURIComponent(ids.join(',')));
         }
-        if (bounceDrives(drives)) {
+        if (drives.length) {
+          parts.push('picked_drives_json=' + encodeURIComponent(JSON.stringify(drives)));
+        }
+        if (parts.length) {
+          bounce(parts.join('&'));
           return;
         }
         showError('Nessuna cartella scelta. Riprova.');
@@ -274,6 +177,8 @@
           showError('Google non è pronto. Tocca di nuovo il pulsante.');
           return;
         }
+        // Folders only: audio lives inside the album folder. User must Select that folder
+        // (entering it looks empty because files are hidden on purpose).
         var shared = new google.picker.DocsView(google.picker.ViewId.DOCS)
           .setEnableDrives(true)
           .setIncludeFolders(true)
@@ -312,16 +217,13 @@
       }
 
       function start() {
-        fetchDrivePins().then(function (drives) {
-          if (bounceDrives(drives)) {
-            return;
-          }
-          if (!window.gapi || !gapi.load) {
-            showError('Google non si è caricato. Tocca il pulsante.');
-            return;
-          }
-          gapi.load('picker', { callback: createPicker });
-        });
+        // Always open the Google folder picker so the user picks the album folder
+        // (auto-bouncing drive roots left folders empty under drive.file).
+        if (!window.gapi || !gapi.load) {
+          showError('Google non si è caricato. Tocca il pulsante.');
+          return;
+        }
+        gapi.load('picker', { callback: createPicker });
       }
 
       if (openBtn) {

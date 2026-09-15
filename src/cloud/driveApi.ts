@@ -25,6 +25,7 @@ import {
   rememberSharedDrives,
   savePinnedSharedDrives,
   serializeSharedDriveCatalog,
+  scrubSharedDrivePins,
   sortSharedDriveEntries,
   type SharedDrivePin,
 } from './sharedDriveCatalog';
@@ -195,18 +196,22 @@ function entryFromPin(pin: SharedDrivePin): SharedDriveEntry {
 
 /** Prefer the Shared Drive’s own name, not a nested album folder like «#Album». */
 async function getSharedDriveName(id: string): Promise<string> {
-  const file = await getDriveFile(id);
-  if (file?.name?.trim()) {
-    return file.name.trim();
-  }
   try {
     const data = await driveGet<{ name?: string }>(
       `/drives/${encodeURIComponent(id)}?fields=name`,
     );
-    return data.name?.trim() ?? '';
+    const fromDrives = data.name?.trim() ?? '';
+    if (fromDrives) {
+      return fromDrives;
+    }
   } catch {
-    return '';
+    // fall through — some tokens only answer via files.get
   }
+  const file = await getDriveFile(id);
+  if (file?.name?.trim() && (!file.driveId || file.driveId === file.id)) {
+    return file.name.trim();
+  }
+  return '';
 }
 
 async function withDriveRootNames(pins: SharedDrivePin[]): Promise<SharedDrivePin[]> {
@@ -260,7 +265,7 @@ async function readSharedDrivesSidecar(): Promise<SharedDrivePin[]> {
     if (!raw) {
       return [];
     }
-    return parseSharedDriveCatalog(JSON.parse(raw) as unknown);
+    return scrubSharedDrivePins(parseSharedDriveCatalog(JSON.parse(raw) as unknown));
   } catch {
     return [];
   }
@@ -305,25 +310,23 @@ function persistSharedDrivesInBackground(pins: SharedDrivePin[], mode: 'merge' |
   void save.then((merged) => writeSharedDrivesSidecar(merged)).catch(() => undefined);
 }
 
-/** Remember a Shared Drive root so Drive Condivisi lists it like on iPhone. */
+/** Remember a Shared Drive root so Drive Condivisi lists it like on iPhone.
+ * Never store a nested folder name (es. «#Album») as the Shared Drive label. */
 export async function rememberSharedDriveFromFolder(
   folder: Pick<DriveFile, 'id' | 'name' | 'driveId'> & { sharedKind?: SharedDriveKind },
 ): Promise<void> {
   const driveId =
     folder.driveId ||
     (folder.sharedKind === 'shared-drive' ? folder.id : undefined);
-  if (!driveId) {
+  if (!driveId || !isSharedDrivePinId(driveId)) {
     return;
   }
-  let name = folder.driveId && folder.driveId !== folder.id ? '' : folder.name;
-  if (!name) {
-    const root = await getDriveFile(driveId);
-    if (root?.name) {
-      name = root.name;
-    }
+  let name = await getSharedDriveName(driveId);
+  if (!name && folder.id === driveId && folder.name.trim()) {
+    name = folder.name.trim();
   }
   if (!name) {
-    name = folder.name;
+    return;
   }
   const merged = await rememberSharedDrives([{ id: driveId, name }]);
   void writeSharedDrivesSidecar(merged).catch(() => undefined);
@@ -534,7 +537,9 @@ export async function listSharedDriveEntries(
   ]);
   const listed = [...fromNamed, ...fromSharedWithMe].filter(folderBelongsOnSharedTab);
   for (const folder of listed) {
-    if (folder.driveId && seen.has(folder.driveId) && folder.id !== folder.driveId) {
+    // Nested folders inside a Shared Drive (es. «#Album» in DPB) are not drives —
+    // listing them here made Android show «#Album» as if it were the Shared Drive.
+    if (folder.driveId && folder.id !== folder.driveId) {
       continue;
     }
     push({ ...folder, sharedKind: sharedKindFor(folder) });

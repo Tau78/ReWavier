@@ -10,6 +10,20 @@ const screen = readFileSync(join(root, 'src/features/cloud/DriveFolderScreen.tsx
 assert.doesNotMatch(screen, /showEmbeddedPicker/);
 assert.doesNotMatch(screen, /SharedDrivePickerWebView/);
 assert.match(screen, /pickSharedDriveFolder/);
+assert.match(screen, /Prefer the folder the user picked/);
+
+const picker = readFileSync(join(root, 'docs/picker.html'), 'utf8');
+assert.doesNotMatch(picker, /bounceDrives\(drives\)/);
+assert.match(picker, /Always open the Google folder picker/);
+assert.match(picker, /pinFromDoc/);
+assert.match(picker, /picked_file_ids/);
+
+const driveApi = readFileSync(join(root, 'src/cloud/driveApi.ts'), 'utf8');
+assert.match(driveApi, /Never store a nested folder name/);
+assert.match(
+  driveApi,
+  /Nested folders inside a Shared Drive[\s\S]*folder\.id !== folder\.driveId/,
+);
 
 const PIN_ID_RE = /^[a-zA-Z0-9_-]{10,}$/;
 
@@ -57,6 +71,33 @@ function mergeSharedDrivePins(...groups) {
   return [...byId.values()];
 }
 
+function looksLikeNestedAlbumPinName(name) {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return true;
+  }
+  if (trimmed.startsWith('#')) {
+    return true;
+  }
+  const lower = trimmed.toLowerCase();
+  return lower === 'album' || lower === 'albums';
+}
+
+function scrubSharedDrivePins(pins) {
+  const out = [];
+  const seen = new Set();
+  for (const pin of pins) {
+    const id = pin.id.trim();
+    if (!isSharedDrivePinId(id) || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    const name = looksLikeNestedAlbumPinName(pin.name) ? '' : pin.name.trim();
+    out.push({ id, name });
+  }
+  return out;
+}
+
 function pinsFromAlbums(albums) {
   const byId = new Map();
   for (const album of albums) {
@@ -72,7 +113,10 @@ function pinsFromAlbums(albums) {
       continue;
     }
     const label = (album.driveFolderName || album.name).trim();
-    if (!label) {
+    if (!label || looksLikeNestedAlbumPinName(label)) {
+      if (!byId.has(id)) {
+        byId.set(id, { id, name: '' });
+      }
       continue;
     }
     byId.set(id, { id, name: label });
@@ -128,6 +172,33 @@ assert.deepEqual(
   ]),
   [{ id: dpb, name: '' }],
 );
+
+assert.deepEqual(
+  pinsFromAlbums([
+    {
+      name: '#Album',
+      driveFolderId: dpb,
+      driveSharedDriveId: dpb,
+      driveFolderName: '#Album',
+    },
+  ]),
+  [{ id: dpb, name: '' }],
+);
+
+assert.deepEqual(
+  scrubSharedDrivePins([
+    { id: dpb, name: '#Album' },
+    { id: basi, name: 'Basi' },
+    { id: 'bad', name: 'X' },
+  ]),
+  [
+    { id: dpb, name: '' },
+    { id: basi, name: 'Basi' },
+  ],
+);
+
+assert.equal(looksLikeNestedAlbumPinName('#Album'), true);
+assert.equal(looksLikeNestedAlbumPinName('DPB'), false);
 
 assert.deepEqual(
   sortSharedDriveEntries([

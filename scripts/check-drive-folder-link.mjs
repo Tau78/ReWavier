@@ -164,6 +164,15 @@ assert.deepEqual(
   [{ id: '0ANsharedDriveDpb12', name: 'DPB' }],
 );
 
+assert.deepEqual(
+  parsePickedFileIds(
+    `rewavier://oauth?picked_file_ids=1nestedAlbumFolder99&picked_drives_json=${encodeURIComponent(
+      JSON.stringify([{ id: '0ANsharedDriveDpb12', name: 'DPB' }]),
+    )}`,
+  ),
+  ['1nestedAlbumFolder99'],
+);
+
 function resolveDriveShortcut(file) {
   const targetId = file.shortcutDetails?.targetId?.trim();
   if (file.mimeType !== 'application/vnd.google-apps.shortcut' || !targetId) {

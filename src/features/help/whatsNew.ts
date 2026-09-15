@@ -112,7 +112,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Drive della band',
-        body: 'Tocchi Drive Condivisi e vedi i Drive della band, col nome vero. Aprine uno, poi tocca Scegli. Non serve entrare di nuovo in Google.',
+        body: 'Su Drive Condivisi tocca Scegli su Google: apri il Drive, tocca la cartella dell’album e Seleziona. Dentro Google vedi solo le cartelle; i brani arrivano dopo, in ReWavier.',
       },
       {
         title: 'Album tolto, resta tolto',
