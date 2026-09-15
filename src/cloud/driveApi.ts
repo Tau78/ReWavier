@@ -19,8 +19,8 @@ import { folderBelongsOnSharedTab, parseDriveFolderLink } from './driveFolderLin
 import { roleFromDriveCapabilities, type FolderRole } from '../domain/folderRole';
 import {
   SHARED_DRIVES_SIDECAR_NAME,
+  isSharedDrivePinId,
   loadPinnedSharedDrives,
-  mergeSharedDrivePins,
   parseSharedDriveCatalog,
   rememberSharedDrives,
   savePinnedSharedDrives,
@@ -191,6 +191,40 @@ function entryFromPin(pin: SharedDrivePin): SharedDriveEntry {
     driveId: pin.id,
     sharedKind: 'shared-drive',
   };
+}
+
+/** Prefer the Shared Drive’s own name, not a nested album folder like «#Album». */
+async function getSharedDriveName(id: string): Promise<string> {
+  const file = await getDriveFile(id);
+  if (file?.name?.trim()) {
+    return file.name.trim();
+  }
+  try {
+    const data = await driveGet<{ name?: string }>(
+      `/drives/${encodeURIComponent(id)}?fields=name`,
+    );
+    return data.name?.trim() ?? '';
+  } catch {
+    return '';
+  }
+}
+
+async function withDriveRootNames(pins: SharedDrivePin[]): Promise<SharedDrivePin[]> {
+  const out: SharedDrivePin[] = [];
+  const seen = new Set<string>();
+  for (const pin of pins) {
+    const id = pin.id.trim();
+    if (!isSharedDrivePinId(id) || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    const name = (await getSharedDriveName(id)) || pin.name.trim();
+    if (!name) {
+      continue;
+    }
+    out.push({ id, name });
+  }
+  return out;
 }
 
 async function driveGetText(path: string): Promise<string> {
@@ -454,12 +488,15 @@ export async function listSharedDriveEntries(
     return out;
   }
 
-  const pinned = mergeSharedDrivePins(await loadPinnedSharedDrives(), extras?.knownDrives ?? []);
-  for (const pin of pinned) {
+  const namedPinned = await withDriveRootNames([
+    ...(await loadPinnedSharedDrives()),
+    ...(extras?.knownDrives ?? []),
+  ]);
+  for (const pin of namedPinned) {
     push(entryFromPin(pin));
   }
-  if (!needle && extras?.knownDrives && extras.knownDrives.length > 0) {
-    persistSharedDrivesInBackground(extras.knownDrives);
+  if (!needle && namedPinned.length > 0) {
+    persistSharedDrivesInBackground(namedPinned);
   }
 
   let fromApi = await listAllSharedDriveRoots();
@@ -472,7 +509,7 @@ export async function listSharedDriveEntries(
 
   if (fromApi.length > 0) {
     persistSharedDrivesInBackground(fromApi, rawQuery ? 'merge' : 'replace');
-  } else if (pinned.length === 0) {
+  } else if (namedPinned.length === 0) {
     const remote = await readSharedDrivesSidecar();
     for (const pin of remote) {
       push(entryFromPin(pin));

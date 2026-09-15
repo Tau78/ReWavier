@@ -65,7 +65,8 @@ export function mergeSharedDrivePins(...groups: SharedDrivePin[][]): SharedDrive
   return [...byId.values()];
 }
 
-/** Unique Shared Drive roots already linked as albums on this phone. */
+/** Unique Shared Drive roots already linked as albums on this phone.
+ * Nested folders (es. «#Album» inside DPB) only contribute the Drive id — never the folder name. */
 export function pinsFromAlbums(
   albums: {
     name: string;
@@ -81,14 +82,17 @@ export function pinsFromAlbums(
       continue;
     }
     const isRoot = album.driveFolderId === id;
+    if (!isRoot) {
+      if (!byId.has(id)) {
+        byId.set(id, { id, name: '' });
+      }
+      continue;
+    }
     const label = (album.driveFolderName || album.name).trim();
     if (!label) {
       continue;
     }
-    const previous = byId.get(id);
-    if (!previous || isRoot) {
-      byId.set(id, { id, name: label });
-    }
+    byId.set(id, { id, name: label });
   }
   return [...byId.values()];
 }

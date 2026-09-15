@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /** Keep in sync with `src/cloud/sharedDriveCatalog.ts`. */
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const screen = readFileSync(join(root, 'src/features/cloud/DriveFolderScreen.tsx'), 'utf8');
+assert.doesNotMatch(screen, /showEmbeddedPicker/);
+assert.doesNotMatch(screen, /SharedDrivePickerWebView/);
+assert.match(screen, /pickSharedDriveFolder/);
 
 const PIN_ID_RE = /^[a-zA-Z0-9_-]{10,}$/;
 
@@ -56,14 +65,17 @@ function pinsFromAlbums(albums) {
       continue;
     }
     const isRoot = album.driveFolderId === id;
+    if (!isRoot) {
+      if (!byId.has(id)) {
+        byId.set(id, { id, name: '' });
+      }
+      continue;
+    }
     const label = (album.driveFolderName || album.name).trim();
     if (!label) {
       continue;
     }
-    const previous = byId.get(id);
-    if (!previous || isRoot) {
-      byId.set(id, { id, name: label });
-    }
+    byId.set(id, { id, name: label });
   }
   return [...byId.values()];
 }
@@ -103,6 +115,18 @@ assert.deepEqual(
     { name: 'Locale' },
   ]),
   [{ id: dpb, name: 'DPB' }],
+);
+
+assert.deepEqual(
+  pinsFromAlbums([
+    {
+      name: '#Album',
+      driveFolderId: '1nestedFolderId999',
+      driveSharedDriveId: dpb,
+      driveFolderName: '#Album',
+    },
+  ]),
+  [{ id: dpb, name: '' }],
 );
 
 assert.deepEqual(

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,11 +13,10 @@ import {
   type DriveFile,
   type SharedDriveEntry,
 } from '../../cloud/driveApi';
-import { fetchGoogleDriveEmail, getValidGoogleAccessToken } from '../../auth/googleToken';
+import { fetchGoogleDriveEmail } from '../../auth/googleToken';
 import { pinsFromAlbums, rememberSharedDrives } from '../../cloud/sharedDriveCatalog';
-import { type SharedDrivePickResult } from '../../cloud/drivePicker';
+import { type SharedDrivePickResult, pickSharedDriveFolder } from '../../cloud/drivePicker';
 import { importDriveFolder } from '../../cloud/syncEngine';
-import { SharedDrivePickerWebView } from './SharedDrivePickerWebView';
 import { isDriveAudio } from '../../domain/audioFormats';
 import { isDownloadPausedError } from '../../domain/collectionDownloadVisual';
 import { formatDownloadPercent } from '../../domain/downloadProgress';
@@ -69,8 +68,6 @@ export function DriveFolderScreen() {
   const [children, setChildren] = useState<DriveFile[]>([]);
   const [busy, setBusy] = useState(true);
   const [working, setWorking] = useState(false);
-  const [pickerToken, setPickerToken] = useState<string | null>(null);
-  const [pickerFailed, setPickerFailed] = useState(false);
   const [googleEmail, setGoogleEmail] = useState<string | null>(null);
   const downloadPercent = useDownloadProgressStore((s) => s.percent);
   const downloadActive = useDownloadProgressStore((s) => s.active);
@@ -96,17 +93,6 @@ export function DriveFolderScreen() {
     if (tab !== 'shared' || browsing) {
       return;
     }
-    void getValidGoogleAccessToken()
-      .then((token) => {
-        if (mountedRef.current) {
-          setPickerToken(token);
-        }
-      })
-      .catch(() => {
-        if (mountedRef.current) {
-          setPickerToken(null);
-        }
-      });
     void fetchGoogleDriveEmail()
       .then((email) => {
         if (mountedRef.current) {
@@ -184,7 +170,6 @@ export function DriveFolderScreen() {
     setQuery('');
     catalogRef.current = [];
     setSearchHits([]);
-    setPickerFailed(false);
   };
 
   const applyPickResult = async (result: SharedDrivePickResult) => {
@@ -222,6 +207,33 @@ export function DriveFolderScreen() {
     }
     setBusy(false);
     loadSearch('', 'shared');
+  };
+
+  const pickOnGoogle = () => {
+    if (working) {
+      return;
+    }
+    setBusy(true);
+    void pickSharedDriveFolder()
+      .then((result) => {
+        if (!result) {
+          if (mountedRef.current) {
+            setBusy(false);
+          }
+          return;
+        }
+        return applyPickResult(result);
+      })
+      .catch((error) => {
+        if (!mountedRef.current) {
+          return;
+        }
+        setBusy(false);
+        Alert.alert(
+          'Drive',
+          error instanceof Error ? error.message : 'Cartella non aperta. Riprova.',
+        );
+      });
   };
 
   const openFolder = (folder: DriveFile | SharedDriveEntry) => {
@@ -372,15 +384,6 @@ export function DriveFolderScreen() {
     navigation.goBack();
   };
 
-  const showEmbeddedPicker =
-    Platform.OS === 'android' &&
-    !busy &&
-    !browsing &&
-    tab === 'shared' &&
-    searchHits.length === 0 &&
-    Boolean(pickerToken) &&
-    !pickerFailed;
-
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
@@ -481,24 +484,7 @@ export function DriveFolderScreen() {
           ) : null}
         </View>
       ) : null}
-      {busy ? null : showEmbeddedPicker && pickerToken ? (
-        <SharedDrivePickerWebView
-          accessToken={pickerToken}
-          query={query}
-          onPicked={(result) => {
-            setBusy(true);
-            void applyPickResult(result).catch((error) => {
-              setBusy(false);
-              Alert.alert(
-                'Drive',
-                error instanceof Error ? error.message : 'Cartella non aperta. Riprova.',
-              );
-            });
-          }}
-          onCancel={() => setPickerFailed(true)}
-          onFailed={() => setPickerFailed(true)}
-        />
-      ) : (
+      {busy ? null : (
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           {!browsing && searchHits.length === 0 ? (
             <View style={styles.emptyBox}>
@@ -508,10 +494,21 @@ export function DriveFolderScreen() {
                   ? 'Nessun risultato. Prova un altro nome.'
                   : tab === 'shared'
                     ? googleEmail
-                      ? `Nessun Drive per ${googleEmail}. Scrivi il nome della cartella, oppure in Impostazioni collega l’accesso Google della band.`
-                      : 'Scrivi il nome del Drive o della cartella della band.'
+                      ? `Nessun Drive per ${googleEmail}. Tocca Scegli su Google, oppure in Impostazioni collega l’accesso Google della band.`
+                      : 'Tocca Scegli su Google, oppure scrivi il nome del Drive della band.'
                     : 'Nessuna cartella. Accedi con Google e crea o scegli una cartella sul tuo Drive.'}
               </Text>
+              {tab === 'shared' ? (
+                <Pressable
+                  onPress={pickOnGoogle}
+                  disabled={working}
+                  accessibilityRole="button"
+                  accessibilityLabel="Scegli su Google"
+                  style={({ pressed }) => [styles.googleBtn, pressed && styles.pressed]}
+                >
+                  <Text style={styles.googleLabel}>Scegli su Google</Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
           {browsing && subfolders.length === 0 && audios.length === 0 && extras.length === 0 ? (
@@ -592,6 +589,14 @@ const styles = StyleSheet.create({
   chooseOff: { opacity: 0.5 },
   chooseLabel: { color: colors.text, fontSize: 15, fontWeight: '700' },
   chooseSpacer: { width: 28 },
+  googleBtn: {
+    marginTop: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: colors.accent,
+  },
+  googleLabel: { color: colors.text, fontSize: 15, fontWeight: '700' },
   tabs: {
     flexDirection: 'row',
     marginHorizontal: 16,
