@@ -54,6 +54,7 @@ import {
   loadLibrarySnapshot,
   saveLibrarySnapshot,
   sanitizeSnapshot,
+  uniquePersistIds,
   waitForLibraryPersistIdle,
   type LibrarySnapshot,
 } from '../files/libraryPersist';
@@ -88,6 +89,8 @@ export type LibraryState = {
   downloadingIds: Record<string, number>;
   libraryHydrated: boolean;
   keptAudioNames: string[];
+  removedAlbumIds: string[];
+  removedDriveFolderIds: string[];
 };
 
 export type LibraryActions = {
@@ -241,7 +244,7 @@ function persistSidecar(track: Track | undefined, markers: Marker[]) {
     .catch(() => undefined);
 }
 
-function snapshotFrom(state: LibraryState): LibrarySnapshot {
+export function snapshotFrom(state: LibraryState): LibrarySnapshot {
   return {
     version: 2,
     tracks: state.tracks,
@@ -251,6 +254,8 @@ function snapshotFrom(state: LibraryState): LibrarySnapshot {
     smartPlaylists: state.smartPlaylists,
     markersByTrackId: state.markersByTrackId,
     keptAudioNames: state.keptAudioNames,
+    removedAlbumIds: state.removedAlbumIds,
+    removedDriveFolderIds: state.removedDriveFolderIds,
   };
 }
 
@@ -422,6 +427,8 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   downloadingIds: {},
   libraryHydrated: false,
   keptAudioNames: [],
+  removedAlbumIds: [],
+  removedDriveFolderIds: [],
 
   setTrackMarkers(trackId, markers) {
     set((state) => ({
@@ -445,6 +452,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   createAlbum(name, extras) {
     const id = createId('album');
     const trimmed = name.trim() || 'Nuovo album';
+    const driveFolderId = extras?.driveFolderId?.trim();
     set((state) => ({
       albums: [
         ...state.albums,
@@ -461,11 +469,16 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           driveRole: extras?.driveRole,
         },
       ],
+      removedAlbumIds: state.removedAlbumIds.filter((item) => item !== id),
+      removedDriveFolderIds: driveFolderId
+        ? state.removedDriveFolderIds.filter((item) => item !== driveFolderId)
+        : state.removedDriveFolderIds,
     }));
     return id;
   },
 
   linkAlbumDrive(albumId, folderId, folderName, extras) {
+    const driveFolderId = folderId.trim();
     set((state) => ({
       albums: state.albums.map((album) =>
         album.id === albumId
@@ -480,6 +493,10 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
             }
           : album,
       ),
+      removedAlbumIds: state.removedAlbumIds.filter((item) => item !== albumId),
+      removedDriveFolderIds: driveFolderId
+        ? state.removedDriveFolderIds.filter((item) => item !== driveFolderId)
+        : state.removedDriveFolderIds,
     }));
   },
 
@@ -828,9 +845,15 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     for (const document of album?.documents ?? []) {
       void removeUri(document.fileUri);
     }
+    const driveFolderId = album?.driveFolderId?.trim();
     set((state) => ({
       albums: state.albums.filter((item) => item.id !== id),
+      removedAlbumIds: uniquePersistIds([...state.removedAlbumIds, id]),
+      removedDriveFolderIds: driveFolderId
+        ? uniquePersistIds([...state.removedDriveFolderIds, driveFolderId])
+        : state.removedDriveFolderIds,
     }));
+    void flushLibraryPersist();
   },
 
   renamePlaylist(id, name) {
@@ -1607,6 +1630,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       peaksByTrackId: {},
       downloadingIds: {},
       libraryHydrated: false,
+      keptAudioNames: [],
+      removedAlbumIds: [],
+      removedDriveFolderIds: [],
     });
   },
 
@@ -1663,6 +1689,9 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           markersByTrackId: snapshot?.markersByTrackId ?? {},
           peaksByTrackId: {},
           downloadingIds: {},
+          keptAudioNames: snapshot?.keptAudioNames ?? [],
+          removedAlbumIds: snapshot?.removedAlbumIds ?? [],
+          removedDriveFolderIds: snapshot?.removedDriveFolderIds ?? [],
         });
         if (isDemoUser(user)) {
           // Demo has no finishLibraryHydrate — safe to persist the snapshot as-is.
@@ -1780,6 +1809,8 @@ async function finishLibraryHydrate(
       smartPlaylists: cleaned.smartPlaylists,
       markersByTrackId: cleaned.markersByTrackId,
       keptAudioNames: cleaned.keptAudioNames ?? [],
+      removedAlbumIds: cleaned.removedAlbumIds ?? [],
+      removedDriveFolderIds: cleaned.removedDriveFolderIds ?? [],
     });
     const { tracks, markersByTrackId: currentMarkers } = useLibraryStore.getState();
     const migrated = await migrateTracksToAudioFolder(tracks);

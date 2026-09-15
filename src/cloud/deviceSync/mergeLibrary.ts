@@ -4,6 +4,7 @@ import { mergeLyricAnnotations } from '../../domain/lyrics';
 import { mergeMarkers } from '../mergeNotes';
 import { optionalTrackText, type Marker, type Track } from '../../domain/models';
 import type { LibrarySnapshot } from '../../files/libraryPersist';
+import { uniquePersistIds } from '../../files/libraryPersist';
 
 function trackKey(track: Track): string {
   return (track.sourceFileName || track.title).trim().toLowerCase();
@@ -130,9 +131,27 @@ function mergeDocuments(
   return list.length > 0 ? list : undefined;
 }
 
-function mergeAlbums(local: Album[], remote: Album[], idRemap: Map<string, string>): Album[] {
-  const byId = new Map(local.map((album) => [album.id, album]));
+function mergeAlbums(
+  local: Album[],
+  remote: Album[],
+  idRemap: Map<string, string>,
+  removedAlbumIds: Set<string>,
+  removedDriveFolderIds: Set<string>,
+): Album[] {
+  const albumIsRemoved = (album: { id: string; driveFolderId?: string }) => {
+    if (removedAlbumIds.has(album.id)) {
+      return true;
+    }
+    const folderId = album.driveFolderId?.trim();
+    return Boolean(folderId && removedDriveFolderIds.has(folderId));
+  };
+  const byId = new Map(
+    local.filter((album) => !albumIsRemoved(album)).map((album) => [album.id, album]),
+  );
   for (const incoming of remote) {
+    if (albumIsRemoved(incoming)) {
+      continue;
+    }
     const existing = byId.get(incoming.id);
     const remapIds = (ids: string[]) => ids.map((id) => remapTrackId(id, idRemap));
     const remapFolders = (folders: Album['versionFolders']) =>
@@ -259,15 +278,31 @@ export function keepLocalMedia(local: Track[], merged: Track[]): Track[] {
 
 export function mergeLibrarySnapshots(local: LibrarySnapshot, remote: LibrarySnapshot): LibrarySnapshot {
   const { tracks, idRemap } = mergeTracks(local.tracks, remote.tracks.map(withoutPhoneFiles));
+  const removedAlbumIds = uniquePersistIds([
+    ...(local.removedAlbumIds ?? []),
+    ...(remote.removedAlbumIds ?? []),
+  ]);
+  const removedDriveFolderIds = uniquePersistIds([
+    ...(local.removedDriveFolderIds ?? []),
+    ...(remote.removedDriveFolderIds ?? []),
+  ]);
   return {
     version: Math.max(local.version, remote.version),
     ownerKey: local.ownerKey,
     tracks,
     folders: mergeFolders(local.folders, remote.folders, idRemap),
-    albums: mergeAlbums(local.albums, remote.albums, idRemap),
+    albums: mergeAlbums(
+      local.albums,
+      remote.albums,
+      idRemap,
+      new Set(removedAlbumIds),
+      new Set(removedDriveFolderIds),
+    ),
     playlists: mergePlaylists(local.playlists, remote.playlists, idRemap),
     smartPlaylists: mergeSmart(local.smartPlaylists, remote.smartPlaylists),
     markersByTrackId: mergeAllMarkers(local.markersByTrackId, remote.markersByTrackId, idRemap),
     keptAudioNames: [...new Set([...(local.keptAudioNames ?? []), ...(remote.keptAudioNames ?? [])])],
+    removedAlbumIds,
+    removedDriveFolderIds,
   };
 }

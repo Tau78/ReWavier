@@ -11,7 +11,7 @@ import {
   type LibrarySnapshot,
 } from '../../files/libraryPersist';
 import { audioDirectory } from '../../files/libraryPaths';
-import { flushLibraryPersist, useLibraryStore } from '../../store/libraryStore';
+import { flushLibraryPersist, snapshotFrom, useLibraryStore } from '../../store/libraryStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { keepLocalMedia, mergeLibrarySnapshots, withoutPhoneFiles } from './mergeLibrary';
 import { shouldSyncBagFile } from './syncSkip';
@@ -52,17 +52,7 @@ export function listLocalBagFiles(): LocalBagFile[] {
 }
 
 export function snapshotFromStore(): LibrarySnapshot {
-  const state = useLibraryStore.getState();
-  return {
-    version: 2,
-    tracks: state.tracks,
-    folders: state.folders,
-    albums: state.albums,
-    playlists: state.playlists,
-    smartPlaylists: state.smartPlaylists,
-    markersByTrackId: state.markersByTrackId,
-    keptAudioNames: state.keptAudioNames,
-  };
+  return snapshotFrom(useLibraryStore.getState());
 }
 
 export async function importLooseAudioFiles(): Promise<number> {
@@ -101,6 +91,8 @@ export async function applyRemoteSnapshot(remote: LibrarySnapshot): Promise<void
     smartPlaylists: cleaned.smartPlaylists,
     markersByTrackId: cleaned.markersByTrackId,
     keptAudioNames: cleaned.keptAudioNames ?? [],
+    removedAlbumIds: cleaned.removedAlbumIds ?? [],
+    removedDriveFolderIds: cleaned.removedDriveFolderIds ?? [],
   });
   await saveLibrarySnapshot({ ...cleaned, tracks });
   await importLooseAudioFiles();

@@ -33,7 +33,7 @@ export function AuthenticatedApp() {
       void runCloudSync();
     })();
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'background') {
+      if (state === 'background' || state === 'inactive') {
         void flushLibraryPersist();
         void flushPlaybackPersist();
         return;

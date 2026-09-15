@@ -114,6 +114,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Drive della band',
         body: 'Tocchi Drive Condivisi e vedi i Drive della band. Scrivi il nome della cartella, aprila e tocca Scegli.',
       },
+      {
+        title: 'Album tolto, resta tolto',
+        body: 'Se elimini un album da Drive e chiudi l’app, non lo ritrovi più in lista. I brani restano in libreria.',
+      },
     ],
   },
 ];

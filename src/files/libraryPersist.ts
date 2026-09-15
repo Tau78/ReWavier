@@ -38,6 +38,10 @@ export type LibrarySnapshot = {
   smartPlaylists: SmartPlaylist[];
   markersByTrackId: Record<string, Marker[]>;
   keptAudioNames?: string[];
+  /** Albums the user removed; device sync must not bring them back. */
+  removedAlbumIds?: string[];
+  /** Drive folders of removed cloud albums (same folder, other phone id). */
+  removedDriveFolderIds?: string[];
 };
 
 export function emptyLibrarySnapshot(): LibrarySnapshot {
@@ -50,7 +54,29 @@ export function emptyLibrarySnapshot(): LibrarySnapshot {
     playlists: [],
     smartPlaylists: [],
     markersByTrackId: {},
+    removedAlbumIds: [],
+    removedDriveFolderIds: [],
   };
+}
+
+const PERSIST_ID_CAP = 400;
+
+/** Newest kept if over cap (ids are appended on delete). */
+export function uniquePersistIds(
+  ids: Iterable<string | undefined> | undefined,
+  cap = PERSIST_ID_CAP,
+): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of ids ?? []) {
+    const id = typeof raw === 'string' ? raw.trim() : '';
+    if (!id || seen.has(id)) {
+      continue;
+    }
+    seen.add(id);
+    out.push(id);
+  }
+  return out.length > cap ? out.slice(out.length - cap) : out;
 }
 
 function snapshotFileUri(): string {
@@ -96,6 +122,10 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
   const tracks = snapshot.tracks.map(reconcileTrack);
   const keep = new Set(tracks.map((track) => track.id));
   const pruneIds = (ids: string[]) => ids.filter((id) => keep.has(id));
+  const removedAlbumIds = uniquePersistIds(snapshot.removedAlbumIds);
+  const removedDriveFolderIds = uniquePersistIds(snapshot.removedDriveFolderIds);
+  const removedAlbumSet = new Set(removedAlbumIds);
+  const removedFolderSet = new Set(removedDriveFolderIds);
 
   return {
     version: LIBRARY_SNAPSHOT_VERSION,
@@ -105,53 +135,61 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
       ...folder,
       trackIds: pruneIds(folder.trackIds),
     })),
-    albums: snapshot.albums.map((album) => {
-      const names = new Map((album.separators ?? []).map((item) => [item.id, item.name]));
-      const versionFolders = (album.versionFolders ?? [])
-        .map((folder) => {
-          const folderTracks = folder.trackIds.filter((id) => keep.has(id));
-          const chosenId = folderTracks.includes(folder.chosenId)
-            ? folder.chosenId
-            : (folderTracks[0] ?? folder.chosenId);
-          return {
-            ...folder,
-            name: folder.name.trim() || 'Versioni',
-            trackIds: folderTracks,
-            chosenId,
-          };
-        })
-        .filter((folder) => folder.trackIds.length >= 2);
-      const folderIds = new Set(versionFolders.map((folder) => folder.id));
-      const trackIds = album.trackIds.filter(
-        (id) => keep.has(id) || names.has(id) || isSeparatorId(id) || folderIds.has(id),
-      );
-      const separators = trackIds
-        .filter((id) => names.has(id) || isSeparatorId(id))
-        .map((id) => ({ id, name: names.get(id)?.trim() || 'Separatore' }));
-      const nextAlbum = {
-        ...album,
-        trackIds,
-        separators: separators.length > 0 ? separators : undefined,
-        versionFolders: versionFolders.length > 0 ? versionFolders : undefined,
-      };
-      return {
-        ...nextAlbum,
-        trackIds: albumHasCustomOrder(nextAlbum)
-          ? trackIds
-          : orderedAlbumItemIds(nextAlbum, tracks),
-        separators: separators.length > 0 ? separators : undefined,
-        artworkUri: persistAndKeep(album.artworkUri),
-        notes: album.notes?.trim() ? album.notes : undefined,
-        notesUpdatedAt: album.notes?.trim() ? album.notesUpdatedAt : undefined,
-        versionFolders: nextAlbum.versionFolders,
-        documents: (album.documents ?? [])
-          .map((document) => {
-            const fileUri = persistAndKeep(document.fileUri);
-            return fileUri ? { ...document, fileUri } : null;
+    albums: snapshot.albums
+      .filter((album) => {
+        if (removedAlbumSet.has(album.id)) {
+          return false;
+        }
+        const folderId = album.driveFolderId?.trim();
+        return !(folderId && removedFolderSet.has(folderId));
+      })
+      .map((album) => {
+        const names = new Map((album.separators ?? []).map((item) => [item.id, item.name]));
+        const versionFolders = (album.versionFolders ?? [])
+          .map((folder) => {
+            const folderTracks = folder.trackIds.filter((id) => keep.has(id));
+            const chosenId = folderTracks.includes(folder.chosenId)
+              ? folder.chosenId
+              : (folderTracks[0] ?? folder.chosenId);
+            return {
+              ...folder,
+              name: folder.name.trim() || 'Versioni',
+              trackIds: folderTracks,
+              chosenId,
+            };
           })
-          .filter((document): document is NonNullable<typeof document> => document != null),
-      };
-    }),
+          .filter((folder) => folder.trackIds.length >= 2);
+        const folderIds = new Set(versionFolders.map((folder) => folder.id));
+        const trackIds = album.trackIds.filter(
+          (id) => keep.has(id) || names.has(id) || isSeparatorId(id) || folderIds.has(id),
+        );
+        const separators = trackIds
+          .filter((id) => names.has(id) || isSeparatorId(id))
+          .map((id) => ({ id, name: names.get(id)?.trim() || 'Separatore' }));
+        const nextAlbum = {
+          ...album,
+          trackIds,
+          separators: separators.length > 0 ? separators : undefined,
+          versionFolders: versionFolders.length > 0 ? versionFolders : undefined,
+        };
+        return {
+          ...nextAlbum,
+          trackIds: albumHasCustomOrder(nextAlbum)
+            ? trackIds
+            : orderedAlbumItemIds(nextAlbum, tracks),
+          separators: separators.length > 0 ? separators : undefined,
+          artworkUri: persistAndKeep(album.artworkUri),
+          notes: album.notes?.trim() ? album.notes : undefined,
+          notesUpdatedAt: album.notes?.trim() ? album.notesUpdatedAt : undefined,
+          versionFolders: nextAlbum.versionFolders,
+          documents: (album.documents ?? [])
+            .map((document) => {
+              const fileUri = persistAndKeep(document.fileUri);
+              return fileUri ? { ...document, fileUri } : null;
+            })
+            .filter((document): document is NonNullable<typeof document> => document != null),
+        };
+      }),
     playlists: snapshot.playlists.map((playlist) => ({
       ...playlist,
       id: typeof playlist.id === 'string' ? playlist.id : '',
@@ -170,6 +208,8 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
       Object.entries(snapshot.markersByTrackId).filter(([id]) => keep.has(id)),
     ),
     keptAudioNames: (snapshot.keptAudioNames ?? []).filter((name) => name.trim().length > 0),
+    removedAlbumIds,
+    removedDriveFolderIds,
   };
 }
 
@@ -200,6 +240,12 @@ function parseLibrarySnapshot(parsed: LibrarySnapshot): LibrarySnapshot | null {
         : {},
     keptAudioNames: Array.isArray(parsed.keptAudioNames)
       ? parsed.keptAudioNames.filter((name): name is string => typeof name === 'string' && name.trim().length > 0)
+      : [],
+    removedAlbumIds: Array.isArray(parsed.removedAlbumIds)
+      ? uniquePersistIds(parsed.removedAlbumIds)
+      : [],
+    removedDriveFolderIds: Array.isArray(parsed.removedDriveFolderIds)
+      ? uniquePersistIds(parsed.removedDriveFolderIds)
       : [],
   };
 }
