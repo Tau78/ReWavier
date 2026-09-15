@@ -12,12 +12,19 @@ const app = readFileSync(join(root, 'src/app/AuthenticatedApp.tsx'), 'utf8');
 
 assert.match(persist, /removedAlbumIds/);
 assert.match(persist, /removedDriveFolderIds/);
-assert.match(store, /void flushLibraryPersist\(\)/);
+assert.match(store, /void flushLibraryPersist\(\)\.catch/);
+assert.match(store, /if \(!state\.albums\.some\(\(album\) => album\.id === albumId\)\)/);
 assert.match(store, /removedDriveFolderIds: driveFolderId/);
 assert.match(merge, /albumIsRemoved/);
 assert.match(suitcase, /snapshotFrom\(/);
 assert.match(suitcase, /removedAlbumIds: cleaned\.removedAlbumIds/);
 assert.match(app, /state === 'background' \|\| state === 'inactive'/);
+assert.match(app, /addEventListener\('blur'/);
+
+const engine = readFileSync(join(root, 'src/cloud/syncEngine.ts'), 'utf8');
+assert.match(engine, /const library = useLibraryStore\.getState\(\)/);
+assert.match(engine, /removedAlbumIds\.has\(album\.id\)/);
+assert.match(engine, /live\.removedAlbumIds\.includes\(album\.id\)/);
 
 function uniquePersistIds(ids, cap = 400) {
   const out = [];

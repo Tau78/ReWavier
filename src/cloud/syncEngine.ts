@@ -949,7 +949,11 @@ async function runCloudSyncBody(): Promise<void> {
 
     try {
       for (const album of albums) {
-        if (!useLibraryStore.getState().albums.some((item) => item.id === album.id)) {
+        const live = useLibraryStore.getState();
+        if (!live.albums.some((item) => item.id === album.id)) {
+          continue;
+        }
+        if (live.removedAlbumIds.includes(album.id)) {
           continue;
         }
         const result = await runExclusiveAlbumWork(album.id, () =>
