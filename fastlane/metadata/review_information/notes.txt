@@ -30,7 +30,7 @@ Then:
 
 5) EXTERNAL SERVICES USED FOR CORE FEATURES
 - Sign in with Apple / Google (optional; review uses email/password)
-- Google Drive (optional import/sync; drive.file only)
+- Google Drive (optional import/sync; drive.file + drive.readonly for Shared Drives)
 - iCloud (optional iPhone-to-iPhone copy)
 None of: ads, analytics, payment processor, AI. No ReWavier server for accounts.
 

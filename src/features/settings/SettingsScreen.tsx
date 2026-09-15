@@ -312,14 +312,14 @@ export function SettingsScreen() {
           {driveLinked ? (
             <LinkRow
               label="Google Drive"
-              value="Collegato. Tocca di nuovo se non vedi i Drive della band in Drive Condivisi."
+              value="Collegato. Tocca di nuovo e spunta tutte le caselle Drive se non vedi i Drive della band."
               onPress={connectDrive}
               accessibilityLabel="Ricollega Google Drive"
             />
           ) : (
             <LinkRow
               label="Collega Google Drive"
-              value="Per aprire le cartelle Drive e tenere i brani allineati. Nella schermata Google spunta la casella Drive."
+              value="Per aprire le cartelle Drive e i Drive della band. Nella schermata Google spunta tutte le caselle Drive."
               onPress={connectDrive}
               accessibilityLabel="Collega Google Drive"
             />

@@ -30,6 +30,7 @@ echo "2) Crea client Web  → URI di reindirizzamento: https://eventi.musicproev
 echo "3) Crea client Android → package $BUNDLE_ID + impronta SHA-1 della firma Play/EAS"
 echo "4) Schermata consenso: pubblica in Produzione, nome ReWavier,"
 echo "   privacy https://eventi.musicproeventi.it/ReWavier/Privacy.html"
+echo "   Scope Drive: drive.file + drive.readonly (lista Drive Condivisi)"
 echo
 open "https://console.cloud.google.com/apis/credentials?project=${PROJECT_ID}"
 echo "Quando hai gli ID (…apps.googleusercontent.com), incollali in .env.local"

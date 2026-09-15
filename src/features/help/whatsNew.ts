@@ -112,7 +112,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Drive della band',
-        body: 'Su Android, in Impostazioni tocca di nuovo Collega Google Drive. Poi in Drive Condivisi vedi i Drive della band e li apri senza uscire dall’app.',
+        body: 'In Impostazioni tocca di nuovo Collega Google Drive e spunta tutte le caselle Drive. Poi in Drive Condivisi vedi i Drive della band e li apri senza uscire dall’app.',
       },
       {
         title: 'Album tolto, resta tolto',

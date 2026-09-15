@@ -28,6 +28,7 @@ assert.match(
 const signIn = readFileSync(join(root, 'src/auth/useGoogleSignIn.ts'), 'utf8');
 assert.match(signIn, /drive\.readonly/);
 assert.match(signIn, /drive\.file/);
+assert.match(signIn, /googleTokenCanListSharedDrives/);
 
 const PIN_ID_RE = /^[a-zA-Z0-9_-]{10,}$/;
 

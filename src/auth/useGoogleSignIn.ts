@@ -24,6 +24,7 @@ import {
   googleDriveAuthorizeExtraParams,
   googleExchangeIsReady,
   googleIdTokenFromResult,
+  googleTokenCanListSharedDrives,
   googleTokenHasDriveScope,
   iosGoogleRedirectUri,
   pickGoogleClientIds,
@@ -353,6 +354,11 @@ export async function completeGoogleDriveConnect(
       tokens.accessToken && !googleTokenHasDriveScope(tokens.scope)
         ? 'Hai dato l’ok a Google senza il permesso Drive. Riprova, spunta la casella Drive e tocca Continua.'
         : DRIVE_CONNECT_ERROR,
+    );
+  }
+  if (!googleTokenCanListSharedDrives(tokens.scope)) {
+    throw new Error(
+      'Manca l’accesso ai Drive della band. Nella schermata Google spunta tutte le caselle di Drive e tocca Continua.',
     );
   }
   const session = useSessionStore.getState();
