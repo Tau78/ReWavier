@@ -1,11 +1,13 @@
 ---
 name: vai
-description: Ships ReWavier when the user says VAI. Commits, merges the PR, pushes, then FTP / deploy / build only if the current stack has them and the touched files need them. Use when the user says VAI, vai, or asks to ship / rilasciare.
+description: Ships ReWavier when the user says VAI, or immediately after a user-visible bugfix. Commits, merges the PR, pushes, then FTP / deploy / OTA / build only if the current stack has them and the touched files need them. Use when the user says VAI, vai, asks to ship / rilasciare, or after finishing a bug that shows up on the phone or the stores.
 ---
 
 # VAI
 
 Quando l’utente scrive **VAI** (o `vai`, o il messaggio inizia con VAI), lancia il rilascio. Non chiedere conferma. Non rifare i 30 discovery. Non toccare lo stile del player.
+
+Quando **finisce un bugfix visibile** (telefono, TestFlight, Play, App Store), lancia lo stesso script **da solo**. Non chiedere. Non aspettare un secondo VAI. Lo script manda anche l’OTA sugli store se i file JS sono toccati.
 
 VAI è permesso esplicito di commit, merge su main, push, e poi solo i passi il cui stack c’è **ora** e i cui file sono **toccati**. Il push su git parte sempre.
 
@@ -25,7 +27,8 @@ Dalla root del repo, con rete. Lo script **rileva lo stack adesso** (può essere
 4. Push su `origin` (sempre)
 5. FTP di `docs/` solo se `docs/` è toccato
 6. Deploy solo se lo stack ha un host e i file del deploy sono toccati
-7. Build iOS solo se i file dell’app sono toccati (Xcode locale → TestFlight; senza Xcode, EAS)
+7. OTA (`eas update` canale production) se i file JS dell’app sono toccati — arriva su Android/iOS già in store, stesso runtime
+8. Build iOS solo se i file dell’app sono toccati (Xcode locale → TestFlight; senza Xcode, EAS)
 
 ## File toccati
 

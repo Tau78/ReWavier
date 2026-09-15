@@ -20,7 +20,7 @@ Product/scope/default/A/B choices: use **AskQuestion** (tappable form), never nu
 
 # VAI
 
-The word **VAI** means run `scripts/vai.sh`. The script re-detects the stack each run (it may have grown) and only runs FTP / deploy / build for files that actually changed; git push always. Follow `.cursor/rules/vai.mdc`. iOS build is **Xcode local** → TestFlight. If this machine has no Xcode, the script uses EAS.
+The word **VAI** means run `scripts/vai.sh`. After a **user-visible bugfix**, run it yourself — do not wait for the user to type VAI. The script re-detects the stack each run (it may have grown) and only runs FTP / deploy / OTA / build for files that actually changed; git push always. Follow `.cursor/rules/vai.mdc`. JS on the stores: OTA (`eas update` production). iOS native: **Xcode local** → TestFlight. If this machine has no Xcode, the script uses EAS.
 
 # Apple release
 

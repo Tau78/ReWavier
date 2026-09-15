@@ -1,11 +1,13 @@
 ---
-description: La parola VAI lancia lo script di rilascio (commit, merge PR, push; deploy/FTP/build solo se toccati)
+description: La parola VAI lancia lo script di rilascio; dopo un bugfix visibile si lancia da soli, sugli store
 alwaysApply: true
 ---
 
 # VAI
 
 Se il messaggio dell’utente è **VAI** (anche `vai`, o inizia con VAI), è un ordine di rilascio. Non chiedere conferma.
+
+**Bugfix visibile sull’app:** quando il fix è fatto (test/smoke verdi), esegui **subito** VAI. Non chiedere. Non aspettare che l’utente scriva VAI. Vale per iPhone e Android: lo script manda git, TestFlight se serve, e l’aggiornamento OTA sugli store se i file JS sono toccati.
 
 ## Cosa fare
 
@@ -25,5 +27,6 @@ VAI non compila App Review Information e non gira il video. Prima submission Sto
 
 - Rifare i passi a mano se lo script esiste
 - Chiedere «vuoi che committi?»
+- Chiedere «eseguo VAI?» dopo un bugfix visibile
 - `--force`, `--no-verify`, amend
 - Incrementare il build number iOS se la build è saltata

@@ -136,6 +136,9 @@ print_stack() {
   [[ -n "$STACK_DEPLOY" ]] && bits+=("deploy:${STACK_DEPLOY}")
   [[ "$STACK_IOS" == "1" ]] && bits+=(build:ios)
   [[ "$STACK_ANDROID" == "1" ]] && bits+=(build:android)
+  if [[ -f eas.json ]] && grep -q '"updates"' app.json 2>/dev/null; then
+    bits+=(ota:eas)
+  fi
   log "Stack: ${bits[*]}"
 }
 
@@ -204,6 +207,21 @@ needs_deploy() {
     case "$f" in
       docs/*|README*|AGENTS.md|CLAUDE.md|.cursor/*|scripts/vai.sh) continue ;;
       *) return 0 ;;
+    esac
+  done <<< "$TOUCHED"
+  return 1
+}
+
+needs_ota() {
+  [[ -f eas.json ]] || return 1
+  [[ -f app.json ]] || return 1
+  grep -q '"updates"' app.json 2>/dev/null || return 1
+  local f
+  while IFS= read -r f; do
+    case "$f" in
+      docs/*|README*|AGENTS.md|CLAUDE.md|.cursor/*|scripts/*) continue ;;
+      src/*|app/*|index.ts|index.js|metro.config.js|babel.config.js) return 0 ;;
+      *.tsx|*.ts|*.jsx) return 0 ;;
     esac
   done <<< "$TOUCHED"
   return 1
@@ -474,6 +492,33 @@ run_deploy() {
   log "Deploy: ${STACK_DEPLOY} ok."
 }
 
+# --- OTA (JS già sullo store, stesso runtime) ---
+
+run_ota() {
+  if ! needs_ota; then
+    if [[ ! -f eas.json ]] || ! grep -q '"updates"' app.json 2>/dev/null; then
+      log "OTA: Expo Updates non è nello stack."
+    else
+      log "OTA: file JS non toccati, salto."
+    fi
+    return 0
+  fi
+  # .env locale non deve finire nel bundle: i client ID stanno in app.json.
+  unset EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID \
+    EXPO_PUBLIC_GOOGLE_EXPO_IOS_CLIENT_ID \
+    EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID \
+    EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID
+  local msg
+  msg="${VAI_MESSAGE:-Ship ${PROJECT_NAME}}"
+  msg="${msg%%$'\n'*}"
+  log "OTA: eas update canale production."
+  if npx eas-cli update --channel production --non-interactive --message "$msg"; then
+    log "OTA: ok — sugli store al prossimo avvio (su Android: chiudi e riapri due volte)."
+  else
+    log "OTA: pubblicazione fallita, continuo."
+  fi
+}
+
 # --- build ---
 
 run_build() {
@@ -552,6 +597,7 @@ merge_pr
 push_always
 run_ftp
 run_deploy
+run_ota
 run_build
 
 log "Fatto. HEAD $(git rev-parse --short HEAD) su $(git rev-parse --abbrev-ref HEAD)."
