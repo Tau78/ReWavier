@@ -9,16 +9,19 @@ import {
   listDriveFolders,
   listFolderChildren,
   listSharedDriveEntries,
+  rememberSharedDriveFromFolder,
   type DriveFile,
   type SharedDriveEntry,
 } from '../../cloud/driveApi';
+import { pinsFromAlbums } from '../../cloud/sharedDriveCatalog';
 import { importDriveFolder } from '../../cloud/syncEngine';
-import { isAudioName } from '../../domain/audioFormats';
+import { isDriveAudio } from '../../domain/audioFormats';
 import { isDownloadPausedError } from '../../domain/collectionDownloadVisual';
 import { formatDownloadPercent } from '../../domain/downloadProgress';
 import { findTrackCoverFile, isAlbumCoverName, isImageName, isPdfName } from '../../domain/driveMedia';
 import type { RootStackParamList } from '../../navigation/types';
 import { useDownloadProgressStore } from '../../store/downloadProgressStore';
+import { useLibraryStore } from '../../store/libraryStore';
 import { colors, layout } from '../../theme/colors';
 import { EmptyGraphic, KindRow } from '../../theme/graphics';
 
@@ -80,7 +83,7 @@ export function DriveFolderScreen() {
   const browsing = stack.length > 0;
   const current = stack[stack.length - 1];
   const subfolders = children.filter(isDriveFolder);
-  const audios = children.filter((file) => isAudioName(file.name));
+  const audios = children.filter((file) => isDriveAudio(file));
   const extras = children.filter((file) => isImageName(file.name) || isPdfName(file.name));
 
   const extraLabel = (file: DriveFile): string => {
@@ -102,7 +105,12 @@ export function DriveFolderScreen() {
     if (!opts?.silent) {
       setBusy(true);
     }
-    const load = which === 'shared' ? listSharedDriveEntries(trimmed || undefined) : listDriveFolders(trimmed || undefined);
+    const load =
+      which === 'shared'
+        ? listSharedDriveEntries(trimmed || undefined, {
+            knownDrives: pinsFromAlbums(useLibraryStore.getState().albums),
+          })
+        : listDriveFolders(trimmed || undefined);
     void load
       .then((hits) => {
         if (gen !== searchGen.current || which !== tabRef.current) {
@@ -151,7 +159,14 @@ export function DriveFolderScreen() {
     const sharedDriveId =
       ('sharedKind' in folder && folder.sharedKind === 'shared-drive'
         ? folder.id
-        : undefined) ?? stack[0]?.sharedDriveId;
+        : undefined) ??
+      folder.driveId ??
+      stack[0]?.sharedDriveId;
+    if (folder.driveId || ('sharedKind' in folder && folder.sharedKind === 'shared-drive')) {
+      void rememberSharedDriveFromFolder(
+        'sharedKind' in folder ? folder : { ...folder, sharedKind: 'shared-folder' },
+      );
+    }
     setBusy(true);
     setStack((prev) => [...prev, { id: folder.id, name: folder.name, sharedDriveId }]);
     void withTimeout(
@@ -555,7 +570,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  scroll: { paddingHorizontal: 16, paddingBottom: 32 },
+  scroll: { paddingHorizontal: 16, paddingBottom: 32, flexGrow: 1 },
   emptyBox: { alignItems: 'center', paddingVertical: 20 },
   empty: { color: colors.textMuted, fontSize: 14, paddingHorizontal: 16, textAlign: 'center' },
   row: {

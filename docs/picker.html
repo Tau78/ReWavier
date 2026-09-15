@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Scegli il Drive della band</title>
+  <meta name="robots" content="noindex,nofollow">
+  <meta name="theme-color" content="#0D0D0F">
+  <style>
+    :root {
+      --bg: #0D0D0F;
+      --text: #F5F5F7;
+      --muted: #8E8E93;
+      --accent: #FF6B35;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+      line-height: 1.5;
+      padding: 2rem 1.25rem;
+    }
+    body.embedded {
+      min-height: 0;
+      padding: 0.75rem 1rem 1.25rem;
+      align-items: flex-start;
+    }
+    main { max-width: 22rem; text-align: center; }
+    p { margin: 0 0 0.75rem; color: var(--muted); }
+    a, button {
+      display: inline-block;
+      margin-top: 0.75rem;
+      padding: 0.85rem 1.4rem;
+      border: 0;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #fff;
+      text-decoration: none;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <p id="status">Apro i Drive della band…</p>
+    <p id="hint">Se non si apre, tocca il pulsante. Puoi sceglierne più di uno.</p>
+    <button type="button" id="open">Mostra i Drive condivisi</button>
+  </main>
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script>
+    (function () {
+      var APP_ID = '1049963169218';
+      var FOLDER = 'application/vnd.google-apps.folder';
+      var params = new URLSearchParams(window.location.search || '');
+      var hash = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+      var token = hash.get('access_token') || params.get('access_token') || '';
+      var embedded = params.get('embedded') === '1';
+      if (embedded && document.body) {
+        document.body.className += (document.body.className ? ' ' : '') + 'embedded';
+      }
+      if (window.location.hash) {
+        window.history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+      function safeReturn(raw) {
+        var value = '';
+        try {
+          value = decodeURIComponent(raw || '');
+        } catch (e) {
+          value = raw || '';
+        }
+        if (/^rewavier:\/\//i.test(value)) {
+          return value;
+        }
+        if (/^com\.googleusercontent\.apps\.[a-z0-9-]+:/i.test(value)) {
+          return value;
+        }
+        return 'rewavier://oauth';
+      }
+      var returnUri = safeReturn(params.get('return') || '');
+      var status = document.getElementById('status');
+      var openBtn = document.getElementById('open');
+
+      function bounce(query) {
+        if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+          window.ReactNativeWebView.postMessage(query);
+          return;
+        }
+        var join = returnUri.indexOf('?') >= 0 ? '&' : '?';
+        window.location.replace(returnUri + join + query);
+      }
+
+      function showError(message) {
+        if (status) {
+          status.textContent = message;
+        }
+      }
+
+      function bounceDrives(drives) {
+        var rows = [];
+        for (var i = 0; i < drives.length; i += 1) {
+          if (drives[i] && drives[i].id && drives[i].name) {
+            rows.push({ id: String(drives[i].id), name: String(drives[i].name) });
+          }
+        }
+        if (!rows.length) {
+          return false;
+        }
+        bounce('picked_drives_json=' + encodeURIComponent(JSON.stringify(rows)));
+        return true;
+      }
+
+      function authHeaders() {
+        return { Authorization: 'Bearer ' + token };
+      }
+
+      function fetchJson(url) {
+        return fetch(url, { headers: authHeaders() }).then(function (res) {
+          return res.ok ? res.json() : {};
+        });
+      }
+
+      function pinsFromFiles(files) {
+        var byId = {};
+        for (var i = 0; i < files.length; i += 1) {
+          var file = files[i];
+          if (!file || !file.driveId) {
+            continue;
+          }
+          if (!byId[file.driveId]) {
+            byId[file.driveId] = {
+              id: file.driveId,
+              name: file.id === file.driveId ? file.name || '' : '',
+            };
+          } else if (file.id === file.driveId && file.name) {
+            byId[file.driveId].name = file.name;
+          }
+        }
+        var ids = Object.keys(byId);
+        return Promise.all(
+          ids.map(function (id) {
+            if (byId[id].name) {
+              return byId[id];
+            }
+            return fetchJson(
+              'https://www.googleapis.com/drive/v3/files/' +
+                encodeURIComponent(id) +
+                '?supportsAllDrives=true&fields=id,name',
+            ).then(function (meta) {
+              var name = meta && meta.name ? String(meta.name) : '';
+              return name ? { id: id, name: name } : null;
+            }).catch(function () {
+              return null;
+            });
+          }),
+        ).then(function (rows) {
+          return rows.filter(function (row) {
+            return row && row.id && row.name;
+          });
+        });
+      }
+
+      function fetchDrivePins() {
+        if (!token) {
+          return Promise.resolve([]);
+        }
+        return fetchJson('https://www.googleapis.com/drive/v3/drives?pageSize=100&fields=drives(id,name)')
+          .then(function (data) {
+            var drives = (data && data.drives) || [];
+            if (drives.length) {
+              return drives;
+            }
+            return fetchJson(
+              'https://www.googleapis.com/drive/v3/files?q=' +
+                encodeURIComponent("mimeType = 'application/vnd.google-apps.folder' and trashed = false") +
+                '&pageSize=100&fields=files(id,name,driveId)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives',
+            ).then(function (listed) {
+              return pinsFromFiles((listed && listed.files) || []);
+            });
+          })
+          .catch(function () {
+            return [];
+          });
+      }
+
+      function pickerCallback(data) {
+        if (!data || !window.google || !google.picker) {
+          return;
+        }
+        var action = data[google.picker.Response.ACTION];
+        if (action === google.picker.Action.CANCEL) {
+          bounce('error=access_denied');
+          return;
+        }
+        if (action !== google.picker.Action.PICKED) {
+          return;
+        }
+        var docs = data[google.picker.Response.DOCUMENTS] || [];
+        var ids = [];
+        var drives = [];
+        for (var i = 0; i < docs.length; i += 1) {
+          var id = docs[i][google.picker.Document.ID];
+          var name = docs[i][google.picker.Document.NAME] || '';
+          var driveId = docs[i].driveId || (docs[i].parentId && docs[i].parentId) || '';
+          if (id) {
+            ids.push(id);
+          }
+          if (driveId && name) {
+            drives.push({ id: driveId === id ? id : driveId, name: name });
+          } else if (id && name && docs[i].mimeType === FOLDER) {
+            drives.push({ id: id, name: name });
+          }
+        }
+        if (ids.length) {
+          bounce('picked_file_ids=' + encodeURIComponent(ids.join(',')));
+          return;
+        }
+        if (bounceDrives(drives)) {
+          return;
+        }
+        showError('Nessuna cartella scelta. Riprova.');
+      }
+
+      function createPicker() {
+        if (!token) {
+          showError('Manca l’accesso a Drive. Torna in ReWavier e collega Google Drive.');
+          return;
+        }
+        if (!window.google || !google.picker) {
+          showError('Google non è pronto. Tocca di nuovo il pulsante.');
+          return;
+        }
+        var shared = new google.picker.DocsView(google.picker.ViewId.DOCS)
+          .setEnableDrives(true)
+          .setIncludeFolders(true)
+          .setSelectFolderEnabled(true)
+          .setMode(google.picker.DocsViewMode.LIST)
+          .setMimeTypes(FOLDER);
+        var withMe = new google.picker.DocsView(google.picker.ViewId.DOCS)
+          .setOwnedByMe(false)
+          .setIncludeFolders(true)
+          .setSelectFolderEnabled(true)
+          .setMode(google.picker.DocsViewMode.LIST)
+          .setMimeTypes(FOLDER);
+        var builder = new google.picker.PickerBuilder()
+          .setAppId(APP_ID)
+          .setOAuthToken(token)
+          .setOrigin(window.location.protocol + '//' + window.location.host)
+          .setTitle('Drive della band')
+          .setLocale('it')
+          .addView(shared)
+          .addView(withMe)
+          .setCallback(pickerCallback);
+        if (google.picker.Feature && google.picker.Feature.MULTISELECT_ENABLED) {
+          builder.enableFeature(google.picker.Feature.MULTISELECT_ENABLED);
+        }
+        if (google.picker.Feature && google.picker.Feature.SUPPORT_DRIVES) {
+          builder.enableFeature(google.picker.Feature.SUPPORT_DRIVES);
+        }
+        var width = Math.max(320, window.innerWidth || 360);
+        var height = Math.max(480, window.innerHeight || 640);
+        builder.setSize(width, height);
+        builder.build().setVisible(true);
+      }
+
+      function start() {
+        fetchDrivePins().then(function (drives) {
+          if (bounceDrives(drives)) {
+            return;
+          }
+          if (!window.gapi || !gapi.load) {
+            showError('Google non si è caricato. Tocca il pulsante.');
+            return;
+          }
+          gapi.load('picker', { callback: createPicker });
+        });
+      }
+
+      if (openBtn) {
+        openBtn.addEventListener('click', start);
+      }
+      if (window.gapi) {
+        start();
+      } else {
+        window.addEventListener('load', start);
+      }
+    })();
+  </script>
+</body>
+</html>

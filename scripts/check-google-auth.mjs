@@ -11,6 +11,15 @@ const GOOGLE_DRIVE_EXTRA_PARAMS = {
   include_granted_scopes: 'true',
 };
 
+const GOOGLE_DRIVE_IMPLICIT_EXTRA_PARAMS = {
+  prompt: 'consent select_account',
+  include_granted_scopes: 'true',
+};
+
+function googleDriveAuthorizeExtraParams(implicit) {
+  return implicit ? GOOGLE_DRIVE_IMPLICIT_EXTRA_PARAMS : GOOGLE_DRIVE_EXTRA_PARAMS;
+}
+
 const GOOGLE_OAUTH_EXTRA_PARAMS = GOOGLE_DRIVE_EXTRA_PARAMS;
 
 function googleAccessTokenFromResult(result) {
@@ -208,6 +217,9 @@ assert.doesNotMatch(GOOGLE_IDENTITY_EXTRA_PARAMS.prompt, /consent/);
 assert.equal(GOOGLE_OAUTH_EXTRA_PARAMS.access_type, 'offline');
 assert.match(GOOGLE_OAUTH_EXTRA_PARAMS.prompt, /consent/);
 assert.equal(GOOGLE_DRIVE_EXTRA_PARAMS.include_granted_scopes, 'true');
+assert.equal(googleDriveAuthorizeExtraParams(false).access_type, 'offline');
+assert.equal(googleDriveAuthorizeExtraParams(true).access_type, undefined);
+assert.doesNotMatch(JSON.stringify(googleDriveAuthorizeExtraParams(true)), /offline/);
 assert.equal(googleTokenHasDriveScope('openid https://www.googleapis.com/auth/drive.file'), true);
 assert.equal(
   googleTokenHasDriveScope('openid+https://www.googleapis.com/auth/drive.file+email'),

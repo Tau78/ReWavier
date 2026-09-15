@@ -100,7 +100,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Continua con Google su Android',
-        body: 'Tocchi Continua con Google, scegli l’account e torni nell’app. Sulla 1.0.5 chiudi ReWavier e riaprila due volte, poi riprova. Sulla 1.0.4 fai lo stesso.',
+        body: 'Tocchi Continua con Google, scegli l’account e torni nell’app. Poi Collega Google Drive: chiudi ReWavier, riaprila due volte e riprova.',
       },
       {
         title: 'Cartelle album in comune',
@@ -109,6 +109,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       {
         title: 'Album più compatto',
         body: 'Il nome sta in alto. Sotto la copertina restano l’ordine A→Z e quante tracce ci sono, poi la lista. Sulle righe non si ripete il nome dell’album.',
+      },
+      {
+        title: 'Drive della band',
+        body: 'Tocchi Drive Condivisi e vedi i Drive della band. Scrivi il nome della cartella, aprila e tocca Scegli.',
       },
     ],
   },

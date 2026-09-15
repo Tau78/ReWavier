@@ -12,7 +12,7 @@ import {
   albumNotesFromRemote,
   isAlbumNotesFileName,
 } from '../domain/albumNotes';
-import { isAudioName, playableUri } from '../domain/audioFormats';
+import { isDriveAudio, playableUri } from '../domain/audioFormats';
 import {
   findAlbumCoverFile,
   findTrackCoverFile,
@@ -208,7 +208,7 @@ export async function peekDriveAlbum(albumId: string): Promise<DriveAlbumPeek> {
   );
   const treeFolderIds = new Set(tree.map((node) => node.id));
   const audios = uniqueRemotes(
-    tree.flatMap((node) => node.children.filter((file) => isAudioName(file.name))),
+    tree.flatMap((node) => node.children.filter((file) => isDriveAudio(file))),
   );
   const locals = albumLocalTracks(album.id, treeFolderIds);
   const claimed = createRemoteClaimSet();
@@ -256,7 +256,7 @@ function countDriveImportJobs(
     total += 1;
   }
   for (const node of tree) {
-    const audios = node.children.filter((file) => isAudioName(file.name));
+    const audios = node.children.filter((file) => isDriveAudio(file));
     total += audios.length;
     total += node.children.filter((file) => isPdfName(file.name)).length;
     for (const audio of audios) {
@@ -442,7 +442,7 @@ async function syncOneDriveAlbum(
   const children = tree[0]?.children ?? [];
   const treeFolderIds = new Set(tree.map((node) => node.id));
   const audios = uniqueRemotes(
-    tree.flatMap((node) => node.children.filter((file) => isAudioName(file.name))),
+    tree.flatMap((node) => node.children.filter((file) => isDriveAudio(file))),
   );
   const sidecars = tree.flatMap((node) => node.children.filter((file) => isSidecarName(file.name)));
   const importedRemotes = createRemoteClaimSet();
@@ -1185,7 +1185,7 @@ export async function followTrackRenameOnDrive(
   if (!audioId && folderId) {
     const match = children.find(
       (file) =>
-        isAudioName(file.name) &&
+        isDriveAudio(file) &&
         (file.name.toLowerCase() === oldSourceFileName.toLowerCase() ||
           audioMatchKey(file.name) === audioMatchKey(oldSourceFileName)),
     );
@@ -1445,7 +1445,7 @@ async function importAudiosInFolder(
 ): Promise<void> {
   const audios = uniqueRemotes(
     children
-      .filter((file) => isAudioName(file.name))
+      .filter((file) => isDriveAudio(file))
       .sort((left, right) =>
         left.name.localeCompare(right.name, 'it', { numeric: true, sensitivity: 'base' }),
       ),
@@ -1545,6 +1545,26 @@ export async function importDriveFolder(
   const recursive = options?.recursive === true;
   const sharedDriveId = options?.sharedDriveId;
   await ensureInboxDirectory();
+
+  const { nodes: tree, truncated: treeTruncated } = await listDriveFolderTree(
+    folderId,
+    folderName,
+    recursive ? 8 : 0,
+    sharedDriveId ? { sharedDriveId } : undefined,
+  );
+  const audios = tree.flatMap((node) => node.children.filter((file) => isDriveAudio(file)));
+  const rootFolders = (tree[0]?.children ?? []).filter(isDriveFolder);
+  if (audios.length === 0) {
+    if (rootFolders.length > 0 && !recursive) {
+      throw new Error(
+        'I brani sono nelle cartelle dentro. Tocca Scegli e poi «Anche le cartelle dentro».',
+      );
+    }
+    throw new Error(
+      'In questa cartella non ho trovato brani. Apri quella dove ci sono i file audio, la copertina e gli appunti.',
+    );
+  }
+
   const albumId =
     options?.albumId ??
     store.createAlbum(folderName, {
@@ -1563,12 +1583,6 @@ export async function importDriveFolder(
   }
   await refreshAlbumDriveRole(albumId);
 
-  const { nodes: tree, truncated: treeTruncated } = await listDriveFolderTree(
-    folderId,
-    folderName,
-    recursive ? 8 : 0,
-    sharedDriveId ? { sharedDriveId } : undefined,
-  );
   const progress = useDownloadProgressStore.getState();
   progress.begin(countDriveImportJobs(tree));
   try {
