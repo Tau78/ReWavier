@@ -47,9 +47,14 @@ export function AuthenticatedApp() {
         void runCloudSync();
       })();
     });
+    const blurSub = AppState.addEventListener('blur', () => {
+      void flushLibraryPersist();
+      void flushPlaybackPersist();
+    });
     return () => {
       cancelled = true;
       sub.remove();
+      blurSub.remove();
     };
   }, [userId]);
 
