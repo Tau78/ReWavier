@@ -312,7 +312,7 @@ export function SettingsScreen() {
           {driveLinked ? (
             <LinkRow
               label="Google Drive"
-              value="Collegato. Tocca per ricollegare se i brani non si aprono."
+              value="Collegato. Tocca di nuovo se non vedi i Drive della band in Drive Condivisi."
               onPress={connectDrive}
               accessibilityLabel="Ricollega Google Drive"
             />

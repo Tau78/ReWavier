@@ -92,6 +92,18 @@ export function googleTokenHasDriveScope(scope?: string | null): boolean {
   );
 }
 
+/** True when the token can call GET /drives (Shared Drive membership list). */
+export function googleTokenCanListSharedDrives(scope?: string | null): boolean {
+  if (!scope) {
+    return false;
+  }
+  const normalized = scope.replace(/\+/g, ' ').replace(/%20/gi, ' ');
+  return (
+    /(?:^|\s)(https:\/\/www\.googleapis\.com\/auth\/)?drive\.readonly(?:\s|$)/.test(normalized) ||
+    /(?:^|\s)(https:\/\/www\.googleapis\.com\/auth\/)?drive(?:\s|$)/.test(normalized)
+  );
+}
+
 /** iOS uses the reversed client scheme; Android/web use the app custom scheme. */
 export function reversedGoogleClientScheme(clientId: string): string {
   return `com.googleusercontent.apps.${clientId.replace(/\.apps\.googleusercontent\.com$/i, '')}`;

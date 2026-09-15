@@ -7,9 +7,9 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const screen = readFileSync(join(root, 'src/features/cloud/DriveFolderScreen.tsx'), 'utf8');
-assert.doesNotMatch(screen, /showEmbeddedPicker/);
-assert.doesNotMatch(screen, /SharedDrivePickerWebView/);
-assert.match(screen, /pickSharedDriveFolder/);
+assert.doesNotMatch(screen, /pickSharedDriveFolder/);
+assert.match(screen, /SharedDrivePickerWebView/);
+assert.match(screen, /showEmbeddedPicker/);
 assert.match(screen, /Prefer the folder the user picked/);
 
 const picker = readFileSync(join(root, 'docs/picker.html'), 'utf8');
@@ -24,6 +24,10 @@ assert.match(
   driveApi,
   /Nested folders inside a Shared Drive[\s\S]*folder\.id !== folder\.driveId/,
 );
+
+const signIn = readFileSync(join(root, 'src/auth/useGoogleSignIn.ts'), 'utf8');
+assert.match(signIn, /drive\.readonly/);
+assert.match(signIn, /drive\.file/);
 
 const PIN_ID_RE = /^[a-zA-Z0-9_-]{10,}$/;
 

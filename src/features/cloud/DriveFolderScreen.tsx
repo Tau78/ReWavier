@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,10 +23,15 @@ import {
   type DriveFile,
   type SharedDriveEntry,
 } from '../../cloud/driveApi';
-import { fetchGoogleDriveEmail } from '../../auth/googleToken';
+import {
+  canListSharedDrives,
+  fetchGoogleDriveEmail,
+  getValidGoogleAccessToken,
+} from '../../auth/googleToken';
 import { pinsFromAlbums, rememberSharedDrives } from '../../cloud/sharedDriveCatalog';
-import { type SharedDrivePickResult, pickSharedDriveFolder } from '../../cloud/drivePicker';
+import { type SharedDrivePickResult } from '../../cloud/drivePicker';
 import { importDriveFolder } from '../../cloud/syncEngine';
+import { SharedDrivePickerWebView } from './SharedDrivePickerWebView';
 import { isDriveAudio } from '../../domain/audioFormats';
 import { isDownloadPausedError } from '../../domain/collectionDownloadVisual';
 import { formatDownloadPercent } from '../../domain/downloadProgress';
@@ -68,6 +83,9 @@ export function DriveFolderScreen() {
   const [children, setChildren] = useState<DriveFile[]>([]);
   const [busy, setBusy] = useState(true);
   const [working, setWorking] = useState(false);
+  const [pickerToken, setPickerToken] = useState<string | null>(null);
+  const [pickerFailed, setPickerFailed] = useState(false);
+  const [canListDrives, setCanListDrives] = useState(true);
   const [googleEmail, setGoogleEmail] = useState<string | null>(null);
   const downloadPercent = useDownloadProgressStore((s) => s.percent);
   const downloadActive = useDownloadProgressStore((s) => s.active);
@@ -93,6 +111,28 @@ export function DriveFolderScreen() {
     if (tab !== 'shared' || browsing) {
       return;
     }
+    void getValidGoogleAccessToken()
+      .then((token) => {
+        if (mountedRef.current) {
+          setPickerToken(token);
+        }
+      })
+      .catch(() => {
+        if (mountedRef.current) {
+          setPickerToken(null);
+        }
+      });
+    void canListSharedDrives()
+      .then((ok) => {
+        if (mountedRef.current) {
+          setCanListDrives(ok);
+        }
+      })
+      .catch(() => {
+        if (mountedRef.current) {
+          setCanListDrives(false);
+        }
+      });
     void fetchGoogleDriveEmail()
       .then((email) => {
         if (mountedRef.current) {
@@ -156,7 +196,6 @@ export function DriveFolderScreen() {
 
   const onSearchChange = (text: string) => {
     setQuery(text);
-    // Mostra subito i match sulla lista già caricata; la rete raffina dopo.
     setSearchHits(filterHits(catalogRef.current, text));
   };
 
@@ -170,6 +209,38 @@ export function DriveFolderScreen() {
     setQuery('');
     catalogRef.current = [];
     setSearchHits([]);
+    setPickerFailed(false);
+  };
+
+  const openFolder = (folder: DriveFile | SharedDriveEntry) => {
+    if (working) {
+      return;
+    }
+    const sharedDriveId =
+      ('sharedKind' in folder && folder.sharedKind === 'shared-drive'
+        ? folder.id
+        : undefined) ??
+      folder.driveId ??
+      stack[0]?.sharedDriveId;
+    if (folder.driveId || ('sharedKind' in folder && folder.sharedKind === 'shared-drive')) {
+      void rememberSharedDriveFromFolder(
+        'sharedKind' in folder ? folder : { ...folder, sharedKind: 'shared-folder' },
+      );
+    }
+    setBusy(true);
+    setStack((prev) => [...prev, { id: folder.id, name: folder.name, sharedDriveId }]);
+    void withTimeout(
+      listFolderChildren(folder.id, sharedDriveId ? { sharedDriveId } : undefined),
+      25_000,
+      'Drive ci ha messo troppo. Riprova.',
+    )
+      .then((result) => setChildren(result.files))
+      .catch((error) => {
+        Alert.alert('Drive', error instanceof Error ? error.message : 'Cartella non aperta. Riprova.');
+        setStack((prev) => prev.slice(0, -1));
+        setChildren([]);
+      })
+      .finally(() => setBusy(false));
   };
 
   const applyPickResult = async (result: SharedDrivePickResult) => {
@@ -215,64 +286,6 @@ export function DriveFolderScreen() {
     loadSearch('', 'shared');
   };
 
-  const pickOnGoogle = () => {
-    if (working) {
-      return;
-    }
-    setBusy(true);
-    void pickSharedDriveFolder()
-      .then((result) => {
-        if (!result) {
-          if (mountedRef.current) {
-            setBusy(false);
-          }
-          return;
-        }
-        return applyPickResult(result);
-      })
-      .catch((error) => {
-        if (!mountedRef.current) {
-          return;
-        }
-        setBusy(false);
-        Alert.alert(
-          'Drive',
-          error instanceof Error ? error.message : 'Cartella non aperta. Riprova.',
-        );
-      });
-  };
-
-  const openFolder = (folder: DriveFile | SharedDriveEntry) => {
-    if (working) {
-      return;
-    }
-    const sharedDriveId =
-      ('sharedKind' in folder && folder.sharedKind === 'shared-drive'
-        ? folder.id
-        : undefined) ??
-      folder.driveId ??
-      stack[0]?.sharedDriveId;
-    if (folder.driveId || ('sharedKind' in folder && folder.sharedKind === 'shared-drive')) {
-      void rememberSharedDriveFromFolder(
-        'sharedKind' in folder ? folder : { ...folder, sharedKind: 'shared-folder' },
-      );
-    }
-    setBusy(true);
-    setStack((prev) => [...prev, { id: folder.id, name: folder.name, sharedDriveId }]);
-    void withTimeout(
-      listFolderChildren(folder.id, sharedDriveId ? { sharedDriveId } : undefined),
-      25_000,
-      'Drive ci ha messo troppo. Riprova.',
-    )
-      .then((result) => setChildren(result.files))
-      .catch((error) => {
-        Alert.alert('Drive', error instanceof Error ? error.message : 'Cartella non aperta. Riprova.');
-        setStack((prev) => prev.slice(0, -1));
-        setChildren([]);
-      })
-      .finally(() => setBusy(false));
-  };
-
   const goUp = () => {
     if (working) {
       return;
@@ -309,7 +322,6 @@ export function DriveFolderScreen() {
     const delay = trimmed ? 280 : 0;
     const timer = setTimeout(() => {
       loadSearch(trimmed, tab, {
-        // Non nascondere la lista mentre raffini: i match locali restano visibili.
         silent: catalogRef.current.length > 0,
       });
     }, delay);
@@ -390,6 +402,17 @@ export function DriveFolderScreen() {
     navigation.goBack();
   };
 
+  // Android without Shared Drive list scope: show in-app picker (never leave ReWavier).
+  // After Collega Google Drive with drive.readonly, /drives fills the native list like iPhone.
+  const showEmbeddedPicker =
+    Platform.OS === 'android' &&
+    !busy &&
+    !browsing &&
+    tab === 'shared' &&
+    searchHits.length === 0 &&
+    Boolean(pickerToken) &&
+    !pickerFailed;
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
@@ -443,12 +466,14 @@ export function DriveFolderScreen() {
         {browsing
           ? 'Tocca Scegli per portare i brani. Una foto con lo stesso nome del brano ne è la copertina (anche GIF). cover.jpg è la copertina dell’album. I PDF finiscono in Documenti.'
           : tab === 'shared'
-            ? googleEmail
-              ? `Drive di ${googleEmail}. Qui ci sono i Drive della band o della scuola. Se non li vedi, tocca Scegli su Google: apri il Drive, tocca la cartella dell’album e Seleziona (dentro vedi solo le cartelle).`
-              : 'Qui ci sono i Drive della band o della scuola. Se non li vedi, tocca Scegli su Google: apri il Drive, tocca la cartella dell’album e Seleziona.'
+            ? showEmbeddedPicker
+              ? 'Tocca il Drive della band qui sotto. Poi apri la cartella e tocca Scegli. Restiamo in ReWavier.'
+              : googleEmail
+                ? `Drive di ${googleEmail}. Qui ci sono i Drive della band o della scuola. Aprine uno, poi tocca Scegli.`
+                : 'Qui ci sono i Drive della band o della scuola. Aprine uno, poi tocca Scegli.'
             : 'Cartelle create da ReWavier sul tuo Drive (per esempio ReWavier e Audio), e altre che hai già aperto da qui. Aprine una, poi tocca Scegli.'}
       </Text>
-      {browsing ? null : (
+      {browsing || showEmbeddedPicker ? null : (
         <TextInput
           style={styles.search}
           value={query}
@@ -490,63 +515,55 @@ export function DriveFolderScreen() {
           ) : null}
         </View>
       ) : null}
-      {busy ? null : (
+      {busy ? null : showEmbeddedPicker && pickerToken ? (
+        <View style={styles.embeddedBox}>
+          {!canListDrives ? (
+            <Text style={styles.reconnect}>
+              Per vedere i Drive subito in lista come su iPhone: Impostazioni → Collega Google Drive di
+              nuovo. Intanto scegli il Drive qui sotto, senza uscire dall’app.
+            </Text>
+          ) : null}
+          <SharedDrivePickerWebView
+            accessToken={pickerToken}
+            query={query}
+            onPicked={(result) => {
+              setBusy(true);
+              void applyPickResult(result).catch((error) => {
+                setBusy(false);
+                Alert.alert(
+                  'Drive',
+                  error instanceof Error ? error.message : 'Cartella non aperta. Riprova.',
+                );
+              });
+            }}
+            onCancel={() => setPickerFailed(true)}
+            onFailed={() => setPickerFailed(true)}
+          />
+        </View>
+      ) : (
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           {!browsing && searchHits.length === 0 ? (
             <View style={styles.emptyBox}>
               <EmptyGraphic />
               <Text style={styles.empty}>
                 {query.trim()
-                  ? 'Nessun risultato. Prova un altro nome, oppure Scegli su Google.'
+                  ? 'Nessun risultato. Prova un altro nome.'
                   : tab === 'shared'
-                    ? googleEmail
-                      ? `Nessun Drive ancora per ${googleEmail}. Tocca Scegli su Google: apri il Drive della band, tocca la cartella dell’album e Seleziona.`
-                      : 'Tocca Scegli su Google: apri il Drive della band, tocca la cartella dell’album e Seleziona.'
+                    ? !canListDrives
+                      ? 'Vai in Impostazioni, tocca Collega Google Drive di nuovo, poi torna qui: compaiono i Drive della band.'
+                      : googleEmail
+                        ? `Nessun Drive per ${googleEmail}. Scrivi il nome, oppure in Impostazioni collega di nuovo Google Drive.`
+                        : 'Scrivi il nome del Drive, oppure in Impostazioni collega di nuovo Google Drive.'
                     : 'Nessuna cartella. Accedi con Google e crea o scegli una cartella sul tuo Drive.'}
               </Text>
-              {tab === 'shared' ? (
-                <Pressable
-                  onPress={pickOnGoogle}
-                  disabled={working}
-                  accessibilityRole="button"
-                  accessibilityLabel="Scegli su Google"
-                  style={({ pressed }) => [styles.googleBtn, pressed && styles.pressed]}
-                >
-                  <Text style={styles.googleLabel}>Scegli su Google</Text>
-                </Pressable>
-              ) : null}
             </View>
-          ) : null}
-          {!browsing && tab === 'shared' && searchHits.length > 0 ? (
-            <Pressable
-              onPress={pickOnGoogle}
-              disabled={working}
-              accessibilityRole="button"
-              accessibilityLabel="Scegli su Google"
-              style={({ pressed }) => [styles.googleBtnInline, pressed && styles.pressed]}
-            >
-              <Text style={styles.googleLabel}>Scegli su Google</Text>
-            </Pressable>
           ) : null}
           {browsing && subfolders.length === 0 && audios.length === 0 && extras.length === 0 ? (
             <View style={styles.emptyBox}>
               <EmptyGraphic />
               <Text style={styles.empty}>
-                {tab === 'shared' || current?.sharedDriveId
-                  ? 'Qui non vedo i brani. Torna indietro e tocca Scegli su Google: apri questa cartella e tocca Seleziona. Poi in ReWavier tocca Scegli.'
-                  : 'Questa cartella è vuota. Tocca Scegli se è quella giusta, o torna indietro.'}
+                Questa cartella è vuota. Tocca Scegli se è quella giusta, o torna indietro.
               </Text>
-              {tab === 'shared' || current?.sharedDriveId ? (
-                <Pressable
-                  onPress={pickOnGoogle}
-                  disabled={working}
-                  accessibilityRole="button"
-                  accessibilityLabel="Scegli su Google"
-                  style={({ pressed }) => [styles.googleBtn, pressed && styles.pressed]}
-                >
-                  <Text style={styles.googleLabel}>Scegli su Google</Text>
-                </Pressable>
-              ) : null}
             </View>
           ) : null}
 
@@ -621,23 +638,15 @@ const styles = StyleSheet.create({
   chooseOff: { opacity: 0.5 },
   chooseLabel: { color: colors.text, fontSize: 15, fontWeight: '700' },
   chooseSpacer: { width: 28 },
-  googleBtn: {
-    marginTop: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: colors.accent,
+  embeddedBox: { flex: 1, minHeight: 360, paddingHorizontal: 8 },
+  reconnect: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: 'center',
   },
-  googleBtnInline: {
-    alignSelf: 'stretch',
-    marginBottom: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-  },
-  googleLabel: { color: colors.text, fontSize: 15, fontWeight: '700' },
   tabs: {
     flexDirection: 'row',
     marginHorizontal: 16,

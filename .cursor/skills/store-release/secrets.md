@@ -81,9 +81,9 @@ Se “non c’è”: sei sul Play Console MusicProEventi, o sull’account Gmail
 
 | Velocità | Azione |
 | --- | --- |
-| **Subito (codice)** | Login = identity. Drive = solo `drive.file`, mai `drive.readonly`. |
+| **Subito (codice)** | Login = identity. Drive = `drive.file` + `drive.readonly` (lista Drive Condivisi come su iPhone). |
 | **Giorni** | Cloud Console → OAuth consent → Verification + branding. |
-| **Lento** | `drive.readonly` richiede CASA — non usarlo. |
+| **Lento** | Se Google rimette «app non verificata» dopo `drive.readonly`, riprendi verifica / CASA. |
 
 Banner blu «Verifica degli sviluppatori Android» in Play Console = altro (account Play), non toglie il disclaimer OAuth in-app.
 

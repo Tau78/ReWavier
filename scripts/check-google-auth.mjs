@@ -225,8 +225,30 @@ assert.equal(
   googleTokenHasDriveScope('openid+https://www.googleapis.com/auth/drive.file+email'),
   true,
 );
+assert.equal(googleTokenHasDriveScope('openid https://www.googleapis.com/auth/drive.readonly'), true);
 assert.equal(googleTokenHasDriveScope('openid email profile'), false);
 assert.equal(googleTokenHasDriveScope(undefined), false);
+
+function googleTokenCanListSharedDrives(scope) {
+  if (!scope) {
+    return false;
+  }
+  const normalized = scope.replace(/\+/g, ' ').replace(/%20/gi, ' ');
+  return (
+    /(?:^|\s)(https:\/\/www\.googleapis\.com\/auth\/)?drive\.readonly(?:\s|$)/.test(normalized) ||
+    /(?:^|\s)(https:\/\/www\.googleapis\.com\/auth\/)?drive(?:\s|$)/.test(normalized)
+  );
+}
+
+assert.equal(googleTokenCanListSharedDrives('https://www.googleapis.com/auth/drive.file'), false);
+assert.equal(googleTokenCanListSharedDrives('https://www.googleapis.com/auth/drive.readonly'), true);
+assert.equal(
+  googleTokenCanListSharedDrives(
+    'openid https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly',
+  ),
+  true,
+);
+assert.equal(googleTokenCanListSharedDrives('https://www.googleapis.com/auth/drive'), true);
 
 const iosId = '1049963169218-o6tcahpfsdijj2lm811bmjs4vjaglb7v.apps.googleusercontent.com';
 const custom = 'rewavier://oauth';

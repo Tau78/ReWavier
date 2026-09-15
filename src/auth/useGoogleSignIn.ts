@@ -45,10 +45,12 @@ const IDENTITY_SCOPES = [
   'https://www.googleapis.com/auth/userinfo.profile',
 ];
 
-/** Only drive.file — never drive.readonly (restricted; unverified warning + CASA). */
+/** Shared Drive membership (`GET /drives`) needs drive.readonly — same listing as iPhone.
+ * drive.file alone cannot show Drive Condivisi; keep both so picker grants still work. */
 const DRIVE_SCOPES = [
   ...IDENTITY_SCOPES,
   'https://www.googleapis.com/auth/drive.file',
+  'https://www.googleapis.com/auth/drive.readonly',
 ];
 
 export type GoogleAuthKind = 'identity' | 'drive';

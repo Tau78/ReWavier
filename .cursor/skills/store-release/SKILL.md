@@ -186,7 +186,7 @@ bash scripts/asc-submit.sh
 
 ## Google OAuth disclaimer
 
-Non usare `drive.readonly`. Login = identity; Drive = `drive.file` only. Verifica OAuth su Cloud Console per togliere del tutto l’avviso “app non verificata”.
+Non usare Drive scopes sul login identity. Drive connect = `drive.file` + `drive.readonly` (serve a elencare i Drive Condivisi in-app). Se Google rimette «app non verificata», riprendi la verifica OAuth su Cloud Console.
 
 
 ## Notes / Bocciature

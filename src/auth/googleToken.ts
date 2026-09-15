@@ -3,6 +3,7 @@ import {
   ANDROID_GOOGLE_EXCHANGE_URL,
   DESKTOP_GOOGLE_CLIENT_ID,
   googleClientSecretForExchange,
+  googleTokenCanListSharedDrives,
 } from './googleAuthResult';
 import {
   clearGoogleToken,
@@ -135,6 +136,28 @@ export async function fetchGoogleDriveEmail(): Promise<string | null> {
     return email || null;
   } catch {
     return null;
+  }
+}
+
+/** Whether the saved Drive token can list Shared Drive memberships (GET /drives). */
+export async function canListSharedDrives(): Promise<boolean> {
+  try {
+    const auth = await loadGoogleAuth();
+    if (!auth?.accessToken) {
+      return false;
+    }
+    if (googleTokenCanListSharedDrives(auth.scope)) {
+      return true;
+    }
+    // Older saves omit scope; probe /drives once.
+    const access = await getValidGoogleAccessToken();
+    const response = await fetch(
+      'https://www.googleapis.com/drive/v3/drives?pageSize=1&fields=drives(id)',
+      { headers: { Authorization: `Bearer ${access}` } },
+    );
+    return response.ok;
+  } catch {
+    return false;
   }
 }
 
