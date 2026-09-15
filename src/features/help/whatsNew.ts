@@ -112,7 +112,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Drive della band',
-        body: 'Tocchi Drive Condivisi e vedi i Drive della band. Scrivi il nome della cartella, aprila e tocca Scegli.',
+        body: 'Tocchi Drive Condivisi e vedi i Drive della band. Aprine uno, scrivi il nome della cartella se serve, poi tocca Scegli.',
       },
       {
         title: 'Album tolto, resta tolto',

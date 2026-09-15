@@ -28,9 +28,12 @@
     }
     body.embedded {
       min-height: 0;
-      padding: 0.75rem 1rem 1.25rem;
-      align-items: flex-start;
+      padding: 0;
+      align-items: stretch;
+      justify-content: flex-start;
     }
+    body.embedded main { max-width: none; width: 100%; text-align: left; padding: 0.5rem 0.75rem 0; }
+    body.embedded #open, body.embedded #hint { display: none; }
     main { max-width: 22rem; text-align: center; }
     p { margin: 0 0 0.75rem; color: var(--muted); }
     a, button {
@@ -63,6 +66,7 @@
       var hash = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
       var token = hash.get('access_token') || params.get('access_token') || '';
       var embedded = params.get('embedded') === '1';
+      var nameQuery = (params.get('q') || '').trim();
       if (embedded && document.body) {
         document.body.className += (document.body.className ? ' ' : '') + 'embedded';
       }
@@ -87,6 +91,9 @@
       var returnUri = safeReturn(params.get('return') || '');
       var status = document.getElementById('status');
       var openBtn = document.getElementById('open');
+      if (embedded && status) {
+        status.textContent = 'Tocca il Drive della band.';
+      }
 
       function bounce(query) {
         if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
@@ -167,19 +174,49 @@
         });
       }
 
+      function nameMatches(name) {
+        if (!nameQuery) {
+          return true;
+        }
+        return String(name || '').toLowerCase().indexOf(nameQuery.toLowerCase()) >= 0;
+      }
+
       function fetchDrivePins() {
         if (!token) {
           return Promise.resolve([]);
         }
-        return fetchJson('https://www.googleapis.com/drive/v3/drives?pageSize=100&fields=drives(id,name)')
+        var hidden = encodeURIComponent('hidden = false');
+        return fetchJson(
+          'https://www.googleapis.com/drive/v3/drives?pageSize=100&fields=drives(id,name)&q=' + hidden,
+        )
           .then(function (data) {
-            var drives = (data && data.drives) || [];
+            var drives = ((data && data.drives) || []).filter(function (row) {
+              return row && nameMatches(row.name);
+            });
             if (drives.length) {
               return drives;
             }
+            return fetchJson('https://www.googleapis.com/drive/v3/drives?pageSize=100&fields=drives(id,name)');
+          })
+          .then(function (data) {
+            if (Array.isArray(data)) {
+              return data.filter(function (row) {
+                return row && nameMatches(row.name);
+              });
+            }
+            var drives = ((data && data.drives) || []).filter(function (row) {
+              return row && nameMatches(row.name);
+            });
+            if (drives.length) {
+              return drives;
+            }
+            var folderQ = "mimeType = 'application/vnd.google-apps.folder' and trashed = false";
+            if (nameQuery) {
+              folderQ += " and name contains '" + nameQuery.replace(/'/g, "\\'") + "'";
+            }
             return fetchJson(
               'https://www.googleapis.com/drive/v3/files?q=' +
-                encodeURIComponent("mimeType = 'application/vnd.google-apps.folder' and trashed = false") +
+                encodeURIComponent(folderQ) +
                 '&pageSize=100&fields=files(id,name,driveId)&supportsAllDrives=true&includeItemsFromAllDrives=true&corpora=allDrives',
             ).then(function (listed) {
               return pinsFromFiles((listed && listed.files) || []);
@@ -249,6 +286,10 @@
           .setSelectFolderEnabled(true)
           .setMode(google.picker.DocsViewMode.LIST)
           .setMimeTypes(FOLDER);
+        if (nameQuery) {
+          shared.setQuery(nameQuery);
+          withMe.setQuery(nameQuery);
+        }
         var builder = new google.picker.PickerBuilder()
           .setAppId(APP_ID)
           .setOAuthToken(token)

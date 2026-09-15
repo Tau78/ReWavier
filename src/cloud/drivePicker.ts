@@ -86,11 +86,17 @@ export function parsePickedDrivePins(url: string): { id: string; name: string }[
   }
 }
 
-export function sharedDrivePickerUrl(accessToken: string, extras?: { embedded?: boolean }): string {
+export function sharedDrivePickerUrl(
+  accessToken: string,
+  extras?: { embedded?: boolean; query?: string },
+): string {
   const returnUri = pickerReturnUri();
   const embedded = extras?.embedded ? '&embedded=1' : '';
+  const query = extras?.query?.trim()
+    ? `&q=${encodeURIComponent(extras.query.trim())}`
+    : '';
   return (
-    `${ANDROID_GOOGLE_PICKER_URL}?return=${encodeURIComponent(returnUri)}${embedded}` +
+    `${ANDROID_GOOGLE_PICKER_URL}?return=${encodeURIComponent(returnUri)}${embedded}${query}` +
     `#access_token=${encodeURIComponent(accessToken)}`
   );
 }
