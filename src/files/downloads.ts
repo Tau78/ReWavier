@@ -6,6 +6,7 @@ import type { Track } from '../domain/models';
 import { safeDisplayFileName } from './fileNames';
 import { audioRelativePrefix } from './libraryOwner';
 import { audioDirectory, downloadsDirectory, ensureAudioDirectory, inboxDirectory } from './libraryPaths';
+import { toFileUri } from './fsSafe';
 import {
   libraryFileExists,
   persistLibraryUri,
@@ -54,15 +55,32 @@ export async function copyToDownloads(
   if (from === dest.uri) {
     return persistLibraryUri(dest.uri) ?? `${audioRelativePrefix()}/${name}`;
   }
+  const fromUri = toFileUri(from);
+  const destUri = toFileUri(dest.uri);
   try {
-    const source = new File(from);
-    if (!source.exists) {
+    const source = new File(fromUri);
+    if (source.exists) {
+      if (dest.exists) {
+        dest.delete();
+      }
+      source.copy(dest);
+      if (dest.exists) {
+        return persistLibraryUri(dest.uri) ?? `${audioRelativePrefix()}/${name}`;
+      }
+    }
+  } catch {
+    // Legacy copy below — Android sometimes writes with LegacyFS and new File.copy fails.
+  }
+  try {
+    const info = await LegacyFS.getInfoAsync(fromUri);
+    if (!info.exists) {
       throw new Error('missing');
     }
-    if (dest.exists) {
-      dest.delete();
+    await LegacyFS.copyAsync({ from: fromUri, to: destUri });
+    const copied = await LegacyFS.getInfoAsync(destUri);
+    if (!copied.exists) {
+      throw new Error('missing');
     }
-    source.copy(dest);
   } catch {
     throw new Error('Questo brano non è arrivato sul telefono. Riprova.');
   }
