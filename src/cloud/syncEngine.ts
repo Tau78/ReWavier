@@ -874,7 +874,6 @@ async function runCloudSyncBody(): Promise<void> {
     return;
   }
   const expectedUserId = user.id;
-  const albums = useLibraryStore.getState().albums.filter((album) => album.origin === 'drive');
 
   sync.start();
   const startedAt = useSyncStore.getState().startedAt;
@@ -897,6 +896,23 @@ async function runCloudSyncBody(): Promise<void> {
       sync.finish({ lastSyncedAt: Date.now(), message: null });
       return;
     }
+
+    const library = useLibraryStore.getState();
+    const removedAlbumIds = new Set(library.removedAlbumIds);
+    const removedDriveFolderIds = new Set(library.removedDriveFolderIds);
+    const albums = library.albums.filter((album) => {
+      if (album.origin !== 'drive') {
+        return false;
+      }
+      if (removedAlbumIds.has(album.id)) {
+        return false;
+      }
+      const folderId = album.driveFolderId?.trim();
+      if (folderId && removedDriveFolderIds.has(folderId)) {
+        return false;
+      }
+      return true;
+    });
 
     if (albums.length === 0) {
       sync.finish({
@@ -933,6 +949,9 @@ async function runCloudSyncBody(): Promise<void> {
 
     try {
       for (const album of albums) {
+        if (!useLibraryStore.getState().albums.some((item) => item.id === album.id)) {
+          continue;
+        }
         const result = await runExclusiveAlbumWork(album.id, () =>
           syncOneDriveAlbum(album, expectedUserId, selfSlug, { extras: true }),
         );

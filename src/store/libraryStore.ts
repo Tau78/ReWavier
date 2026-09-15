@@ -479,25 +479,30 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
 
   linkAlbumDrive(albumId, folderId, folderName, extras) {
     const driveFolderId = folderId.trim();
-    set((state) => ({
-      albums: state.albums.map((album) =>
-        album.id === albumId
-          ? {
-              ...album,
-              origin: 'drive',
-              driveFolderId: folderId,
-              driveFolderName: folderName,
-              driveSharedDriveId: extras?.driveSharedDriveId ?? album.driveSharedDriveId,
-              driveRecursive: extras?.driveRecursive ?? album.driveRecursive,
-              driveRole: extras?.driveRole ?? album.driveRole,
-            }
-          : album,
-      ),
-      removedAlbumIds: state.removedAlbumIds.filter((item) => item !== albumId),
-      removedDriveFolderIds: driveFolderId
-        ? state.removedDriveFolderIds.filter((item) => item !== driveFolderId)
-        : state.removedDriveFolderIds,
-    }));
+    set((state) => {
+      if (!state.albums.some((album) => album.id === albumId)) {
+        return {};
+      }
+      return {
+        albums: state.albums.map((album) =>
+          album.id === albumId
+            ? {
+                ...album,
+                origin: 'drive',
+                driveFolderId: folderId,
+                driveFolderName: folderName,
+                driveSharedDriveId: extras?.driveSharedDriveId ?? album.driveSharedDriveId,
+                driveRecursive: extras?.driveRecursive ?? album.driveRecursive,
+                driveRole: extras?.driveRole ?? album.driveRole,
+              }
+            : album,
+        ),
+        removedAlbumIds: state.removedAlbumIds.filter((item) => item !== albumId),
+        removedDriveFolderIds: driveFolderId
+          ? state.removedDriveFolderIds.filter((item) => item !== driveFolderId)
+          : state.removedDriveFolderIds,
+      };
+    });
   },
 
   setAlbumDriveRole(id, role) {
@@ -853,7 +858,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         ? uniquePersistIds([...state.removedDriveFolderIds, driveFolderId])
         : state.removedDriveFolderIds,
     }));
-    void flushLibraryPersist();
+    void flushLibraryPersist().catch(() => undefined);
   },
 
   renamePlaylist(id, name) {
