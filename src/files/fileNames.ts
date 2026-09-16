@@ -30,8 +30,19 @@ export function safeTempFileName(prefix: string, id: string, originalName?: stri
   return `${safePrefix}-${safeId}${ext}`;
 }
 
+/**
+ * Names safe for disk + Android `file://` URIs (Java URI rejects raw `[` `]` `#`).
+ * Brackets become parentheses so «05. [1983] Song.mp3» → «05. (1983) Song.mp3».
+ */
 export function safeDisplayFileName(name: string): string {
-  return decodeOverEncodedName(name).replace(/[/\\?%*:|"<>]/g, '-').trim() || 'traccia.m4a';
+  return (
+    decodeOverEncodedName(name)
+      .replace(/\[/g, '(')
+      .replace(/\]/g, ')')
+      .replace(/[/\\?%*:|"<>#{}]/g, '-')
+      .replace(/\s+/g, ' ')
+      .trim() || 'traccia.m4a'
+  );
 }
 
 export function storedBasename(stored?: string): string {

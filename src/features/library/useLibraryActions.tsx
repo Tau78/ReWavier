@@ -21,6 +21,12 @@ import { DeleteTrackModal } from './DeleteTrackModal';
 import { MovePicker } from './MovePicker';
 import { PromptModal } from './PromptModal';
 
+function downloadAlertMessage(error: unknown): string {
+  const raw = error instanceof Error ? error.message : '';
+  const technical =
+    /file:\/\/|Illegal character|HostFunction|java\.lang|downloadAsync|does not exist/i.test(raw);
+  return raw && !technical ? raw : 'Questo brano non è arrivato sul telefono. Riprova.';
+}
 type Menu =
   | { type: 'track'; track: Track }
   | { type: 'folder'; folder: Folder }
@@ -262,7 +268,7 @@ export function useLibraryActions(
           ? useLibraryStore.getState().removeDownload(track.id)
           : useLibraryStore.getState().downloadTrack(track.id)
         ).catch((error: unknown) => {
-          Alert.alert('Download', error instanceof Error ? error.message : 'Riprova');
+          Alert.alert('Download', downloadAlertMessage(error));
         });
       },
     },
@@ -387,7 +393,7 @@ export function useLibraryActions(
       label: 'Scarica album',
       onPress: () => {
         void useLibraryStore.getState().downloadAlbum(albumId).catch((error: unknown) => {
-          Alert.alert('Download', error instanceof Error ? error.message : 'Riprova');
+          Alert.alert('Download', downloadAlertMessage(error));
         });
       },
     },

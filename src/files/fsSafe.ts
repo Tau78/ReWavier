@@ -3,6 +3,23 @@ import * as LegacyFS from 'expo-file-system/legacy';
 
 /** Keep `scripts/check-fs-safe.mjs` in sync with toFileUri / parentDirUri. */
 
+/** Encode each path segment so Android URI.create accepts `[` `]` spaces, etc. */
+function encodeFilePath(path: string): string {
+  return path
+    .split('/')
+    .map((segment) => {
+      if (!segment) {
+        return '';
+      }
+      try {
+        return encodeURIComponent(decodeURIComponent(segment.replace(/\+/g, ' ')));
+      } catch {
+        return encodeURIComponent(segment);
+      }
+    })
+    .join('/');
+}
+
 /** Legacy downloadAsync needs a file:// URI and an existing parent folder. */
 export function toFileUri(uri: string): string {
   const trimmed = uri.trim();
@@ -11,10 +28,10 @@ export function toFileUri(uri: string): string {
   }
   const withoutSlash = trimmed.length > 8 && trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
   if (withoutSlash.startsWith('file://')) {
-    return withoutSlash;
+    return `file://${encodeFilePath(withoutSlash.slice('file://'.length))}`;
   }
   if (withoutSlash.startsWith('/')) {
-    return `file://${withoutSlash}`;
+    return `file://${encodeFilePath(withoutSlash)}`;
   }
   return withoutSlash;
 }

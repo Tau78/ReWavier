@@ -19,7 +19,10 @@ export async function saveDocumentFromUri(
   sourceUri: string,
   fileName: string,
 ): Promise<string> {
-  const safe = fileName.replace(/[/\\?%*:|"<>]/g, '-');
+  const safe = fileName
+    .replace(/\[/g, '(')
+    .replace(/\]/g, ')')
+    .replace(/[/\\?%*:|"<>#{}]/g, '-');
   const dest = new File(documentsDirectory(), `${albumId}-${createId('doc')}-${safe}`);
   await LegacyFS.copyAsync({ from: sourceUri, to: dest.uri });
   return persistLibraryUri(dest.uri) ?? dest.uri;

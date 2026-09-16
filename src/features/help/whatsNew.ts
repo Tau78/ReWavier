@@ -112,7 +112,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Brani da Drive',
-        body: 'Tocchi Scegli su una cartella Drive e i brani arrivano sul telefono, anche dai Drive della band.',
+        body: 'Tocchi Scegli su una cartella Drive e i brani arrivano sul telefono, anche con nomi tipo 05. [1983] … e dai Drive della band.',
       },
       {
         title: 'Album tolto, resta tolto',

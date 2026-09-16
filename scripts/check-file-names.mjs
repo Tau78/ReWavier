@@ -31,7 +31,14 @@ function safeTempFileName(prefix, id, originalName) {
 }
 
 function safeDisplayFileName(name) {
-  return decodeOverEncodedName(name).replace(/[/\\?%*:|"<>]/g, '-').trim() || 'traccia.m4a';
+  return (
+    decodeOverEncodedName(name)
+      .replace(/\[/g, '(')
+      .replace(/\]/g, ')')
+      .replace(/[/\\?%*:|"<>#{}]/g, '-')
+      .replace(/\s+/g, ' ')
+      .trim() || 'traccia.m4a'
+  );
 }
 
 function storedBasename(stored) {
@@ -132,6 +139,7 @@ function pickRecoveredAudioName(names, track) {
 }
 
 const original = '11. [5125] ReNew (The Ark is Built).mp3';
+const safeOriginal = '11. (5125) ReNew (The Ark is Built).mp3';
 const once = encodeURIComponent(original);
 const twice = encodeURIComponent(once);
 const triple = encodeURIComponent(twice);
@@ -149,42 +157,45 @@ assert.equal(fileExtension(original), '.mp3');
 assert.equal(fileExtension(triple), '.mp3');
 assert.equal(safeTempFileName('sync', 'track-mtklr5z5', original), 'sync-track-mtklr5z5.mp3');
 assert.doesNotMatch(safeTempFileName('sync', 'id', original), / |%|\[/);
-assert.equal(safeDisplayFileName(triple), original);
+assert.equal(safeDisplayFileName(triple), safeOriginal);
+assert.doesNotMatch(safeDisplayFileName(original), /\[|\]/);
+assert.equal(safeDisplayFileName('05. [1983] First Ripples.mp3'), '05. (1983) First Ripples.mp3');
 
 assert.equal(true, audioNamesEqual(triple, original));
 assert.equal(true, audioNamesEqual(once, original));
+assert.equal(true, audioNamesEqual(safeOriginal, original));
 assert.equal(true, audioNamesEqual(`${original.toUpperCase()}`, original));
 assert.equal(false, audioNamesEqual('other song.mp3', original));
 
-assert.equal(true, isUniqueAudioFileNameVariant('11. [5125] ReNew (The Ark is Built) 2.mp3', original));
+assert.equal(true, isUniqueAudioFileNameVariant('11. (5125) ReNew (The Ark is Built) 2.mp3', original));
 assert.equal(true, isUniqueAudioFileNameVariant('11. [5125] ReNew (The Ark is Built) 13.mp3', once));
-assert.equal(false, isUniqueAudioFileNameVariant(original, original));
+assert.equal(false, isUniqueAudioFileNameVariant(safeOriginal, original));
 assert.equal(false, isUniqueAudioFileNameVariant('11. [5125] ReNew extra.mp3', original));
 assert.equal(false, isUniqueAudioFileNameVariant('cover 11. [5125] ReNew (The Ark is Built).mp3', original));
 
-assert.equal(true, audioFileMatchesTrackId('track-mtklr5z5-11. [5125] ReNew (The Ark is Built).mp3', 'track-mtklr5z5'));
+assert.equal(true, audioFileMatchesTrackId('track-mtklr5z5-11. (5125) ReNew (The Ark is Built).mp3', 'track-mtklr5z5'));
 assert.equal(true, audioFileMatchesTrackId('sync-track-mtklr5z5.mp3', 'track-mtklr5z5'));
 assert.equal(true, audioFileMatchesTrackId('dl-track-mtklr5z5.mp3', 'track-mtklr5z5'));
 assert.equal(false, audioFileMatchesTrackId(original, 'track-mtklr5z5'));
 assert.equal(false, audioFileMatchesTrackId('track-other-11. [5125] ReNew (The Ark is Built).mp3', 'track-mtklr5z5'));
 
 const disk = [
-  original,
-  '11. [5125] ReNew (The Ark is Built) 2.mp3',
+  safeOriginal,
+  '11. (5125) ReNew (The Ark is Built) 2.mp3',
   'altro brano.m4a',
   'track-aaaa-solo.mp3',
 ];
 
 assert.equal(
   pickRecoveredAudioName(disk, { id: 'track-mtklr5z5', sourceFileName: triple }),
-  original,
+  safeOriginal,
 );
 assert.equal(
   pickRecoveredAudioName(
-    ['11. [5125] ReNew (The Ark is Built) 2.mp3', 'altro brano.m4a'],
+    ['11. (5125) ReNew (The Ark is Built) 2.mp3', 'altro brano.m4a'],
     { id: 'track-mtklr5z5', sourceFileName: original },
   ),
-  '11. [5125] ReNew (The Ark is Built) 2.mp3',
+  '11. (5125) ReNew (The Ark is Built) 2.mp3',
 );
 assert.equal(
   pickRecoveredAudioName(disk, { id: 'track-aaaa', sourceFileName: original }),
@@ -194,9 +205,9 @@ assert.equal(
   pickRecoveredAudioName(disk, {
     id: 'track-bbbb',
     sourceFileName: 'mancante.mp3',
-    fileUri: `Audio/${encodeURIComponent(original)}`,
+    fileUri: `Audio/${encodeURIComponent(safeOriginal)}`,
   }),
-  original,
+  safeOriginal,
 );
 assert.equal(
   pickRecoveredAudioName(disk, { id: 'track-cccc', sourceFileName: 'altro brano.m4a' }),
@@ -204,14 +215,14 @@ assert.equal(
 );
 assert.equal(
   pickRecoveredAudioName(
-    [original, '11. [5125] ReNew (The Ark is Built) 2.mp3'],
+    [safeOriginal, '11. (5125) ReNew (The Ark is Built) 2.mp3'],
     { id: 'track-dddd', sourceFileName: original },
   ),
-  original,
+  safeOriginal,
 );
 assert.equal(
   pickRecoveredAudioName(
-    ['11. [5125] ReNew (The Ark is Built) 2.mp3', '11. [5125] ReNew (The Ark is Built) 3.mp3'],
+    ['11. (5125) ReNew (The Ark is Built) 2.mp3', '11. (5125) ReNew (The Ark is Built) 3.mp3'],
     { id: 'track-eeee', sourceFileName: original },
   ),
   undefined,
@@ -225,4 +236,5 @@ assert.equal(
 );
 
 console.log('ok file names decode Drive copies with spaces and brackets');
+console.log('ok Android-safe names: brackets become parentheses');
 console.log('ok recover matches safe/decode/unique/id-prefix without stealing another track');

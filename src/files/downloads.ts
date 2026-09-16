@@ -17,10 +17,19 @@ import {
 
 export { audioDirectory, downloadsDirectory, ensureInboxDirectory, inboxDirectory } from './libraryPaths';
 
+function audioNameTaken(dir: ReturnType<typeof audioDirectory>, name: string): boolean {
+  try {
+    return new File(dir, name).exists === true;
+  } catch {
+    // Android URI.create can throw on odd names — treat as taken and pick another.
+    return true;
+  }
+}
+
 export function uniqueAudioFileName(fileName: string): string {
   const safe = safeDisplayFileName(fileName);
   const dir = audioDirectory();
-  if (!new File(dir, safe).exists) {
+  if (!audioNameTaken(dir, safe)) {
     return safe;
   }
   const dot = safe.lastIndexOf('.');
@@ -28,7 +37,7 @@ export function uniqueAudioFileName(fileName: string): string {
   const ext = dot > 0 ? safe.slice(dot) : '';
   for (let n = 2; n < 1000; n++) {
     const candidate = `${base} ${n}${ext}`;
-    if (!new File(dir, candidate).exists) {
+    if (!audioNameTaken(dir, candidate)) {
       return candidate;
     }
   }

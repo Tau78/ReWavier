@@ -338,7 +338,13 @@ export function CollectionScreen() {
       Alert.alert('Drive', DRIVE_SLOW_MESSAGE);
       return;
     }
-    Alert.alert('Download', error instanceof Error ? error.message : 'Download non riuscito');
+    const raw = error instanceof Error ? error.message : '';
+    const technical =
+      /file:\/\/|Illegal character|HostFunction|java\.lang|downloadAsync|does not exist/i.test(raw);
+    Alert.alert(
+      'Download',
+      raw && !technical ? raw : 'Questo brano non è arrivato sul telefono. Riprova.',
+    );
   };
   const applyCollectionNews = (options?: { fromButton?: boolean }) => {
     const fromButton = options?.fromButton === true;

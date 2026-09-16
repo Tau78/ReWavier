@@ -357,7 +357,9 @@ export function DriveFolderScreen() {
         }
         const raw = error instanceof Error ? error.message : '';
         const technical =
-          /file:\/\/|%25|downloadAsync|does not exist|\/Users\/|Containers\//i.test(raw);
+          /file:\/\/|%25|downloadAsync|does not exist|\/Users\/|Containers\/|Illegal character|HostFunction|java\.lang/i.test(
+            raw,
+          );
         Alert.alert(
           'Drive',
           raw && !technical ? raw : 'Questo brano non è arrivato sul telefono. Riprova.',

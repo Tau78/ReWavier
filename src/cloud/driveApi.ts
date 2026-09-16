@@ -746,7 +746,11 @@ function friendlyDownloadError(error: unknown): Error {
       'ReWavier non può scaricare questo brano. In Impostazioni collega di nuovo Google Drive, oppure chiedi a chi gestisce il Drive della band.',
     );
   }
-  if (/downloadAsync|does not exist|makeDirectory|ENOENT|Directory '|missing|copy/i.test(raw)) {
+  if (
+    /downloadAsync|does not exist|makeDirectory|ENOENT|Directory '|missing|copy|Illegal character|HostFunction|URI\.create/i.test(
+      raw,
+    )
+  ) {
     return new Error('Questo brano non è arrivato sul telefono. Riprova.');
   }
   if (raw.includes('/Users/') || raw.includes('Containers/')) {

@@ -28,7 +28,10 @@ function libraryDir(): Directory {
 }
 
 function safeFileName(name: string): string {
-  return name.replace(/[/\\?%*:|"<>]/g, '-');
+  return name
+    .replace(/\[/g, '(')
+    .replace(/\]/g, ')')
+    .replace(/[/\\?%*:|"<>#{}]/g, '-');
 }
 
 async function copyIntoLibrary(sourceUri: string, fileName: string): Promise<string> {
