@@ -115,8 +115,8 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         body: 'Tocchi Scegli su una cartella Drive e i brani arrivano sul telefono, anche con nomi tipo 05. [1983] … e dai Drive della band.',
       },
       {
-        title: 'Album tolto, resta tolto',
-        body: 'Se elimini un album da Drive e chiudi l’app, non lo ritrovi più in lista. I brani restano in libreria.',
+        title: 'Trascina più chiaro',
+        body: 'Nell’album, se sposti un brano vedi “Sposta qui”. Se lo metti sopra un altro compare “Crea cartella”. Puoi lasciarlo anche su una cartella chiusa.',
       },
     ],
   },

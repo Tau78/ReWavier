@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 
@@ -7,12 +7,43 @@ import { colors } from '../../theme/colors';
 
 const DEFAULT_ROW = 68;
 
+export type DropRole = 'group' | 'folder' | 'none';
+
 export type ReorderableItem = {
   id: string;
   rowHeight?: number;
   /** When false, long-press drag is disabled for this row. Default true. */
   draggable?: boolean;
+  /**
+   * How dropping *on* this row behaves (only when `onDropOn` is set):
+   * - group: track-on-track → create a version folder
+   * - folder: drop into an existing version folder (header or child)
+   * - none: never a drop-on target (separators)
+   */
+  dropRole?: DropRole;
 };
+
+function edgeInset(height: number, role: DropRole | undefined): number {
+  if (role === 'folder') {
+    // Almost the whole folder row is "drop into"; tiny edges keep reorder available.
+    return Math.min(8, Math.max(4, height * 0.12));
+  }
+  if (role === 'none') {
+    return height;
+  }
+  // Tracks: clearer top/bottom bands for move vs center for "create folder".
+  return Math.min(22, Math.max(16, height * 0.32));
+}
+
+function dropLabelFor(role: DropRole | undefined): string | null {
+  if (role === 'folder') {
+    return 'Metti nella cartella';
+  }
+  if (role === 'group') {
+    return 'Crea cartella';
+  }
+  return null;
+}
 
 export function ReorderableTrackList<T extends ReorderableItem>({
   items,
@@ -42,6 +73,7 @@ export function ReorderableTrackList<T extends ReorderableItem>({
   const dropOnIdRef = useRef<string | null>(null);
   const heightsRef = useRef<Record<string, number>>({});
   const fallbackRef = useRef<Record<string, number>>({});
+  const dropRoleRef = useRef<Record<string, DropRole | undefined>>({});
   const onReorderRef = useRef(onReorder);
   const onDropOnRef = useRef(onDropOn);
   const onDraggingChangeRef = useRef(onDraggingChange);
@@ -50,6 +82,7 @@ export function ReorderableTrackList<T extends ReorderableItem>({
   onDropOnRef.current = onDropOn;
   onDraggingChangeRef.current = onDraggingChange;
   fallbackRef.current = Object.fromEntries(items.map((item) => [item.id, item.rowHeight ?? DEFAULT_ROW]));
+  dropRoleRef.current = Object.fromEntries(items.map((item) => [item.id, item.dropRole]));
 
   useEffect(() => {
     if (activeId) {
@@ -86,17 +119,21 @@ export function ReorderableTrackList<T extends ReorderableItem>({
       const originMid =
         current.slice(0, from).reduce((sum, id) => sum + heightOf(id), 0) + heightOf(current[from]) / 2;
       const pointer = originMid + translationY;
+      const canDropOn = onDropOnRef.current != null;
       let acc = 0;
-      let to = current.length - 1;
+      let to = current.length;
       let hoverId: string | null = null;
       let foundTo = false;
       for (let index = 0; index < current.length; index += 1) {
         const id = current[index];
         const height = heightOf(id);
         const next = acc + height;
-        const inset = Math.min(18, height * 0.28);
-        if (id !== _id && pointer >= acc + inset && pointer <= next - inset) {
-          hoverId = id;
+        const role = dropRoleRef.current[id];
+        if (canDropOn && id !== _id && role !== 'none') {
+          const inset = edgeInset(height, role);
+          if (pointer >= acc + inset && pointer <= next - inset) {
+            hoverId = id;
+          }
         }
         if (!foundTo && pointer < (acc + next) / 2) {
           to = index;
@@ -104,8 +141,13 @@ export function ReorderableTrackList<T extends ReorderableItem>({
         }
         acc = next;
       }
-      dropOnIdRef.current = hoverId;
-      setDropOnId(hoverId);
+      if (hoverId !== dropOnIdRef.current) {
+        if (hoverId) {
+          void Haptics.selectionAsync();
+        }
+        dropOnIdRef.current = hoverId;
+        setDropOnId(hoverId);
+      }
       const nextInsert = hoverId ? from : to;
       insertIndexRef.current = nextInsert;
       setInsertIndex((existing) => (existing === nextInsert ? existing : nextInsert));
@@ -137,8 +179,9 @@ export function ReorderableTrackList<T extends ReorderableItem>({
     if (!moved) {
       return;
     }
-    // `to` is computed against the list still including `from`; after removal, shift down.
-    nextIds.splice(to > from ? to - 1 : to, 0, moved);
+    // `to` is an insert-before index in the list still including `from`.
+    const insertAt = Math.min(nextIds.length, to > from ? to - 1 : to);
+    nextIds.splice(insertAt, 0, moved);
     setIds(nextIds);
     onReorderRef.current(nextIds);
   }, []);
@@ -162,6 +205,19 @@ export function ReorderableTrackList<T extends ReorderableItem>({
       ? originIds.current.slice(0, from).reduce((sum, id) => sum + heightOf(id), 0)
       : 0;
   const activeItem = activeId ? byId.get(activeId) : undefined;
+  const previewInsertAt =
+    activeId && from >= 0 && !dropOnId
+      ? to > from
+        ? to - 1
+        : to
+      : from;
+  const showInsertSlot = Boolean(activeId && from >= 0 && !dropOnId && previewInsertAt !== from);
+  // When moving down, rows in (from, to) shift up; the empty slot lands before `to`.
+  const gapTop = showInsertSlot
+    ? from < to
+      ? originIds.current.slice(0, to).reduce((sum, id) => sum + heightOf(id), 0) - activeHeight
+      : originIds.current.slice(0, to).reduce((sum, id) => sum + heightOf(id), 0)
+    : -1;
 
   return (
     <View style={styles.list}>
@@ -173,18 +229,22 @@ export function ReorderableTrackList<T extends ReorderableItem>({
         const dragging = activeId === id;
         let rowShift = 0;
         if (activeId && from >= 0 && !dropOnId && index !== from) {
-          if (from < to && index > from && index <= to) {
+          // Moving down: shift the open interval (from, to) up — not `to` itself —
+          // so the gap sits where the item will land (insert-before `to`).
+          if (from < to && index > from && index < to) {
             rowShift = -activeHeight;
           } else if (from > to && index >= to && index < from) {
             rowShift = activeHeight;
           }
         }
+        const isDropTarget = dropOnId === id;
         return (
           <DraggableRow
             key={id}
             id={id}
             dragging={dragging}
-            dropTarget={dropOnId === id}
+            dropTarget={isDropTarget}
+            dropLabel={isDropTarget ? dropLabelFor(item.dropRole ?? 'group') : null}
             shiftY={rowShift}
             enabled={item.draggable !== false}
             onDragStart={onDragStart}
@@ -196,6 +256,24 @@ export function ReorderableTrackList<T extends ReorderableItem>({
           </DraggableRow>
         );
       })}
+      {showInsertSlot && gapTop >= 0 ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.insertSlot,
+            {
+              top: gapTop,
+              height: Math.max(activeHeight, 44),
+            },
+          ]}
+        >
+          <View style={styles.insertSlotInner}>
+            <View style={styles.insertLine} />
+            <Text style={styles.insertLabel}>Sposta qui</Text>
+            <View style={styles.insertLine} />
+          </View>
+        </View>
+      ) : null}
       {activeId && activeItem ? (
         <View
           pointerEvents="none"
@@ -218,6 +296,7 @@ function DraggableRow({
   id,
   dragging,
   dropTarget,
+  dropLabel,
   shiftY,
   enabled,
   onDragStart,
@@ -229,6 +308,7 @@ function DraggableRow({
   id: string;
   dragging: boolean;
   dropTarget: boolean;
+  dropLabel: string | null;
   shiftY: number;
   enabled: boolean;
   onDragStart: (id: string) => void;
@@ -258,6 +338,11 @@ function DraggableRow({
         ]}
       >
         {children}
+        {dropTarget && dropLabel ? (
+          <View pointerEvents="none" style={styles.dropOverlay}>
+            <Text style={styles.dropOverlayLabel}>{dropLabel}</Text>
+          </View>
+        ) : null}
       </View>
     </GestureDetector>
   );
@@ -285,7 +370,58 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
   },
   dropTarget: {
-    backgroundColor: 'rgba(255, 107, 53, 0.16)',
+    backgroundColor: 'rgba(255, 107, 53, 0.22)',
     borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.accent,
+  },
+  dropOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 107, 53, 0.28)',
+    borderRadius: 10,
+  },
+  dropOverlayLabel: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '700',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: colors.accent,
+  },
+  insertSlot: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    zIndex: 15,
+    elevation: 6,
+    justifyContent: 'center',
+  },
+  insertSlotInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.accent,
+    backgroundColor: 'rgba(255, 107, 53, 0.10)',
+  },
+  insertLine: {
+    flex: 1,
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: colors.accent,
+    opacity: 0.85,
+  },
+  insertLabel: {
+    color: colors.accent,
+    fontSize: 13,
+    fontWeight: '700',
   },
 });
