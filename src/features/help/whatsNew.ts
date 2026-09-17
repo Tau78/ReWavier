@@ -115,8 +115,8 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         body: 'Tocchi Scegli o Aggiorna: se un brano fallisce, gli altri arrivano lo stesso. Quelli già in lista ma senza file sul telefono si scaricano al ripasso.',
       },
       {
-        title: 'Album tolto, resta tolto',
-        body: 'Se elimini un album da Drive e chiudi l’app, non lo ritrovi più in lista. I brani restano in libreria.',
+        title: 'Trascina più chiaro',
+        body: 'Nell’album, se sposti un brano vedi “Sposta qui”. Se lo metti sopra un altro compare “Crea cartella”. Puoi lasciarlo anche su una cartella chiusa.',
       },
     ],
   },

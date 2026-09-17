@@ -50,20 +50,35 @@ import { AlbumNotes } from './AlbumNotes';
 import { AlbumSeparatorRow, SEPARATOR_ROW_HEIGHT } from './AlbumSeparatorRow';
 import { CollectionPlayer } from './CollectionPlayer';
 import { ensurePlayableAndOpen, playQueue, restoreCollectionPlayback } from './openTrack';
-import { ReorderableTrackList } from './ReorderableTrackList';
+import { type DropRole, ReorderableTrackList } from './ReorderableTrackList';
 import { TrackRow } from './TrackRow';
 import { VersionFolderRow } from './VersionFolderRow';
 import { useLibraryActions } from './useLibraryActions';
 
 type ListItem =
-  | { id: string; type: 'track'; track: Track; rowHeight?: number; draggable?: boolean }
-  | { id: string; type: 'separator'; name: string; rowHeight: number; draggable?: boolean }
+  | {
+      id: string;
+      type: 'track';
+      track: Track;
+      rowHeight?: number;
+      draggable?: boolean;
+      dropRole?: DropRole;
+    }
+  | {
+      id: string;
+      type: 'separator';
+      name: string;
+      rowHeight: number;
+      draggable?: boolean;
+      dropRole?: DropRole;
+    }
   | {
       id: string;
       type: 'versions';
       folder: AlbumVersionFolder;
       rowHeight?: number;
       draggable?: boolean;
+      dropRole?: DropRole;
     }
   | {
       id: string;
@@ -72,6 +87,7 @@ type ListItem =
       folderId: string;
       rowHeight?: number;
       draggable?: boolean;
+      dropRole?: DropRole;
     };
 
 const VERSION_HEADER_ROW = 60;
@@ -92,6 +108,7 @@ function albumListItems(
         type: 'separator',
         name: name ?? 'Separatore',
         rowHeight: SEPARATOR_ROW_HEIGHT,
+        dropRole: 'none',
       });
       continue;
     }
@@ -105,6 +122,8 @@ function albumListItems(
         rowHeight: VERSION_HEADER_ROW,
         // Open headers stay put so children are not orphaned; close the cartella to move the pack.
         draggable: !open,
+        // Closed (or open) header accepts a single track drop without opening first.
+        dropRole: 'folder',
       });
       if (open) {
         for (const trackId of folder.trackIds) {
@@ -115,6 +134,7 @@ function albumListItems(
               type: 'version-track',
               track,
               folderId: folder.id,
+              dropRole: 'folder',
             });
           }
         }
@@ -126,7 +146,7 @@ function albumListItems(
     }
     const track = byId.get(itemId);
     if (track) {
-      items.push({ id: itemId, type: 'track', track });
+      items.push({ id: itemId, type: 'track', track, dropRole: 'group' });
     }
   }
   return items;
@@ -717,8 +737,9 @@ export function CollectionScreen() {
             ) : null}
             {canReorder && listItems.length > 1 ? (
               <Text style={styles.infoLine}>
-                Tieni premuto e trascina per spostare. Sopra un altro: li metti insieme. Fuori dalla
-                cartella di versioni: lo stacchi.
+                Tieni premuto e trascina: sopra o sotto compare “Sposta qui”. Al centro di un altro
+                brano: “Crea cartella”. Sopra una cartella chiusa: “Metti nella cartella”. Fuori dalla
+                cartella: lo stacchi.
               </Text>
             ) : null}
           </View>
