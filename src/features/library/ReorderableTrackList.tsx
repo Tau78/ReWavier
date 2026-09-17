@@ -7,6 +7,15 @@ import { colors } from '../../theme/colors';
 
 const DEFAULT_ROW = 68;
 
+/** Folder rows: almost the whole row is "drop into"; tiny edges keep reorder available. */
+const FOLDER_EDGE_INSET_MIN = 4;
+const FOLDER_EDGE_INSET_MAX = 8;
+const FOLDER_EDGE_INSET_RATIO = 0.12;
+/** Track/group rows: clearer top/bottom bands for move vs center for drop-on. */
+const GROUP_EDGE_INSET_MIN = 16;
+const GROUP_EDGE_INSET_MAX = 22;
+const GROUP_EDGE_INSET_RATIO = 0.32;
+
 export type DropRole = 'group' | 'folder' | 'none';
 
 export type ReorderableItem = {
@@ -25,21 +34,46 @@ export type ReorderableItem = {
 
 function edgeInset(height: number, role: DropRole | undefined): number {
   if (role === 'folder') {
-    // Almost the whole folder row is "drop into"; tiny edges keep reorder available.
-    return Math.min(8, Math.max(4, height * 0.12));
+    return Math.min(
+      FOLDER_EDGE_INSET_MAX,
+      Math.max(FOLDER_EDGE_INSET_MIN, height * FOLDER_EDGE_INSET_RATIO),
+    );
   }
   if (role === 'none') {
     return height;
   }
-  // Tracks: clearer top/bottom bands for move vs center for "create folder".
-  return Math.min(22, Math.max(16, height * 0.32));
+  return Math.min(
+    GROUP_EDGE_INSET_MAX,
+    Math.max(GROUP_EDGE_INSET_MIN, height * GROUP_EDGE_INSET_RATIO),
+  );
 }
 
-function dropLabelFor(role: DropRole | undefined): string | null {
-  if (role === 'folder') {
+/**
+ * Label for the drop-on overlay. Must match `applyAlbumVersionDrop` outcomes.
+ * Missing roles → no label (do not invent a default).
+ */
+function dropLabelFor(
+  sourceRole: DropRole | undefined,
+  targetRole: DropRole | undefined,
+): string | null {
+  if (
+    sourceRole == null ||
+    targetRole == null ||
+    sourceRole === 'none' ||
+    targetRole === 'none'
+  ) {
+    return null;
+  }
+  if (targetRole === 'folder') {
+    if (sourceRole === 'folder') {
+      return 'Unisci cartelle';
+    }
     return 'Metti nella cartella';
   }
-  if (role === 'group') {
+  if (targetRole === 'group') {
+    if (sourceRole === 'folder') {
+      return 'Metti nella cartella';
+    }
     return 'Crea cartella';
   }
   return null;
@@ -170,7 +204,20 @@ export function ReorderableTrackList<T extends ReorderableItem>({
     setShiftY(0);
     setInsertIndex(0);
     onDraggingChangeRef.current?.(false);
-    if (sourceId && targetId && onDropOnRef.current?.(sourceId, targetId)) {
+    if (sourceId && targetId && onDropOnRef.current) {
+      const dropped = onDropOnRef.current(sourceId, targetId);
+      if (dropped) {
+        setIds(originIds.current);
+        return;
+      }
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      // Hover freezes insert at `from`; skip a no-op reorder write.
+      if (to === from) {
+        setIds(originIds.current);
+        return;
+      }
+    }
+    if (to === from) {
       setIds(originIds.current);
       return;
     }
@@ -238,13 +285,14 @@ export function ReorderableTrackList<T extends ReorderableItem>({
           }
         }
         const isDropTarget = dropOnId === id;
+        const sourceRole = activeId ? dropRoleRef.current[activeId] : undefined;
         return (
           <DraggableRow
             key={id}
             id={id}
             dragging={dragging}
             dropTarget={isDropTarget}
-            dropLabel={isDropTarget ? dropLabelFor(item.dropRole ?? 'group') : null}
+            dropLabel={isDropTarget ? dropLabelFor(sourceRole, item.dropRole) : null}
             shiftY={rowShift}
             enabled={item.draggable !== false}
             onDragStart={onDragStart}
@@ -332,15 +380,14 @@ function DraggableRow({
       <View
         onLayout={(event) => onRowLayout(id, event.nativeEvent.layout.height)}
         style={[
-          dropTarget && styles.dropTarget,
           dragging && styles.placeholder,
           { transform: [{ translateY: shiftY }] },
         ]}
       >
         {children}
-        {dropTarget && dropLabel ? (
+        {dropTarget ? (
           <View pointerEvents="none" style={styles.dropOverlay}>
-            <Text style={styles.dropOverlayLabel}>{dropLabel}</Text>
+            {dropLabel ? <Text style={styles.dropOverlayLabel}>{dropLabel}</Text> : null}
           </View>
         ) : null}
       </View>
@@ -369,18 +416,14 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 6 },
   },
-  dropTarget: {
-    backgroundColor: 'rgba(255, 107, 53, 0.22)',
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: colors.accent,
-  },
   dropOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(255, 107, 53, 0.28)',
-    borderRadius: 10,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.accent,
   },
   dropOverlayLabel: {
     color: colors.text,

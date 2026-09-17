@@ -55,40 +55,35 @@ import { TrackRow } from './TrackRow';
 import { VersionFolderRow } from './VersionFolderRow';
 import { useLibraryActions } from './useLibraryActions';
 
+type ReorderFields = {
+  rowHeight?: number;
+  draggable?: boolean;
+  dropRole?: DropRole;
+};
+
 type ListItem =
-  | {
+  | ({
       id: string;
       type: 'track';
       track: Track;
-      rowHeight?: number;
-      draggable?: boolean;
-      dropRole?: DropRole;
-    }
-  | {
+    } & ReorderFields)
+  | ({
       id: string;
       type: 'separator';
       name: string;
       rowHeight: number;
-      draggable?: boolean;
-      dropRole?: DropRole;
-    }
-  | {
+    } & ReorderFields)
+  | ({
       id: string;
       type: 'versions';
       folder: AlbumVersionFolder;
-      rowHeight?: number;
-      draggable?: boolean;
-      dropRole?: DropRole;
-    }
-  | {
+    } & ReorderFields)
+  | ({
       id: string;
       type: 'version-track';
       track: Track;
       folderId: string;
-      rowHeight?: number;
-      draggable?: boolean;
-      dropRole?: DropRole;
-    };
+    } & ReorderFields);
 
 const VERSION_HEADER_ROW = 60;
 
