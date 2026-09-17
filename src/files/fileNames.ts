@@ -33,16 +33,36 @@ export function safeTempFileName(prefix: string, id: string, originalName?: stri
 /**
  * Names safe for disk + Android `file://` URIs (Java URI rejects raw `[` `]` `#`).
  * Brackets become parentheses so «05. [1983] Song.mp3» → «05. (1983) Song.mp3».
+ * Basename kept under ~180 UTF-8 bytes so Android does not hit ENAMETOOLONG.
  */
 export function safeDisplayFileName(name: string): string {
-  return (
-    decodeOverEncodedName(name)
-      .replace(/\[/g, '(')
-      .replace(/\]/g, ')')
-      .replace(/[/\\?%*:|"<>#{}]/g, '-')
-      .replace(/\s+/g, ' ')
-      .trim() || 'traccia.m4a'
-  );
+  const ext = fileExtension(name);
+  let base = decodeOverEncodedName(name);
+  if (ext && base.toLowerCase().endsWith(ext.toLowerCase())) {
+    base = base.slice(0, -ext.length);
+  }
+  base = base
+    .replace(/\[/g, '(')
+    .replace(/\]/g, ')')
+    .replace(/[/\\?%*:|"<>#{}'`^]/g, '-')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!base) {
+    base = 'traccia';
+  }
+  const maxBaseBytes = 180;
+  while (base.length > 8 && utf8ByteLength(base) > maxBaseBytes) {
+    base = base.slice(0, -1).trimEnd();
+  }
+  return `${base}${ext || '.m4a'}`;
+}
+
+function utf8ByteLength(value: string): number {
+  if (typeof TextEncoder !== 'undefined') {
+    return new TextEncoder().encode(value).length;
+  }
+  return unescape(encodeURIComponent(value)).length;
 }
 
 export function storedBasename(stored?: string): string {

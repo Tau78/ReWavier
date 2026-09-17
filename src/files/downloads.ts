@@ -3,7 +3,7 @@ import * as LegacyFS from 'expo-file-system/legacy';
 
 import { isDownloaded, isRemoteHttpUri } from '../domain/audioFormats';
 import type { Track } from '../domain/models';
-import { safeDisplayFileName } from './fileNames';
+import { safeDisplayFileName, safeTempFileName } from './fileNames';
 import { audioRelativePrefix } from './libraryOwner';
 import { audioDirectory, downloadsDirectory, ensureAudioDirectory, inboxDirectory } from './libraryPaths';
 import { toFileUri } from './fsSafe';
@@ -41,7 +41,8 @@ export function uniqueAudioFileName(fileName: string): string {
       return candidate;
     }
   }
-  return `${base} ${Date.now()}${ext}`;
+  // Last resort: ASCII-only temp name (always constructible on Android).
+  return safeTempFileName('audio', `${Date.now()}`, fileName);
 }
 
 export function fileExists(uri?: string): boolean {
@@ -58,8 +59,14 @@ export async function copyToDownloads(
   fileName: string,
 ): Promise<string> {
   await ensureAudioDirectory();
-  const name = uniqueAudioFileName(fileName);
-  const dest = new File(audioDirectory(), name);
+  let name = uniqueAudioFileName(fileName);
+  let dest: File;
+  try {
+    dest = new File(audioDirectory(), name);
+  } catch {
+    name = safeTempFileName('audio', _trackId || `${Date.now()}`, fileName);
+    dest = new File(audioDirectory(), name);
+  }
   const from = resolveLibraryUri(sourceUri) ?? sourceUri;
   if (from === dest.uri) {
     return persistLibraryUri(dest.uri) ?? `${audioRelativePrefix()}/${name}`;

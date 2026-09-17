@@ -31,14 +31,30 @@ function safeTempFileName(prefix, id, originalName) {
 }
 
 function safeDisplayFileName(name) {
-  return (
-    decodeOverEncodedName(name)
-      .replace(/\[/g, '(')
-      .replace(/\]/g, ')')
-      .replace(/[/\\?%*:|"<>#{}]/g, '-')
-      .replace(/\s+/g, ' ')
-      .trim() || 'traccia.m4a'
-  );
+  const ext = fileExtension(name);
+  let base = decodeOverEncodedName(name);
+  if (ext && base.toLowerCase().endsWith(ext.toLowerCase())) {
+    base = base.slice(0, -ext.length);
+  }
+  base = base
+    .replace(/\[/g, '(')
+    .replace(/\]/g, ')')
+    .replace(/[/\\?%*:|"<>#{}'`^]/g, '-')
+    .replace(/[\u0000-\u001f\u007f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!base) {
+    base = 'traccia';
+  }
+  const maxBaseBytes = 180;
+  while (base.length > 8 && utf8ByteLength(base) > maxBaseBytes) {
+    base = base.slice(0, -1).trimEnd();
+  }
+  return `${base}${ext || '.m4a'}`;
+}
+
+function utf8ByteLength(value) {
+  return Buffer.byteLength(value, 'utf8');
 }
 
 function storedBasename(stored) {
@@ -160,6 +176,8 @@ assert.doesNotMatch(safeTempFileName('sync', 'id', original), / |%|\[/);
 assert.equal(safeDisplayFileName(triple), safeOriginal);
 assert.doesNotMatch(safeDisplayFileName(original), /\[|\]/);
 assert.equal(safeDisplayFileName('05. [1983] First Ripples.mp3'), '05. (1983) First Ripples.mp3');
+assert.equal(safeDisplayFileName("Pi's Landing.mp3"), 'Pi-s Landing.mp3');
+assert.ok(safeDisplayFileName(`${'à'.repeat(200)}.mp3`).length < 220);
 
 assert.equal(true, audioNamesEqual(triple, original));
 assert.equal(true, audioNamesEqual(once, original));

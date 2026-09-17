@@ -796,6 +796,11 @@ async function writeDownloadBytes(destUri: string, bytes: Uint8Array): Promise<s
   } catch {
     // Legacy path below
   }
+  // Full base64 doubles RAM — skip for large audio so one big WAV does not kill the album.
+  const LARGE_BASE64_FALLBACK = 12 * 1024 * 1024;
+  if (bytes.byteLength > LARGE_BASE64_FALLBACK) {
+    throw new Error('Questo brano non è arrivato sul telefono. Riprova.');
+  }
   const base64 = bytesToBase64(bytes);
   await LegacyFS.writeAsStringAsync(uri, base64, {
     encoding: LegacyFS.EncodingType.Base64,

@@ -437,6 +437,14 @@ export function CollectionScreen() {
           );
           return;
         }
+        const stillPending = useLibraryStore
+          .getState()
+          .tracks.filter(
+            (track) =>
+              inAlbum.has(track.id) &&
+              track.id !== playingId &&
+              (!isDownloaded(track) || track.pendingRemoteUpdate === true),
+          ).length;
         if (addedNow > 0) {
           Alert.alert(
             'Drive',
@@ -447,7 +455,12 @@ export function CollectionScreen() {
           return;
         }
         if (downloaded > 0 || syncResult.versioned > 0) {
-          Alert.alert('Drive', 'Album aggiornato. I brani nuovi o modificati sono sul telefono.');
+          Alert.alert(
+            'Drive',
+            stillPending > 0
+              ? 'Album aggiornato. Qualche brano non è ancora arrivato: tocca di nuovo Aggiorna.'
+              : 'Album aggiornato. I brani nuovi o modificati sono sul telefono.',
+          );
           return;
         }
         if (syncResult.notesPulled > 0) {

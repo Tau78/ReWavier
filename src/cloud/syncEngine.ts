@@ -12,7 +12,7 @@ import {
   albumNotesFromRemote,
   isAlbumNotesFileName,
 } from '../domain/albumNotes';
-import { isDriveAudio, playableUri } from '../domain/audioFormats';
+import { isDriveAudio, isDownloaded, playableUri } from '../domain/audioFormats';
 import {
   findAlbumCoverFile,
   findTrackCoverFile,
@@ -1489,12 +1489,51 @@ async function importAudiosInFolder(
       }
       store.addTracksToAlbum(albumId, [existing.id]);
       claimRemote(importedRemotes, remote);
+      // Stub from a previous sync/import with no file yet — fetch it now.
+      // Also re-fetch when Aggiorna marked a newer remote copy.
+      if (!isDownloaded(existing) || existing.pendingRemoteUpdate === true) {
+        try {
+          const fileUri = await saveAudio(remote, existing.id, false);
+          const markers = store.markersByTrackId[existing.id] ?? [];
+          store.importBundles(
+            [
+              {
+                track: {
+                  ...existing,
+                  fileUri,
+                  downloaded: true,
+                  downloadedAt: Date.now(),
+                  pendingRemoteUpdate: undefined,
+                  ...metaFrom(remote),
+                },
+                markers,
+              },
+            ],
+            { albumId, folderId: appFolderId ?? undefined },
+          );
+        } catch (error) {
+          if (isDownloadPausedError(error)) {
+            throw error;
+          }
+          // Keep going — other tracks in the folder still import.
+        }
+      }
       finishDriveItem();
       continue;
     }
 
     const id = createId('track');
-    const fileUri = await saveAudio(remote, id, false);
+    let fileUri: string;
+    try {
+      fileUri = await saveAudio(remote, id, false);
+    } catch (error) {
+      finishDriveItem();
+      if (isDownloadPausedError(error)) {
+        throw error;
+      }
+      // One bad name / 403 / large file must not abort the rest of the album.
+      continue;
+    }
     finishDriveItem();
     const afterDownload = useLibraryStore.getState();
     const appeared = findBestLocalForRemote(afterDownload.tracks, remote);

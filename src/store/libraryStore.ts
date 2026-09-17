@@ -1429,6 +1429,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       progress.beginCollection(toFetch.map((track) => track.id));
     }
     let downloaded = 0;
+    let failed = 0;
     try {
       for (const track of toFetch) {
         if (useDownloadProgressStore.getState().pauseRequested) {
@@ -1442,13 +1443,18 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           if (isDownloadPausedError(error)) {
             break;
           }
-          throw error;
+          // Keep going so one bad file does not leave the rest of the album stale.
+          failed += 1;
+          progress.advance();
         }
       }
     } finally {
       if (!reuseSession) {
         progress.end();
       }
+    }
+    if (downloaded === 0 && failed > 0 && !reuseSession) {
+      throw new Error('Questo brano non è arrivato sul telefono. Riprova.');
     }
     return downloaded;
   },

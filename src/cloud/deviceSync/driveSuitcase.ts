@@ -4,7 +4,7 @@ import { shouldSkipCloudSync } from '../../auth/demoAccount';
 import { getActiveLibraryOwner } from '../../files/libraryOwner';
 import { useSessionStore } from '../../store/sessionStore';
 import { inboxDirectory } from '../../files/downloads';
-import { safeTempFileName } from '../../files/fileNames';
+import { safeDisplayFileName, safeTempFileName } from '../../files/fileNames';
 import { loadDeviceSyncPrefs, saveDeviceSyncPrefs } from '../../files/deviceSyncPersist';
 import { audioDirectory } from '../../files/libraryPaths';
 import {
@@ -80,7 +80,13 @@ async function upsertFile(folderId: string, name: string, fileUri: string, remot
 }
 
 async function pullFile(remote: DriveFile): Promise<void> {
-  const dest = new File(audioDirectory(), remote.name);
+  const name = safeDisplayFileName(remote.name);
+  let dest: File;
+  try {
+    dest = new File(audioDirectory(), name);
+  } catch {
+    dest = new File(audioDirectory(), safeTempFileName('bag', remote.id, remote.name));
+  }
   if (dest.exists && dest.size != null && remote.size && Number(remote.size) === dest.size) {
     return;
   }
