@@ -6,15 +6,15 @@ import * as Haptics from 'expo-haptics';
 import { colors } from '../../theme/colors';
 
 const DEFAULT_ROW = 68;
-
-/** Folder rows: almost the whole row is "drop into"; tiny edges keep reorder available. */
-const FOLDER_EDGE_INSET_MIN = 4;
 const FOLDER_EDGE_INSET_MAX = 8;
+const FOLDER_EDGE_INSET_MIN = 4;
 const FOLDER_EDGE_INSET_RATIO = 0.12;
-/** Track/group rows: clearer top/bottom bands for move vs center for drop-on. */
-const GROUP_EDGE_INSET_MIN = 16;
 const GROUP_EDGE_INSET_MAX = 22;
+const GROUP_EDGE_INSET_MIN = 16;
 const GROUP_EDGE_INSET_RATIO = 0.32;
+const INSERT_SLOT_MIN_HEIGHT = 44;
+const ACCENT_FILL_STRONG = 'rgba(255, 107, 53, 0.28)';
+const ACCENT_FILL_SOFT = 'rgba(255, 107, 53, 0.10)';
 
 export type DropRole = 'group' | 'folder' | 'none';
 
@@ -48,35 +48,28 @@ function edgeInset(height: number, role: DropRole | undefined): number {
   );
 }
 
-/**
- * Label for the drop-on overlay. Must match `applyAlbumVersionDrop` outcomes.
- * Missing roles → no label (do not invent a default).
- */
+/** Labels follow applyAlbumVersionDrop, not target alone. */
 function dropLabelFor(
   sourceRole: DropRole | undefined,
   targetRole: DropRole | undefined,
 ): string | null {
-  if (
-    sourceRole == null ||
-    targetRole == null ||
-    sourceRole === 'none' ||
-    targetRole === 'none'
-  ) {
+  if (!sourceRole || !targetRole || sourceRole === 'none' || targetRole === 'none') {
     return null;
   }
-  if (targetRole === 'folder') {
-    if (sourceRole === 'folder') {
-      return 'Unisci cartelle';
-    }
+  if (sourceRole === 'folder' && targetRole === 'folder') {
+    return 'Unisci cartelle';
+  }
+  if (targetRole === 'folder' || sourceRole === 'folder') {
     return 'Metti nella cartella';
   }
-  if (targetRole === 'group') {
-    if (sourceRole === 'folder') {
-      return 'Metti nella cartella';
-    }
+  if (sourceRole === 'group' && targetRole === 'group') {
     return 'Crea cartella';
   }
   return null;
+}
+
+function prefixHeight(ids: string[], end: number, heightOf: (id: string) => number): number {
+  return ids.slice(0, end).reduce((sum, id) => sum + heightOf(id), 0);
 }
 
 export function ReorderableTrackList<T extends ReorderableItem>({
@@ -150,8 +143,7 @@ export function ReorderableTrackList<T extends ReorderableItem>({
       if (from < 0) {
         return;
       }
-      const originMid =
-        current.slice(0, from).reduce((sum, id) => sum + heightOf(id), 0) + heightOf(current[from]) / 2;
+      const originMid = prefixHeight(current, from, heightOf) + heightOf(current[from]) / 2;
       const pointer = originMid + translationY;
       const canDropOn = onDropOnRef.current != null;
       let acc = 0;
@@ -204,30 +196,28 @@ export function ReorderableTrackList<T extends ReorderableItem>({
     setShiftY(0);
     setInsertIndex(0);
     onDraggingChangeRef.current?.(false);
+
     if (sourceId && targetId && onDropOnRef.current) {
-      const dropped = onDropOnRef.current(sourceId, targetId);
-      if (dropped) {
+      if (onDropOnRef.current(sourceId, targetId)) {
         setIds(originIds.current);
         return;
       }
+      // Drop was offered in UI but domain/store refused — do not pretend a move.
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      // Hover freezes insert at `from`; skip a no-op reorder write.
-      if (to === from) {
-        setIds(originIds.current);
-        return;
-      }
-    }
-    if (to === from) {
       setIds(originIds.current);
       return;
     }
+
     const nextIds = [...originIds.current];
     const [moved] = nextIds.splice(from, 1);
     if (!moved) {
       return;
     }
-    // `to` is an insert-before index in the list still including `from`.
     const insertAt = Math.min(nextIds.length, to > from ? to - 1 : to);
+    if (insertAt === from) {
+      setIds(originIds.current);
+      return;
+    }
     nextIds.splice(insertAt, 0, moved);
     setIds(nextIds);
     onReorderRef.current(nextIds);
@@ -247,23 +237,16 @@ export function ReorderableTrackList<T extends ReorderableItem>({
   const from = activeId ? originIndex.current : -1;
   const to = activeId ? (dropOnId ? from : insertIndex) : -1;
   const activeHeight = activeId ? heightOf(activeId) : 0;
-  const originTop =
-    activeId && from >= 0
-      ? originIds.current.slice(0, from).reduce((sum, id) => sum + heightOf(id), 0)
-      : 0;
+  const originTop = activeId && from >= 0 ? prefixHeight(originIds.current, from, heightOf) : 0;
   const activeItem = activeId ? byId.get(activeId) : undefined;
+  const sourceRole = activeId ? dropRoleRef.current[activeId] : undefined;
   const previewInsertAt =
-    activeId && from >= 0 && !dropOnId
-      ? to > from
-        ? to - 1
-        : to
-      : from;
+    activeId && from >= 0 && !dropOnId ? (to > from ? to - 1 : to) : from;
   const showInsertSlot = Boolean(activeId && from >= 0 && !dropOnId && previewInsertAt !== from);
-  // When moving down, rows in (from, to) shift up; the empty slot lands before `to`.
   const gapTop = showInsertSlot
     ? from < to
-      ? originIds.current.slice(0, to).reduce((sum, id) => sum + heightOf(id), 0) - activeHeight
-      : originIds.current.slice(0, to).reduce((sum, id) => sum + heightOf(id), 0)
+      ? prefixHeight(originIds.current, to, heightOf) - activeHeight
+      : prefixHeight(originIds.current, to, heightOf)
     : -1;
 
   return (
@@ -276,8 +259,6 @@ export function ReorderableTrackList<T extends ReorderableItem>({
         const dragging = activeId === id;
         let rowShift = 0;
         if (activeId && from >= 0 && !dropOnId && index !== from) {
-          // Moving down: shift the open interval (from, to) up — not `to` itself —
-          // so the gap sits where the item will land (insert-before `to`).
           if (from < to && index > from && index < to) {
             rowShift = -activeHeight;
           } else if (from > to && index >= to && index < from) {
@@ -285,7 +266,6 @@ export function ReorderableTrackList<T extends ReorderableItem>({
           }
         }
         const isDropTarget = dropOnId === id;
-        const sourceRole = activeId ? dropRoleRef.current[activeId] : undefined;
         return (
           <DraggableRow
             key={id}
@@ -311,7 +291,7 @@ export function ReorderableTrackList<T extends ReorderableItem>({
             styles.insertSlot,
             {
               top: gapTop,
-              height: Math.max(activeHeight, 44),
+              height: Math.max(activeHeight, INSERT_SLOT_MIN_HEIGHT),
             },
           ]}
         >
@@ -379,10 +359,7 @@ function DraggableRow({
     <GestureDetector gesture={gesture}>
       <View
         onLayout={(event) => onRowLayout(id, event.nativeEvent.layout.height)}
-        style={[
-          dragging && styles.placeholder,
-          { transform: [{ translateY: shiftY }] },
-        ]}
+        style={[dragging && styles.placeholder, { transform: [{ translateY: shiftY }] }]}
       >
         {children}
         {dropTarget ? (
@@ -420,7 +397,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 107, 53, 0.28)',
+    backgroundColor: ACCENT_FILL_STRONG,
     borderRadius: 12,
     borderWidth: 2,
     borderColor: colors.accent,
@@ -453,7 +430,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderStyle: 'dashed',
     borderColor: colors.accent,
-    backgroundColor: 'rgba(255, 107, 53, 0.10)',
+    backgroundColor: ACCENT_FILL_SOFT,
   },
   insertLine: {
     flex: 1,

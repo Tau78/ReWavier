@@ -116,7 +116,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Trascina più chiaro',
-        body: 'Nell’album, se sposti un brano vedi “Sposta qui”. Se lo metti sopra un altro compare “Crea cartella”. Puoi lasciarlo anche su una cartella chiusa.',
+        body: 'Nell’album, se sposti un brano vedi “Sposta qui”. Sopra un altro: “Crea cartella”. Sopra una cartella (anche chiusa): “Metti nella cartella”. Due cartelle: “Unisci cartelle”.',
       },
     ],
   },
