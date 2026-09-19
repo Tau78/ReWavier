@@ -138,6 +138,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Chi ha scritto',
         body: 'Nella lista vedi i pallini con iniziale e colore di chi ha scritto. Se non scegli un colore in Impostazioni, te ne assegna uno da solo.',
       },
+      {
+        title: 'Zoom sull’onda',
+        body: 'Con due dita ingrandisci o rimpicciolisci il dettaglio: l’ascolto non salta più.',
+      },
     ],
   },
 ];

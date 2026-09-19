@@ -195,6 +195,7 @@ function useWaveformGestures(
   const viewStartRef = useRef(viewStartMs);
   const scrubOrigin = useRef(0);
   const scrubActive = useRef(false);
+  const pinchActive = useRef(false);
   spanRef.current = viewSpanMs;
   minRef.current = minMs;
   maxRef.current = maxMs;
@@ -205,18 +206,27 @@ function useWaveformGestures(
     const pinch = Gesture.Pinch()
       .runOnJS(true)
       .onStart(() => {
+        pinchActive.current = true;
         startSpan.current = spanRef.current;
       })
       .onUpdate((event) => {
         const scale = event.scale > 0 ? event.scale : 1;
         setSpanMs(Math.min(maxRef.current, Math.max(minRef.current, startSpan.current / scale)));
+      })
+      .onFinalize(() => {
+        pinchActive.current = false;
       });
 
     const pan = Gesture.Pan()
       .runOnJS(true)
+      .maxPointers(1)
       .activeOffsetX([-10, 10])
       .failOffsetY([-24, 24])
       .onStart(() => {
+        // Pinch zoom must not scrub — that seeks and makes audio skip.
+        if (pinchActive.current) {
+          return;
+        }
         scrubOrigin.current = usePlayerStore.getState().positionMs;
         scrubActive.current = true;
         scrubLastNativeAt = 0;
@@ -225,6 +235,9 @@ function useWaveformGestures(
         beginWaveformScrub();
       })
       .onUpdate((event) => {
+        if (pinchActive.current || !scrubActive.current || event.numberOfPointers > 1) {
+          return;
+        }
         const w = widthRef.current;
         const span = spanRef.current;
         if (w <= 0 || span <= 0) {
@@ -248,7 +261,11 @@ function useWaveformGestures(
 
     const tap = Gesture.Tap()
       .runOnJS(true)
+      .maxPointers(1)
       .onEnd((event) => {
+        if (pinchActive.current) {
+          return;
+        }
         const w = widthRef.current;
         const span = spanRef.current;
         if (w <= 0 || span <= 0) {
@@ -258,7 +275,8 @@ function useWaveformGestures(
         usePlayerStore.getState().seekTo(viewStartRef.current + ratio * span);
       });
 
-    return Gesture.Simultaneous(pinch, Gesture.Exclusive(pan, tap));
+    // Pinch first: zoom must not run together with scrub pan (audio skip).
+    return Gesture.Exclusive(pinch, Gesture.Exclusive(pan, tap));
   }, [setSpanMs]);
 }
 
