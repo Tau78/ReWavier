@@ -60,6 +60,8 @@ type ReorderFields = {
   rowHeight?: number;
   draggable?: boolean;
   dropRole?: DropRole;
+  packWithChildren?: boolean;
+  packParentId?: string;
 };
 
 type ListItem =
@@ -116,9 +118,8 @@ function albumListItems(
         type: 'versions',
         folder,
         rowHeight: VERSION_HEADER_ROW,
-        // Open headers stay put so children are not orphaned; close the cartella to move the pack.
-        draggable: !open,
-        // Closed (or open) header accepts a single track drop without opening first.
+        // Open or closed: move the pack (header + open children stay together).
+        packWithChildren: true,
         dropRole: 'folder',
       });
       if (open) {
@@ -130,6 +131,7 @@ function albumListItems(
               type: 'version-track',
               track,
               folderId: folder.id,
+              packParentId: folder.id,
               dropRole: 'folder',
             });
           }

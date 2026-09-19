@@ -108,7 +108,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Cartelle versioni di nuovo',
-        body: 'Le cartelle di file nell’album restano chiuse insieme. Chiudi la cartella e tieni premuto per spostarla; il play resta sul tasto ▶.',
+        body: 'Le cartelle di file restano insieme. Anche aperte: tieni premuto sulla cartella e spostala; le versioni sotto la seguono. Il play resta sul ▶.',
       },
       {
         title: 'Album più compatto',

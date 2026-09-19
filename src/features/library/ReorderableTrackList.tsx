@@ -30,6 +30,10 @@ export type ReorderableItem = {
    * - none: never a drop-on target (separators)
    */
   dropRole?: DropRole;
+  /** Dragging this row also moves the following rows with matching `packParentId`. */
+  packWithChildren?: boolean;
+  /** Belongs to an open pack led by this parent id (version-track under a folder). */
+  packParentId?: string;
 };
 
 function edgeInset(height: number, role: DropRole | undefined): number {
@@ -72,6 +76,60 @@ function prefixHeight(ids: string[], end: number, heightOf: (id: string) => numb
   return ids.slice(0, end).reduce((sum, id) => sum + heightOf(id), 0);
 }
 
+/** Contiguous pack: folder header + open version-track children below it. */
+export function packRangeFor(
+  ids: string[],
+  from: number,
+  itemOf: (id: string) => Pick<ReorderableItem, 'packWithChildren' | 'packParentId'> | undefined,
+): { start: number; end: number } {
+  if (from < 0 || from >= ids.length) {
+    return { start: from, end: from };
+  }
+  const lead = itemOf(ids[from]!);
+  if (!lead?.packWithChildren) {
+    return { start: from, end: from };
+  }
+  const parentId = ids[from]!;
+  let end = from;
+  for (let index = from + 1; index < ids.length; index += 1) {
+    const row = itemOf(ids[index]!);
+    if (row?.packParentId === parentId) {
+      end = index;
+      continue;
+    }
+    break;
+  }
+  return { start: from, end };
+}
+
+function packHeight(
+  ids: string[],
+  start: number,
+  end: number,
+  heightOf: (id: string) => number,
+): number {
+  let sum = 0;
+  for (let index = start; index <= end; index += 1) {
+    sum += heightOf(ids[index]!);
+  }
+  return sum;
+}
+
+function movePack(ids: string[], from: number, end: number, to: number): string[] {
+  const pack = ids.slice(from, end + 1);
+  const without = [...ids.slice(0, from), ...ids.slice(end + 1)];
+  const packLen = pack.length;
+  // `to` is an insert index in the original list; adjust after removal.
+  let insertAt = to;
+  if (to > end) {
+    insertAt = to - packLen;
+  } else if (to > from) {
+    insertAt = from;
+  }
+  insertAt = Math.max(0, Math.min(without.length, insertAt));
+  return [...without.slice(0, insertAt), ...pack, ...without.slice(insertAt)];
+}
+
 export function ReorderableTrackList<T extends ReorderableItem>({
   items,
   enabled,
@@ -101,15 +159,25 @@ export function ReorderableTrackList<T extends ReorderableItem>({
   const heightsRef = useRef<Record<string, number>>({});
   const fallbackRef = useRef<Record<string, number>>({});
   const dropRoleRef = useRef<Record<string, DropRole | undefined>>({});
+  const packMetaRef = useRef<
+    Record<string, { packWithChildren?: boolean; packParentId?: string }>
+  >({});
   const onReorderRef = useRef(onReorder);
   const onDropOnRef = useRef(onDropOn);
   const onDraggingChangeRef = useRef(onDraggingChange);
+  const packEndRef = useRef(0);
   idsRef.current = ids;
   onReorderRef.current = onReorder;
   onDropOnRef.current = onDropOn;
   onDraggingChangeRef.current = onDraggingChange;
   fallbackRef.current = Object.fromEntries(items.map((item) => [item.id, item.rowHeight ?? DEFAULT_ROW]));
   dropRoleRef.current = Object.fromEntries(items.map((item) => [item.id, item.dropRole]));
+  packMetaRef.current = Object.fromEntries(
+    items.map((item) => [
+      item.id,
+      { packWithChildren: item.packWithChildren, packParentId: item.packParentId },
+    ]),
+  );
 
   useEffect(() => {
     if (activeId) {
@@ -122,50 +190,68 @@ export function ReorderableTrackList<T extends ReorderableItem>({
     return heightsRef.current[id] ?? fallbackRef.current[id] ?? DEFAULT_ROW;
   }, []);
 
-  const onDragStart = useCallback((id: string) => {
-    originIds.current = idsRef.current;
-    originIndex.current = idsRef.current.indexOf(id);
-    insertIndexRef.current = originIndex.current;
-    draggingRef.current = true;
-    setActiveId(id);
-    setDropOnId(null);
-    setShiftY(0);
-    setInsertIndex(originIndex.current);
-    onDraggingChangeRef.current?.(true);
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  }, []);
+  const itemMeta = useCallback((id: string) => packMetaRef.current[id], []);
+
+  const onDragStart = useCallback(
+    (id: string) => {
+      originIds.current = idsRef.current;
+      const from = idsRef.current.indexOf(id);
+      originIndex.current = from;
+      const pack = packRangeFor(idsRef.current, from, itemMeta);
+      packEndRef.current = pack.end;
+      insertIndexRef.current = from;
+      draggingRef.current = true;
+      setActiveId(id);
+      setDropOnId(null);
+      setShiftY(0);
+      setInsertIndex(from);
+      onDraggingChangeRef.current?.(true);
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    },
+    [itemMeta],
+  );
 
   const onDragMove = useCallback(
     (_id: string, translationY: number) => {
       setShiftY(translationY);
       const current = originIds.current;
       const from = originIndex.current;
+      const packEnd = packEndRef.current;
       if (from < 0) {
         return;
       }
-      const originMid = prefixHeight(current, from, heightOf) + heightOf(current[from]) / 2;
+      const movingHeight = packHeight(current, from, packEnd, heightOf);
+      const originMid = prefixHeight(current, from, heightOf) + movingHeight / 2;
       const pointer = originMid + translationY;
       const canDropOn = onDropOnRef.current != null;
+      const packIds = new Set(current.slice(from, packEnd + 1));
       let acc = 0;
       let to = current.length;
       let hoverId: string | null = null;
       let foundTo = false;
       for (let index = 0; index < current.length; index += 1) {
-        const id = current[index];
+        const id = current[index]!;
         const height = heightOf(id);
         const next = acc + height;
+        const inPack = packIds.has(id);
         const role = dropRoleRef.current[id];
-        if (canDropOn && id !== _id && role !== 'none') {
+        if (canDropOn && !inPack && role !== 'none') {
           const inset = edgeInset(height, role);
           if (pointer >= acc + inset && pointer <= next - inset) {
             hoverId = id;
           }
         }
-        if (!foundTo && pointer < (acc + next) / 2) {
+        if (!foundTo && !inPack && pointer < (acc + next) / 2) {
           to = index;
           foundTo = true;
         }
         acc = next;
+      }
+      if (!foundTo) {
+        const packTop = prefixHeight(current, from, heightOf);
+        if (pointer >= packTop && pointer < packTop + movingHeight) {
+          to = from;
+        }
       }
       if (hoverId !== dropOnIdRef.current) {
         if (hoverId) {
@@ -189,6 +275,7 @@ export function ReorderableTrackList<T extends ReorderableItem>({
     const sourceId = originIds.current[originIndex.current];
     const targetId = dropOnIdRef.current;
     const from = originIndex.current;
+    const packEnd = packEndRef.current;
     const to = insertIndexRef.current;
     dropOnIdRef.current = null;
     setActiveId(null);
@@ -208,17 +295,17 @@ export function ReorderableTrackList<T extends ReorderableItem>({
       return;
     }
 
-    const nextIds = [...originIds.current];
-    const [moved] = nextIds.splice(from, 1);
-    if (!moved) {
+    if (from < 0 || packEnd < from) {
       return;
     }
-    const insertAt = Math.min(nextIds.length, to > from ? to - 1 : to);
-    if (insertAt === from) {
+    const nextIds = movePack(originIds.current, from, packEnd, to);
+    const unchanged =
+      nextIds.length === originIds.current.length &&
+      nextIds.every((id, index) => id === originIds.current[index]);
+    if (unchanged) {
       setIds(originIds.current);
       return;
     }
-    nextIds.splice(insertAt, 0, moved);
     setIds(nextIds);
     onReorderRef.current(nextIds);
   }, []);
@@ -235,19 +322,29 @@ export function ReorderableTrackList<T extends ReorderableItem>({
 
   const byId = new Map(items.map((item) => [item.id, item]));
   const from = activeId ? originIndex.current : -1;
+  const packEnd = activeId ? packEndRef.current : -1;
   const to = activeId ? (dropOnId ? from : insertIndex) : -1;
-  const activeHeight = activeId ? heightOf(activeId) : 0;
+  const movingHeight =
+    activeId && from >= 0 && packEnd >= from
+      ? packHeight(originIds.current, from, packEnd, heightOf)
+      : 0;
   const originTop = activeId && from >= 0 ? prefixHeight(originIds.current, from, heightOf) : 0;
   const activeItem = activeId ? byId.get(activeId) : undefined;
   const sourceRole = activeId ? dropRoleRef.current[activeId] : undefined;
   const previewInsertAt =
-    activeId && from >= 0 && !dropOnId ? (to > from ? to - 1 : to) : from;
-  const showInsertSlot = Boolean(activeId && from >= 0 && !dropOnId && previewInsertAt !== from);
+    activeId && from >= 0 && !dropOnId ? (to > packEnd ? to - (packEnd - from + 1) : to) : from;
+  const showInsertSlot = Boolean(
+    activeId && from >= 0 && !dropOnId && previewInsertAt !== from,
+  );
   const gapTop = showInsertSlot
     ? from < to
-      ? prefixHeight(originIds.current, to, heightOf) - activeHeight
+      ? prefixHeight(originIds.current, to, heightOf) - movingHeight
       : prefixHeight(originIds.current, to, heightOf)
     : -1;
+  const packIdSet =
+    activeId && from >= 0 && packEnd >= from
+      ? new Set(originIds.current.slice(from, packEnd + 1))
+      : null;
 
   return (
     <View style={styles.list}>
@@ -256,13 +353,13 @@ export function ReorderableTrackList<T extends ReorderableItem>({
         if (!item) {
           return null;
         }
-        const dragging = activeId === id;
+        const dragging = packIdSet ? packIdSet.has(id) : activeId === id;
         let rowShift = 0;
-        if (activeId && from >= 0 && !dropOnId && index !== from) {
-          if (from < to && index > from && index < to) {
-            rowShift = -activeHeight;
+        if (activeId && from >= 0 && packEnd >= from && !dropOnId && !dragging) {
+          if (from < to && index > packEnd && index < to) {
+            rowShift = -movingHeight;
           } else if (from > to && index >= to && index < from) {
-            rowShift = activeHeight;
+            rowShift = movingHeight;
           }
         }
         const isDropTarget = dropOnId === id;
@@ -280,7 +377,7 @@ export function ReorderableTrackList<T extends ReorderableItem>({
             onDragEnd={onDragEnd}
             onRowLayout={onRowLayout}
           >
-            {renderItem(item, dragging)}
+            {renderItem(item, dragging && id === activeId)}
           </DraggableRow>
         );
       })}
@@ -291,7 +388,7 @@ export function ReorderableTrackList<T extends ReorderableItem>({
             styles.insertSlot,
             {
               top: gapTop,
-              height: Math.max(activeHeight, INSERT_SLOT_MIN_HEIGHT),
+              height: Math.max(movingHeight, INSERT_SLOT_MIN_HEIGHT),
             },
           ]}
         >
@@ -313,7 +410,17 @@ export function ReorderableTrackList<T extends ReorderableItem>({
             },
           ]}
         >
-          <View style={styles.ghostInner}>{renderItem(activeItem, true)}</View>
+          <View style={styles.ghostInner}>
+            {(packIdSet ? originIds.current.filter((id) => packIdSet.has(id)) : [activeId]).map(
+              (id) => {
+                const item = byId.get(id);
+                if (!item) {
+                  return null;
+                }
+                return <View key={id}>{renderItem(item, id === activeId)}</View>;
+              },
+            )}
+          </View>
         </View>
       ) : null}
     </View>

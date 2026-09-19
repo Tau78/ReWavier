@@ -52,7 +52,7 @@ export function VersionFolderRow({
         accessibilityRole="button"
         accessibilityLabel={
           open
-            ? `Nascondi versioni di ${folder.name}`
+            ? `Nascondi versioni di ${folder.name}. Tieni premuto per spostare la cartella con le versioni.`
             : `Mostra versioni di ${folder.name}. Tieni premuto per spostare la cartella.`
         }
         accessibilityState={{ expanded: open }}
