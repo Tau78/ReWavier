@@ -132,7 +132,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Chi ha scritto',
-        body: 'Nella lista, al posto del numero di appunti vedi i pallini con l’iniziale e il colore di chi ha scritto.',
+        body: 'Nella lista vedi i pallini con iniziale e colore di chi ha scritto. Se non scegli un colore in Impostazioni, te ne assegna uno da solo.',
       },
     ],
   },

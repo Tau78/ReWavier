@@ -1,4 +1,4 @@
-import { colors } from '../theme/colors';
+import { colorForAuthorSeed, resolveAuthorColor } from './bandColors';
 import { canWriteWithRole, type FolderRole } from './folderRole';
 import type { Marker } from './models';
 import { userHasUsage, type SessionUser } from './session';
@@ -19,8 +19,12 @@ export function normalizeMarker(raw: Partial<Marker> & Pick<Marker, 'id' | 'time
   };
 }
 
+export function markerAuthorSeed(marker: Pick<Marker, 'authorId' | 'authorName'>): string {
+  return marker.authorId?.trim() || marker.authorName?.trim() || 'self';
+}
+
 export function markerColor(marker: Marker): string {
-  return marker.color || colors.marker;
+  return resolveAuthorColor(marker.color, markerAuthorSeed(marker));
 }
 
 /** One swatch per unique note author (most recently active first). */
@@ -45,7 +49,7 @@ export function noteAuthorDots(markers: Marker[]): NoteAuthorDot[] {
   const sorted = [...visibleMarkers(markers)].sort((a, b) => b.updatedAt - a.updatedAt);
   const byKey = new Map<string, NoteAuthorDot>();
   for (const marker of sorted) {
-    const key = marker.authorId?.trim() || marker.authorName?.trim() || 'self';
+    const key = markerAuthorSeed(marker);
     if (byKey.has(key)) {
       continue;
     }
@@ -57,7 +61,13 @@ export function noteAuthorDots(markers: Marker[]): NoteAuthorDot[] {
       initial: noteAuthorInitial(name),
     });
   }
-  return [...byKey.values()];
+  const list = [...byKey.values()];
+  // Same stamp for everyone (old orange fallback) → one distinct color per person.
+  const uniqueColors = new Set(list.map((dot) => dot.color.toLowerCase()));
+  if (list.length >= 2 && uniqueColors.size === 1) {
+    return list.map((dot) => ({ ...dot, color: colorForAuthorSeed(dot.key) }));
+  }
+  return list;
 }
 
 export function isMarkerHidden(marker: Marker): boolean {
@@ -131,12 +141,13 @@ export function stampNewMarker(
     Partial<Pick<Marker, 'placeholder'>>,
   user: SessionUser | null,
 ): Marker {
+  const seed = user?.id?.trim() || user?.displayName?.trim() || 'self';
   return {
     ...base,
     hidden: false,
     authorId: user?.id,
     authorName: user?.displayName,
-    color: user?.bandColor ?? colors.marker,
+    color: resolveAuthorColor(user?.bandColor, seed),
     editableByOthers: user && userHasUsage(user, 'band') ? user.markersEditableByOthers : true,
     placeholder: base.placeholder === true ? true : undefined,
   };

@@ -1,7 +1,7 @@
 import * as Crypto from 'expo-crypto';
 import { create } from 'zustand';
 
-import { availableBandColors } from '../domain/bandColors';
+import { availableBandColors, colorForAuthorSeed } from '../domain/bandColors';
 import { createId } from '../domain/library';
 import { DEMO_ACCOUNT, isDemoAccount } from '../auth/demoAccount';
 import { saveGoogleAuth } from '../auth/googleToken';
@@ -25,6 +25,28 @@ import {
   type LocalAccount,
 } from '../files/sessionPersist';
 
+/** If the user never picked a color, assign a stable random one and keep it. */
+function ensurePersonalBandColor(user: SessionUser): SessionUser {
+  const normalized = normalizeSessionUser(user);
+  if (normalized.bandColor?.trim()) {
+    return normalized;
+  }
+  const color = colorForAuthorSeed(normalized.id || normalized.displayName || normalized.email);
+  if (normalized.bands.length > 0) {
+    const bands = normalized.bands.map((band, index) =>
+      index === 0 && !band.color?.trim() ? { ...band, color } : band,
+    );
+    return normalizeSessionUser({
+      ...normalized,
+      bands,
+      bandColor: color,
+    });
+  }
+  return normalizeSessionUser({
+    ...normalized,
+    bandColor: color,
+  });
+}
 export type SessionState = {
   hydrated: boolean;
   user: SessionUser | null;
@@ -165,10 +187,14 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       if (get().user != null && !snapshot.user) {
         return;
       }
+      const nextUser = snapshot.user ? ensurePersonalBandColor(snapshot.user) : null;
       set({
-        user: snapshot.user ? normalizeSessionUser(snapshot.user) : null,
+        user: nextUser,
         reservedColors: snapshot.reservedColors,
       });
+      if (nextUser?.bandColor && !snapshot.user?.bandColor?.trim()) {
+        persist(get());
+      }
     } catch {
       if (op !== sessionOpGeneration) {
         return;
@@ -201,7 +227,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
             driveConnected: false,
             driveLink: null,
           };
-      set({ user });
+      set({ user: ensurePersonalBandColor(user) });
       persist(get());
       await reloadLibrary();
       return;
@@ -229,7 +255,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     if (!existing) {
       await clearGoogleToken().catch(() => undefined);
     }
-    set({ user });
+    set({ user: ensurePersonalBandColor(user) });
     persist(get());
     await reloadLibrary();
   },
@@ -261,7 +287,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       displayName: account.displayName,
       provider: 'email',
     });
-    set({ user });
+    set({ user: ensurePersonalBandColor(user) });
     persist(get());
     await reloadLibrary();
   },
@@ -300,7 +326,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
           driveConnected: driveOk,
           driveLink: driveOk ? 'google' : null,
         });
-    set({ user: normalizeSessionUser(user) });
+    set({ user: ensurePersonalBandColor(user) });
     persist(get());
     await reloadLibrary();
   },
@@ -340,7 +366,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     const driveLink = asBand ? input.driveLink ?? user.driveLink : user.driveLink;
     set({
       reservedColors: nextReserved,
-      user: normalizeSessionUser({
+      user: ensurePersonalBandColor({
         ...user,
         onboarded: true,
         usageType,
@@ -362,7 +388,7 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
       return;
     }
     set({
-      user: normalizeSessionUser({
+      user: ensurePersonalBandColor({
         ...user,
         usageTypes,
         usageType: primaryUsage(usageTypes),

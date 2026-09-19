@@ -367,7 +367,7 @@ export function SettingsScreen() {
           >
             <InfoBlock
               label="Band"
-              hint="Tocca una band per usarla sui marker. Nome e colore si modificano qui."
+              hint="Tocca una band per usarla sui marker. Se non scegli un colore, te ne assegna uno da solo."
             />
             {bands.map((band) => (
               <View key={band.id} style={styles.bandEdit}>
