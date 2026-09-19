@@ -261,7 +261,6 @@ function useWaveformGestures(
 
     const tap = Gesture.Tap()
       .runOnJS(true)
-      .maxPointers(1)
       .onEnd((event) => {
         if (pinchActive.current) {
           return;
