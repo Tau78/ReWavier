@@ -9,8 +9,10 @@ const row = readFileSync(join(root, 'src/features/library/TrackRow.tsx'), 'utf8'
 
 assert.match(markers, /export function noteAuthorDots/);
 assert.match(markers, /export type NoteAuthorDot/);
+assert.match(markers, /noteAuthorInitial/);
 assert.match(row, /noteAuthors/);
 assert.match(row, /authorDot/);
+assert.match(row, /authorInitial/);
 assert.match(row, /Nessun appunto/);
 assert.doesNotMatch(row, /\$\{noteCount\} appunti/);
 assert.doesNotMatch(row, /noteCount:/);

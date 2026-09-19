@@ -132,7 +132,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Chi ha scritto',
-        body: 'Nella lista, al posto del numero di appunti vedi i pallini del colore di chi ha scritto.',
+        body: 'Nella lista, al posto del numero di appunti vedi i pallini con l’iniziale e il colore di chi ha scritto.',
       },
     ],
   },

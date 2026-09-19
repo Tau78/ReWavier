@@ -28,7 +28,18 @@ export type NoteAuthorDot = {
   key: string;
   color: string;
   name: string;
+  initial: string;
 };
+
+/** First letter of the display name (M for Mauro, T for Tu). */
+export function noteAuthorInitial(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return '?';
+  }
+  const letter = [...trimmed][0] ?? '?';
+  return letter.toLocaleUpperCase('it-IT');
+}
 
 export function noteAuthorDots(markers: Marker[]): NoteAuthorDot[] {
   const sorted = [...visibleMarkers(markers)].sort((a, b) => b.updatedAt - a.updatedAt);
@@ -38,10 +49,12 @@ export function noteAuthorDots(markers: Marker[]): NoteAuthorDot[] {
     if (byKey.has(key)) {
       continue;
     }
+    const name = markerAuthorLabel(marker);
     byKey.set(key, {
       key,
       color: markerColor(marker),
-      name: markerAuthorLabel(marker),
+      name,
+      initial: noteAuthorInitial(name),
     });
   }
   return [...byKey.values()];

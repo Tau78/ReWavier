@@ -13,8 +13,8 @@ import { SwipeableRow } from './SwipeableRow';
 type MetaMode = 'duration' | 'created';
 
 const MAX_AUTHOR_DOTS = 4;
-const DOT_SIZE = 12;
-const DOT_OVERLAP = 5;
+const DOT_SIZE = 16;
+const DOT_OVERLAP = 6;
 
 function authorDotsLabel(authors: NoteAuthorDot[]): string {
   if (authors.length === 0) {
@@ -189,7 +189,11 @@ export function TrackRow({
                         zIndex: visibleAuthors.length - index,
                       },
                     ]}
-                  />
+                  >
+                    <Text style={styles.authorInitial} importantForAccessibility="no">
+                      {author.initial}
+                    </Text>
+                  </View>
                 ))}
                 {extraAuthors > 0 ? (
                   <Text style={styles.authorMore} importantForAccessibility="no">
@@ -334,6 +338,16 @@ const styles = StyleSheet.create({
     borderRadius: DOT_SIZE / 2,
     borderWidth: 1.5,
     borderColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  authorInitial: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    fontWeight: '800',
+    lineHeight: 9,
+    includeFontPadding: false,
+    textAlign: 'center',
   },
   authorMore: {
     marginLeft: 3,
