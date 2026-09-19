@@ -1,10 +1,13 @@
 import type { Album, AlbumSeparator, AlbumVersionFolder } from './library';
 import { createId, isSeparatorId, isVersionFolderId } from './library';
 import { versionFolderById } from './albumVersions';
-import { audioBasename } from './sidecar';
+import { audioMatchKey } from './sidecar';
 import type { Track } from './models';
 
-export const ORDER_FILE_NAME = 'rewavier.order.json';
+/** Hidden band prefs in the Drive album folder (order + version folders + separators). */
+export const ORDER_FILE_NAME = '.rewavier.order.json';
+/** Pre-1.0.5 name — still read so older albums keep working. */
+export const ORDER_FILE_NAME_LEGACY = 'rewavier.order.json';
 
 export type AlbumOrderLayoutItem =
   | { kind: 'file'; name: string }
@@ -21,15 +24,17 @@ export type AlbumOrderFile = {
 };
 
 export function isOrderManifestName(fileName: string): boolean {
-  return fileName.trim().toLowerCase() === ORDER_FILE_NAME;
+  const lower = fileName.trim().toLowerCase();
+  return lower === ORDER_FILE_NAME || lower === ORDER_FILE_NAME_LEGACY;
 }
 
 function trackOrderName(track: Track): string {
   return track.sourceFileName ?? `${track.title}.m4a`;
 }
 
-function nameKey(name: string): string {
-  return audioBasename(name).trim().toLowerCase();
+function findTrackByOrderName(tracks: Track[], name: string): Track | undefined {
+  const key = audioMatchKey(name);
+  return tracks.find((track) => audioMatchKey(trackOrderName(track)) === key);
 }
 
 function isLayoutItem(value: unknown): value is AlbumOrderLayoutItem {
@@ -44,7 +49,7 @@ function isLayoutItem(value: unknown): value is AlbumOrderLayoutItem {
     return (
       typeof item.name === 'string' &&
       Array.isArray(item.files) &&
-      item.files.every((name) => typeof name === 'string')
+      item.files.every((entry) => typeof entry === 'string')
     );
   }
   return false;
@@ -135,11 +140,6 @@ export function buildAlbumOrderFile(
   };
 }
 
-function findTrackByOrderName(tracks: Track[], name: string): Track | undefined {
-  const key = nameKey(name);
-  return tracks.find((track) => nameKey(trackOrderName(track)) === key);
-}
-
 function reuseFolderId(album: Album, trackIds: string[], name: string): string {
   const sameTracks = (album.versionFolders ?? []).find(
     (folder) =>
@@ -156,6 +156,88 @@ function reuseFolderId(album: Album, trackIds: string[], name: string): string {
 function reuseSeparatorId(album: Album, name: string, used: Set<string>): string {
   const match = (album.separators ?? []).find((item) => item.name === name && !used.has(item.id));
   return match?.id ?? createId('sep');
+}
+
+/** Remote file has folders, separators, or an intentional ordered list. */
+export function remoteAlbumOrderHasLayout(parsed: AlbumOrderFile | null | undefined): boolean {
+  if (!parsed || parsed.updatedAt <= 0) {
+    return false;
+  }
+  if ((parsed.items ?? []).some((item) => item.kind === 'folder' || item.kind === 'separator')) {
+    return true;
+  }
+  if ((parsed.items ?? []).length > 0) {
+    return true;
+  }
+  return parsed.files.length > 0;
+}
+
+export function localAlbumHasBandLayout(album: Pick<Album, 'orderUpdatedAt' | 'versionFolders' | 'separators'>): boolean {
+  if ((album.versionFolders ?? []).length > 0 || (album.separators ?? []).length > 0) {
+    return true;
+  }
+  return (album.orderUpdatedAt ?? 0) > 0;
+}
+
+/**
+ * First open / empty phone must inherit Drive prefs.
+ * Also re-apply when remote is newer, or when remote has folders local still lacks.
+ */
+export function shouldApplyRemoteAlbumOrder(
+  local: Pick<Album, 'orderUpdatedAt' | 'versionFolders' | 'separators'>,
+  remote: AlbumOrderFile,
+): boolean {
+  if (!remoteAlbumOrderHasLayout(remote)) {
+    return false;
+  }
+  const localStamp = local.orderUpdatedAt ?? 0;
+  if (remote.updatedAt > localStamp) {
+    return true;
+  }
+  if (localStamp <= 0) {
+    return true;
+  }
+  const remoteHasFolders = (remote.items ?? []).some(
+    (item) => item.kind === 'folder' || item.kind === 'separator',
+  );
+  const localHasFolders =
+    (local.versionFolders ?? []).length > 0 || (local.separators ?? []).length > 0;
+  return remoteHasFolders && !localHasFolders;
+}
+
+/**
+ * Never push a flat/default local layout over a richer remote.
+ * First entrants with no stamp must not upload and wipe the band file.
+ */
+export function shouldPushLocalAlbumOrder(
+  local: Pick<Album, 'orderUpdatedAt' | 'versionFolders' | 'separators' | 'trackIds'>,
+  remote: AlbumOrderFile | null,
+): boolean {
+  const localStamp = local.orderUpdatedAt ?? 0;
+  if (localStamp <= 0) {
+    return false;
+  }
+  if (!localAlbumHasBandLayout(local)) {
+    return false;
+  }
+  if (!remote) {
+    return true;
+  }
+  if (shouldApplyRemoteAlbumOrder(local, remote)) {
+    return false;
+  }
+  if (localStamp <= remote.updatedAt) {
+    return false;
+  }
+  const remoteHasFolders = (remote.items ?? []).some(
+    (item) => item.kind === 'folder' || item.kind === 'separator',
+  );
+  const localHasFolders =
+    (local.versionFolders ?? []).length > 0 || (local.separators ?? []).length > 0;
+  if (remoteHasFolders && !localHasFolders) {
+    return false;
+  }
+  return true;
 }
 
 /** Apply Drive order file: folders, separators, chosen take, and track order. */
@@ -194,27 +276,33 @@ export function applyAlbumOrderFile(album: Album, tracks: Track[], parsed: Album
         trackIds.push(id);
         continue;
       }
+      const declared = item.files.length;
       const inner = item.files
         .map((name) => take(findTrackByOrderName(albumTracks, name)))
         .filter((track): track is Track => track != null);
-      if (inner.length < 2) {
-        for (const track of inner) {
-          trackIds.push(track.id);
-        }
+      // Remote says "folder": keep it even if some takes are not on this phone yet.
+      // Never flatten to top-level — that stamped a dissolved layout and blocked re-inherit.
+      if (inner.length === 0) {
         continue;
       }
-      const folderTrackIds = inner.map((track) => track.id);
-      const chosen = item.chosen
-        ? findTrackByOrderName(inner, item.chosen)
-        : inner[0];
-      const folderId = reuseFolderId(album, folderTrackIds, item.name);
-      versionFolders.push({
-        id: folderId,
-        name: item.name.trim() || 'Versioni',
-        trackIds: folderTrackIds,
-        chosenId: chosen?.id ?? folderTrackIds[0]!,
-      });
-      trackIds.push(folderId);
+      if (declared >= 2 || inner.length >= 2) {
+        const folderTrackIds = inner.map((track) => track.id);
+        const chosen = item.chosen
+          ? findTrackByOrderName(inner, item.chosen)
+          : inner[0];
+        const folderId = reuseFolderId(album, folderTrackIds, item.name);
+        versionFolders.push({
+          id: folderId,
+          name: item.name.trim() || 'Versioni',
+          trackIds: folderTrackIds,
+          chosenId: chosen?.id ?? folderTrackIds[0]!,
+        });
+        trackIds.push(folderId);
+        continue;
+      }
+      for (const track of inner) {
+        trackIds.push(track.id);
+      }
     }
     for (const track of albumTracks) {
       if (!seen.has(track.id)) {
@@ -310,12 +398,10 @@ export function orderedAlbumItemIds(album: Album, tracks: Track[]): string[] {
 }
 
 export function sortTracksByOrder(tracks: Track[], files: string[]): Track[] {
-  const rank = new Map(
-    files.map((name, index) => [audioBasename(name).toLowerCase(), index]),
-  );
+  const rank = new Map(files.map((name, index) => [audioMatchKey(name), index]));
   return [...tracks].sort((left, right) => {
-    const a = rank.get(audioBasename(left.sourceFileName ?? left.title).toLowerCase());
-    const b = rank.get(audioBasename(right.sourceFileName ?? right.title).toLowerCase());
+    const a = rank.get(audioMatchKey(left.sourceFileName ?? left.title));
+    const b = rank.get(audioMatchKey(right.sourceFileName ?? right.title));
     if (a == null && b == null) {
       return compareAlbumTrackNames(left, right);
     }

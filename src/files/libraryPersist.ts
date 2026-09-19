@@ -158,7 +158,7 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
               chosenId,
             };
           })
-          .filter((folder) => folder.trackIds.length >= 2);
+          .filter((folder) => folder.trackIds.length >= 1);
         const folderIds = new Set(versionFolders.map((folder) => folder.id));
         const trackIds = album.trackIds.filter(
           (id) => keep.has(id) || names.has(id) || isSeparatorId(id) || folderIds.has(id),

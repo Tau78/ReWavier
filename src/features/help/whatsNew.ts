@@ -104,7 +104,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Cartelle album in comune',
-        body: 'Metti insieme le versioni di un brano o cambi l’ordine: resta sul telefono e lo vede chi ha la cartella Drive. Il loop A–B già viaggia con gli appunti.',
+        body: 'Metti insieme le versioni di un brano o cambi l’ordine: resta in un file nascosto su Drive. Chi apre l’album lo riceve; al primo ingresso non si resetta.',
       },
       {
         title: 'Album più compatto',

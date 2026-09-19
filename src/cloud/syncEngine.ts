@@ -3,9 +3,13 @@ import { File } from 'expo-file-system';
 import { shouldSkipCloudSync } from '../auth/demoAccount';
 import {
   ORDER_FILE_NAME,
+  ORDER_FILE_NAME_LEGACY,
   buildAlbumOrderFile,
   isOrderManifestName,
   parseAlbumOrder,
+  shouldApplyRemoteAlbumOrder,
+  shouldPushLocalAlbumOrder,
+  type AlbumOrderFile,
 } from '../domain/albumOrder';
 import {
   ALBUM_NOTES_FILE_NAME,
@@ -296,6 +300,8 @@ export async function peekDriveAlbum(albumId: string): Promise<DriveAlbumPeek> {
       );
     });
   }
+  // Band layout (order + version folders) on every open — inherit, never wipe remote.
+  await pullAlbumLayout(albumId).catch(() => undefined);
   return { newRemoteCount, changedTrackIds };
 }
 
@@ -606,6 +612,7 @@ async function syncOneDriveAlbum(
   }
 
   if (options?.extras === false) {
+    await reconcileAlbumOrderFromChildren(album.id, children);
     store.touchAlbumSync(album.id);
     await refreshAlbumDriveRole(album.id);
     void applyPendingRemoteAudioUpdates();
@@ -735,31 +742,7 @@ async function syncOneDriveAlbum(
     return { ...empty, added, removed, versioned, notesPulled, aborted: true };
   }
 
-  const orderRemote = children.find((file) => isOrderManifestName(file.name));
-  if (orderRemote) {
-    const dest = new File(inboxDirectory(), `sync-order-${album.id}.json`);
-    await downloadDriveFile(orderRemote.id, dest.uri);
-    if (!isCloudSyncUserActive(expectedUserId)) {
-      if (dest.exists) {
-        dest.delete();
-      }
-      sync.finish({ lastSyncedAt: Date.now(), message: null });
-      return { ...empty, added, removed, versioned, notesPulled, aborted: true };
-    }
-    const parsed = parseAlbumOrder(await dest.text());
-    if (dest.exists) {
-      dest.delete();
-    }
-    const localStamp = useLibraryStore.getState().albums.find((item) => item.id === album.id)
-      ?.orderUpdatedAt ?? 0;
-    if (parsed && parsed.updatedAt > localStamp) {
-      store.applyCloudAlbumOrder(album.id, parsed);
-    } else if (localStamp > (parsed?.updatedAt ?? 0)) {
-      await pushAlbumOrder(album.id);
-    }
-  } else if ((useLibraryStore.getState().albums.find((item) => item.id === album.id)?.orderUpdatedAt ?? 0) > 0) {
-    await pushAlbumOrder(album.id);
-  }
+  await reconcileAlbumOrderFromChildren(album.id, children);
 
   if (!isCloudSyncUserActive(expectedUserId)) {
     sync.finish({ lastSyncedAt: Date.now(), message: null });
@@ -1207,8 +1190,33 @@ export async function pushAlbumOrder(albumId: string): Promise<void> {
   if (!(await hasDriveToken())) {
     return;
   }
+  const existing = await findAlbumOrderRemote(album.driveFolderId);
+  let remote: AlbumOrderFile | null = null;
+  if (existing) {
+    const dest = new File(inboxDirectory(), `push-order-check-${albumId}.json`);
+    try {
+      await downloadDriveFile(existing.id, dest.uri);
+      remote = parseAlbumOrder(await dest.text());
+    } catch {
+      remote = null;
+    } finally {
+      if (dest.exists) {
+        dest.delete();
+      }
+    }
+  }
   const live = useLibraryStore.getState().albums.find((item) => item.id === albumId);
-  const updatedAt = live?.orderUpdatedAt ?? Date.now();
+  if (!live) {
+    return;
+  }
+  if (remote && shouldApplyRemoteAlbumOrder(live, remote)) {
+    useLibraryStore.getState().applyCloudAlbumOrder(albumId, remote);
+    return;
+  }
+  if (!shouldPushLocalAlbumOrder(live, remote)) {
+    return;
+  }
+  const updatedAt = live.orderUpdatedAt ?? Date.now();
   const dest = new File(inboxDirectory(), `order-${albumId}.json`);
   dest.write(
     JSON.stringify(
@@ -1217,9 +1225,20 @@ export async function pushAlbumOrder(albumId: string): Promise<void> {
       2,
     ),
   );
-  const existing = await findChildByName(album.driveFolderId, ORDER_FILE_NAME);
   if (existing) {
     await updateDriveFileMedia(existing.id, dest.uri, 'application/json');
+    // Prefer the hidden name going forward when only the legacy file exists.
+    if (existing.name.trim().toLowerCase() === ORDER_FILE_NAME_LEGACY) {
+      const dotted = await findChildByName(album.driveFolderId, ORDER_FILE_NAME);
+      if (!dotted) {
+        await uploadDriveFile({
+          name: ORDER_FILE_NAME,
+          folderId: album.driveFolderId,
+          fileUri: dest.uri,
+          mimeType: 'application/json',
+        });
+      }
+    }
     return;
   }
   await uploadDriveFile({
@@ -1228,6 +1247,89 @@ export async function pushAlbumOrder(albumId: string): Promise<void> {
     fileUri: dest.uri,
     mimeType: 'application/json',
   });
+}
+
+async function findAlbumOrderRemote(folderId: string): Promise<DriveFile | null> {
+  return (
+    (await findChildByName(folderId, ORDER_FILE_NAME)) ??
+    (await findChildByName(folderId, ORDER_FILE_NAME_LEGACY))
+  );
+}
+
+function pickOrderRemoteFromChildren(children: DriveFile[]): DriveFile | undefined {
+  const dotted = children.find((file) => file.name.trim().toLowerCase() === ORDER_FILE_NAME);
+  if (dotted) {
+    return dotted;
+  }
+  return children.find((file) => isOrderManifestName(file.name));
+}
+
+async function downloadAlbumOrderParsed(remote: DriveFile, albumId: string): Promise<AlbumOrderFile | null> {
+  const dest = new File(inboxDirectory(), `sync-order-${albumId}.json`);
+  try {
+    await downloadDriveFile(remote.id, dest.uri);
+    return parseAlbumOrder(await dest.text());
+  } catch {
+    return null;
+  } finally {
+    if (dest.exists) {
+      dest.delete();
+    }
+  }
+}
+
+/**
+ * Download `.rewavier.order.json` (or legacy name), inherit for first open,
+ * push only when local is intentionally newer and not emptier than remote.
+ */
+export async function pullAlbumLayout(albumId: string): Promise<boolean> {
+  const album = useLibraryStore.getState().albums.find((item) => item.id === albumId);
+  if (!album || album.origin !== 'drive' || !album.driveFolderId) {
+    return false;
+  }
+  if (!(await hasDriveToken())) {
+    return false;
+  }
+  const remoteFile = await findAlbumOrderRemote(album.driveFolderId);
+  if (!remoteFile) {
+    return false;
+  }
+  const parsed = await downloadAlbumOrderParsed(remoteFile, albumId);
+  if (!parsed) {
+    return false;
+  }
+  const live = useLibraryStore.getState().albums.find((item) => item.id === albumId);
+  if (!live) {
+    return false;
+  }
+  if (!shouldApplyRemoteAlbumOrder(live, parsed)) {
+    return false;
+  }
+  useLibraryStore.getState().applyCloudAlbumOrder(albumId, parsed);
+  await flushLibraryPersist();
+  return true;
+}
+
+async function reconcileAlbumOrderFromChildren(albumId: string, children: DriveFile[]): Promise<void> {
+  const orderRemote = pickOrderRemoteFromChildren(children);
+  const live = useLibraryStore.getState().albums.find((item) => item.id === albumId);
+  if (!live) {
+    return;
+  }
+  if (orderRemote) {
+    const parsed = await downloadAlbumOrderParsed(orderRemote, albumId);
+    if (parsed && shouldApplyRemoteAlbumOrder(live, parsed)) {
+      useLibraryStore.getState().applyCloudAlbumOrder(albumId, parsed);
+      return;
+    }
+    if (shouldPushLocalAlbumOrder(live, parsed)) {
+      await pushAlbumOrder(albumId);
+    }
+    return;
+  }
+  if (shouldPushLocalAlbumOrder(live, null)) {
+    await pushAlbumOrder(albumId);
+  }
 }
 
 export async function followTrackRenameOnDrive(
@@ -1731,6 +1833,8 @@ export async function importDriveFolder(
     }
 
     await applyDriveMediaTree(albumId, tree, { skipSurplusDeletes: treeTruncated });
+    // First import must inherit band folders/order — never start flat and overwrite Drive.
+    await pullAlbumLayout(albumId).catch(() => undefined);
     return albumId;
   } finally {
     progress.end();

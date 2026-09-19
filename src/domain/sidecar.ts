@@ -68,7 +68,7 @@ export function audioMatchKey(fileName: string): string {
 
 export function isSidecarName(fileName: string): boolean {
   const lower = fileName.toLowerCase();
-  if (lower === 'rewavier.order.json') {
+  if (lower === 'rewavier.order.json' || lower === '.rewavier.order.json') {
     return false;
   }
   return lower.endsWith(SIDECAR_SUFFIX) || lower.endsWith('.json');
