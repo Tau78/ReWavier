@@ -9,11 +9,14 @@ import {
   DEMO_SMART,
   DEMO_TRACKS,
   createId,
+  isSeparatorId,
+  isVersionFolderId,
   mergeAlbumOrderFromCloud,
   trackMatchesSmart,
   type Album,
   type AlbumDocument,
   type AlbumOrigin,
+  type AlbumVersionFolder,
   type CollectionKind,
   type Folder,
   type Playlist,
@@ -396,12 +399,97 @@ function collapseDuplicateTracks(tracks: Track[], albums: Album[]): { tracks: Tr
     }
   }
   const keep = new Set([...bestByRoot.values()].map((track) => track.id));
+  const winnerByIndex = new Map<number, string>();
+  for (let i = 0; i < n; i++) {
+    const best = bestByRoot.get(find(i));
+    if (best) {
+      winnerByIndex.set(i, best.id);
+    }
+  }
+  const remapId = (id: string): string => {
+    const index = byId.get(id);
+    if (index == null) {
+      return id;
+    }
+    return winnerByIndex.get(index) ?? id;
+  };
+
   return {
     tracks: tracks.filter((track) => keep.has(track.id)),
-    albums: albums.map((album) => ({
-      ...album,
-      trackIds: album.trackIds.filter((id, index) => keep.has(id) && album.trackIds.indexOf(id) === index),
-    })),
+    albums: albums.map((album) => healAlbumAfterCollapse(album, keep, remapId)),
+  };
+}
+
+/** Keep ver-/sep- rows; remap folder children; re-link orphaned folders stripped from trackIds. */
+function healAlbumAfterCollapse(
+  album: Album,
+  keep: Set<string>,
+  remapId: (id: string) => string,
+): Album {
+  const versionFolders = ((album.versionFolders ?? [])
+    .map((folder): AlbumVersionFolder | null => {
+      const trackIds = [
+        ...new Set(folder.trackIds.map(remapId).filter((id) => keep.has(id))),
+      ];
+      if (trackIds.length === 0) {
+        return null;
+      }
+      const chosen = remapId(folder.chosenId);
+      return {
+        ...folder,
+        trackIds,
+        chosenId: trackIds.includes(chosen) ? chosen : trackIds[0]!,
+      };
+    })
+    .filter((folder): folder is AlbumVersionFolder => folder != null));
+
+  const nested = new Set(versionFolders.flatMap((folder) => folder.trackIds));
+  const folderById = new Map(versionFolders.map((folder) => [folder.id, folder]));
+  const sepIds = new Set((album.separators ?? []).map((item) => item.id));
+  const nextIds: string[] = [];
+  const seen = new Set<string>();
+
+  for (const id of album.trackIds) {
+    if (isSeparatorId(id)) {
+      if (sepIds.has(id) && !seen.has(id)) {
+        seen.add(id);
+        nextIds.push(id);
+      }
+      continue;
+    }
+    if (isVersionFolderId(id)) {
+      if (folderById.has(id) && !seen.has(id)) {
+        seen.add(id);
+        nextIds.push(id);
+      }
+      continue;
+    }
+    const remapped = remapId(id);
+    if (!keep.has(remapped) || seen.has(remapped) || nested.has(remapped)) {
+      continue;
+    }
+    seen.add(remapped);
+    nextIds.push(remapped);
+  }
+
+  // Folders that still have takes but lost their ver-* slot (old collapse bug).
+  for (const folder of versionFolders) {
+    if (seen.has(folder.id)) {
+      continue;
+    }
+    for (let i = nextIds.length - 1; i >= 0; i -= 1) {
+      if (folder.trackIds.includes(nextIds[i]!)) {
+        nextIds.splice(i, 1);
+      }
+    }
+    nextIds.push(folder.id);
+    seen.add(folder.id);
+  }
+
+  return {
+    ...album,
+    trackIds: nextIds,
+    versionFolders: versionFolders.length > 0 ? versionFolders : undefined,
   };
 }
 

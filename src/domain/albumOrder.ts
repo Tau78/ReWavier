@@ -172,11 +172,24 @@ export function remoteAlbumOrderHasLayout(parsed: AlbumOrderFile | null | undefi
   return parsed.files.length > 0;
 }
 
-export function localAlbumHasBandLayout(album: Pick<Album, 'orderUpdatedAt' | 'versionFolders' | 'separators'>): boolean {
-  if ((album.versionFolders ?? []).length > 0 || (album.separators ?? []).length > 0) {
+export function localAlbumHasBandLayout(
+  album: Pick<Album, 'orderUpdatedAt' | 'versionFolders' | 'separators' | 'trackIds'>,
+): boolean {
+  if (localAlbumHasLinkedFolders(album)) {
     return true;
   }
   return (album.orderUpdatedAt ?? 0) > 0;
+}
+
+/** Version folders / separators that still appear in the album list (not orphaned). */
+export function localAlbumHasLinkedFolders(
+  album: Pick<Album, 'trackIds' | 'versionFolders' | 'separators'>,
+): boolean {
+  const ids = new Set(album.trackIds);
+  if ((album.versionFolders ?? []).some((folder) => ids.has(folder.id))) {
+    return true;
+  }
+  return (album.separators ?? []).some((item) => ids.has(item.id));
 }
 
 /**
@@ -184,7 +197,7 @@ export function localAlbumHasBandLayout(album: Pick<Album, 'orderUpdatedAt' | 'v
  * Also re-apply when remote is newer, or when remote has folders local still lacks.
  */
 export function shouldApplyRemoteAlbumOrder(
-  local: Pick<Album, 'orderUpdatedAt' | 'versionFolders' | 'separators'>,
+  local: Pick<Album, 'orderUpdatedAt' | 'versionFolders' | 'separators' | 'trackIds'>,
   remote: AlbumOrderFile,
 ): boolean {
   if (!remoteAlbumOrderHasLayout(remote)) {
@@ -200,9 +213,8 @@ export function shouldApplyRemoteAlbumOrder(
   const remoteHasFolders = (remote.items ?? []).some(
     (item) => item.kind === 'folder' || item.kind === 'separator',
   );
-  const localHasFolders =
-    (local.versionFolders ?? []).length > 0 || (local.separators ?? []).length > 0;
-  return remoteHasFolders && !localHasFolders;
+  // Orphaned versionFolders (data without ver-* in trackIds) must not block inherit.
+  return remoteHasFolders && !localAlbumHasLinkedFolders(local);
 }
 
 /**
@@ -232,9 +244,7 @@ export function shouldPushLocalAlbumOrder(
   const remoteHasFolders = (remote.items ?? []).some(
     (item) => item.kind === 'folder' || item.kind === 'separator',
   );
-  const localHasFolders =
-    (local.versionFolders ?? []).length > 0 || (local.separators ?? []).length > 0;
-  if (remoteHasFolders && !localHasFolders) {
+  if (remoteHasFolders && !localAlbumHasLinkedFolders(local)) {
     return false;
   }
   return true;

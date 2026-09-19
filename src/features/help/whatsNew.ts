@@ -107,6 +107,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         body: 'Metti insieme le versioni di un brano o cambi l’ordine: resta in un file nascosto su Drive. Chi apre l’album lo riceve; al primo ingresso non si resetta.',
       },
       {
+        title: 'Cartelle versioni di nuovo',
+        body: 'Le cartelle di file nell’album restano chiuse insieme. Non si aprono più in tanti brani uguali dopo un aggiornamento.',
+      },
+      {
         title: 'Album più compatto',
         body: 'Il nome sta in alto. Sotto la copertina restano l’ordine A→Z e quante tracce ci sono, poi la lista. Sulle righe non si ripete il nome dell’album.',
       },
