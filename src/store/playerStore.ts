@@ -1019,6 +1019,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   },
 
   loadTrack(track, markers = [], queueIds, options) {
+    const previousId = get().track.id;
     // Stop previous native audio immediately — before async loadChain / before
     // clearing usingFile — so track switch does not leave ghost playback.
     pauseEngines(get());
@@ -1066,6 +1067,12 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
       dockExpanded: true,
       resumeKey: resumeKey ?? null,
     });
+
+    if (previousId && previousId !== track.id) {
+      void import('../cloud/syncEngine').then((mod) => {
+        void mod.applyPendingRemoteAudioUpdates([previousId]);
+      });
+    }
 
     if (uri) {
       // Peaks after interactions so tap → play stays responsive (esp. after Drive replace).

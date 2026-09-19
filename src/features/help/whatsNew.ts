@@ -118,6 +118,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Trascina più chiaro',
         body: 'Nell’album, se sposti un brano vedi “Sposta qui”. Sopra un altro: “Crea cartella”. Sopra una cartella (anche chiusa): “Metti nella cartella”. Due cartelle: “Unisci cartelle”.',
       },
+      {
+        title: 'Mix nuovo da Drive',
+        body: 'Se sostituisci un brano su Drive, ReWavier se ne accorge e lo scarica da solo. Gli appunti del mix vecchio si nascondono; sul nuovo puoi scriverne altri.',
+      },
     ],
   },
 ];

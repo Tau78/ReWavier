@@ -17,8 +17,10 @@ export type Track = {
   remoteModifiedAt?: string;
   remoteSize?: number;
   remoteHash?: string;
-  /** Drive has a newer file; keep the local copy until the user updates. */
+  /** Drive has a newer file; download in background, swap when not playing. */
   pendingRemoteUpdate?: boolean;
+  /** Marker ids to hide when that newer file lands (notes from the old mix). */
+  pendingHideMarkerIds?: string[];
   startMs?: number;
   endMs?: number;
   exerciseOpenId?: string;

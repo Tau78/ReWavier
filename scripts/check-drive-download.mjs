@@ -25,6 +25,10 @@ assert.match(downloads, /safeTempFileName/);
 
 assert.match(syncEngine, /One bad name \/ 403 \/ large file must not abort/);
 assert.match(syncEngine, /pendingRemoteUpdate === true/);
+assert.match(syncEngine, /applyPendingRemoteAudioUpdates/);
+assert.match(syncEngine, /byte cambiati si scaricano in background/);
+assert.match(libraryStore, /quiet === true/);
+assert.match(libraryStore, /keepMarkerIdsAfterRemoteReplace/);
 
 assert.match(libraryStore, /one bad file does not leave the rest of the album stale/);
 

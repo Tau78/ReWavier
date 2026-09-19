@@ -160,6 +160,14 @@ function remoteAudioChanged(track, remote) {
 }
 
 
+function keepMarkerIdsAfterRemoteReplace(markers, pendingHideMarkerIds) {
+  if (!pendingHideMarkerIds) {
+    return [];
+  }
+  const hide = new Set(pendingHideMarkerIds);
+  return markers.filter((marker) => !hide.has(marker.id)).map((marker) => marker.id);
+}
+
 function remoteReplacesLocalTrack(track, remote, remotes) {
   if (!track.driveFileId || track.driveFileId === remote.id) {
     return false;
@@ -354,5 +362,13 @@ assert.equal(remoteIsClaimed((() => {
   claimRemote(set, { id: 'd1', name: 'Room Pt.1 01.mp3' });
   return set;
 })(), { id: 'd2', name: 'Room Pt.1 02.mp3' }), false);
+
+// Old notes hide; notes added after the change stay
+assert.deepEqual(
+  keepMarkerIdsAfterRemoteReplace([{ id: 'old' }, { id: 'fresh' }], ['old']),
+  ['fresh'],
+);
+assert.deepEqual(keepMarkerIdsAfterRemoteReplace([{ id: 'old' }], undefined), []);
+assert.deepEqual(keepMarkerIdsAfterRemoteReplace([{ id: 'fresh' }], []), ['fresh']);
 
 console.log('ok remote audio change prefers hash/size; missing remotes are pruned; names match across encoding');

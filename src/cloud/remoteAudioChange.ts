@@ -186,3 +186,18 @@ export function remoteReplacesLocalTrack(
   }
   return !remotes.some((item) => item.id === track.driveFileId);
 }
+
+/**
+ * After a Drive byte-replace, hide the notes that existed when the change was
+ * seen. Notes added later stay visible. Missing snapshot → hide all current.
+ */
+export function keepMarkerIdsAfterRemoteReplace(
+  markers: readonly { id: string }[],
+  pendingHideMarkerIds?: readonly string[],
+): string[] {
+  if (!pendingHideMarkerIds) {
+    return [];
+  }
+  const hide = new Set(pendingHideMarkerIds);
+  return markers.filter((marker) => !hide.has(marker.id)).map((marker) => marker.id);
+}

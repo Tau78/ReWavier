@@ -62,11 +62,12 @@ import {
   uploadDriveFile,
   type DriveFile,
 } from './driveApi';
-import { mergeMarkers } from './mergeNotes';
+import { applyKeepFlags, mergeMarkers } from './mergeNotes';
 import {
   claimRemote,
   createRemoteClaimSet,
   findBestLocalForRemote,
+  keepMarkerIdsAfterRemoteReplace,
   remoteAudioChanged,
   remoteIsClaimed,
   remoteReplacesLocalTrack,
@@ -174,7 +175,41 @@ export type DriveAlbumPeek = {
   changedTrackIds: string[];
 };
 
-/** Elenca Drive senza scaricare: brani nuovi o versioni cambiate. */
+/** Newer Drive bytes: download in background. Skip the track currently playing. */
+export async function applyPendingRemoteAudioUpdates(trackIds?: string[]): Promise<number> {
+  const store = useLibraryStore.getState();
+  const playingId = usePlayerStore.getState().track.id;
+  const wanted = trackIds ? new Set(trackIds) : null;
+  const candidates = store.tracks.filter((track) => {
+    if (track.pendingRemoteUpdate !== true) {
+      return false;
+    }
+    if (wanted && !wanted.has(track.id)) {
+      return false;
+    }
+    if (track.id === playingId) {
+      return false;
+    }
+    if (store.downloadingIds[track.id] != null) {
+      return false;
+    }
+    return Boolean(track.driveFileId || track.remoteUri);
+  });
+  let applied = 0;
+  for (const track of candidates) {
+    try {
+      await useLibraryStore.getState().downloadTrack(track.id, { replace: true, quiet: true });
+      if (useLibraryStore.getState().getTrack(track.id)?.pendingRemoteUpdate !== true) {
+        applied += 1;
+      }
+    } catch {
+      // One file must not block the others.
+    }
+  }
+  return applied;
+}
+
+/** Elenca Drive: brani nuovi restano da Aggiorna; i byte cambiati si scaricano in background. */
 export async function peekDriveAlbum(albumId: string): Promise<DriveAlbumPeek> {
   const empty: DriveAlbumPeek = { newRemoteCount: 0, changedTrackIds: [] };
   const album = useLibraryStore.getState().albums.find((item) => item.id === albumId);
@@ -244,6 +279,23 @@ export async function peekDriveAlbum(albumId: string): Promise<DriveAlbumPeek> {
     changedTrackIds,
   }));
   await flushLibraryPersist();
+  const pendingIds = [
+    ...new Set([
+      ...changedTrackIds,
+      ...locals.filter((track) => track.pendingRemoteUpdate === true).map((track) => track.id),
+    ]),
+  ];
+  if (pendingIds.length > 0) {
+    void applyPendingRemoteAudioUpdates(pendingIds).then(() => {
+      const stillPending = pendingIds.filter(
+        (trackId) => useLibraryStore.getState().getTrack(trackId)?.pendingRemoteUpdate === true,
+      );
+      useDownloadProgressStore.getState().setDriveNews(
+        albumId,
+        drivePeekNewsCount({ newRemoteCount, changedTrackIds: stillPending }),
+      );
+    });
+  }
   return { newRemoteCount, changedTrackIds };
 }
 
@@ -518,8 +570,7 @@ async function syncOneDriveAlbum(
       store.updateTrackRemote(existing.id, metaFrom(remote));
       continue;
     }
-    // Keep the file on the phone until the user taps Aggiorna — replacing it
-    // while it is playing can freeze the app.
+    // Mark, then download in background. Do not swap while this track is playing.
     store.markTrackNeedsUpdate(existing.id, metaFrom(remote));
     versioned += 1;
   }
@@ -557,6 +608,7 @@ async function syncOneDriveAlbum(
   if (options?.extras === false) {
     store.touchAlbumSync(album.id);
     await refreshAlbumDriveRole(album.id);
+    void applyPendingRemoteAudioUpdates();
     return { added, removed, versioned, notesPulled, needsFolderLink: false, aborted: false };
   }
 
@@ -717,6 +769,8 @@ async function syncOneDriveAlbum(
 
   store.touchAlbumSync(album.id);
   await refreshAlbumDriveRole(album.id);
+
+  void applyPendingRemoteAudioUpdates();
 
   return { added, removed, versioned, notesPulled, needsFolderLink: false, aborted: false };
 }
@@ -1494,7 +1548,14 @@ async function importAudiosInFolder(
       if (!isDownloaded(existing) || existing.pendingRemoteUpdate === true) {
         try {
           const fileUri = await saveAudio(remote, existing.id, false);
-          const markers = store.markersByTrackId[existing.id] ?? [];
+          const beforeMarkers = store.markersByTrackId[existing.id] ?? [];
+          const markers =
+            existing.pendingRemoteUpdate === true
+              ? applyKeepFlags(
+                  beforeMarkers,
+                  keepMarkerIdsAfterRemoteReplace(beforeMarkers, existing.pendingHideMarkerIds),
+                )
+              : beforeMarkers;
           store.importBundles(
             [
               {
@@ -1504,6 +1565,7 @@ async function importAudiosInFolder(
                   downloaded: true,
                   downloadedAt: Date.now(),
                   pendingRemoteUpdate: undefined,
+                  pendingHideMarkerIds: undefined,
                   ...metaFrom(remote),
                 },
                 markers,

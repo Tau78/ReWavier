@@ -71,6 +71,7 @@ import {
   reconcileTrack,
   removeUri,
 } from '../files/downloads';
+import { keepMarkerIdsAfterRemoteReplace } from '../cloud/remoteAudioChange';
 import { audioMatchKey, sourceFileNameFromTitle } from '../domain/sidecar';
 import { writeSidecarToLibrary, removeSidecarFromLibrary, type ImportedBundle } from '../files/libraryFiles';
 import { userHasUsage } from '../domain/session';
@@ -165,7 +166,7 @@ export type LibraryActions = {
   ) => void;
   addTracksToAlbum: (albumId: string, trackIds: string[]) => void;
   replaceTrackFile: (trackId: string, fileUri: string, keepMarkerIds: string[]) => void;
-  downloadTrack: (trackId: string, options?: { replace?: boolean }) => Promise<void>;
+  downloadTrack: (trackId: string, options?: { replace?: boolean; quiet?: boolean }) => Promise<void>;
   removeDownload: (trackId: string) => Promise<void>;
   downloadAlbum: (albumId: string) => Promise<void>;
   downloadCollection: (
@@ -531,9 +532,18 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
 
   markTrackNeedsUpdate(trackId, meta) {
     set((state) => ({
-      tracks: state.tracks.map((track) =>
-        track.id === trackId ? { ...track, ...meta, pendingRemoteUpdate: true } : track,
-      ),
+      tracks: state.tracks.map((track) => {
+        if (track.id !== trackId) {
+          return track;
+        }
+        return {
+          ...track,
+          ...meta,
+          pendingRemoteUpdate: true,
+          pendingHideMarkerIds:
+            track.pendingHideMarkerIds ?? (state.markersByTrackId[trackId] ?? []).map((marker) => marker.id),
+        };
+      }),
     }));
   },
 
@@ -1244,17 +1254,25 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
       return;
     }
     const replace = options?.replace === true || track.pendingRemoteUpdate === true;
+    if (replace && track.pendingRemoteUpdate !== true && isDownloaded(track)) {
+      return;
+    }
     if (!replace && isDownloaded(track)) {
       return;
     }
     // Only unload when swapping the file. Background / first-time cache must not
     // kill playback started by openTrack (streaming continues until next load).
     if (replace) {
+      const { usePlayerStore } = await import('./playerStore');
+      if (usePlayerStore.getState().track.id === trackId) {
+        return;
+      }
       const { releaseTrackFromPlayer } = await import('./playerStore');
       await releaseTrackFromPlayer(trackId);
     }
     const progress = useDownloadProgressStore.getState();
-    const ownsSession = !progress.active;
+    const quiet = options?.quiet === true;
+    const ownsSession = !quiet && !progress.active;
     if (ownsSession) {
       progress.beginCollection([trackId]);
     }
@@ -1288,13 +1306,19 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         track.sourceFileName ?? `${track.title}.m4a`,
       );
       if (replace) {
-        get().replaceTrackFile(trackId, fileUri, []);
+        const keepIds = keepMarkerIdsAfterRemoteReplace(
+          get().markersByTrackId[trackId] ?? [],
+          track.pendingHideMarkerIds,
+        );
+        get().replaceTrackFile(trackId, fileUri, keepIds);
         set((state) => {
           const { [trackId]: _, ...rest } = state.downloadingIds;
           return {
             downloadingIds: rest,
             tracks: state.tracks.map((item) =>
-              item.id === trackId ? { ...item, pendingRemoteUpdate: undefined } : item,
+              item.id === trackId
+                ? { ...item, pendingRemoteUpdate: undefined, pendingHideMarkerIds: undefined }
+                : item,
             ),
           };
         });
@@ -1320,7 +1344,14 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
             downloadingIds: rest,
             tracks: state.tracks.map((item) =>
               item.id === trackId
-                ? { ...item, fileUri, downloaded: true, downloadedAt: Date.now(), pendingRemoteUpdate: undefined }
+                ? {
+                    ...item,
+                    fileUri,
+                    downloaded: true,
+                    downloadedAt: Date.now(),
+                    pendingRemoteUpdate: undefined,
+                    pendingHideMarkerIds: undefined,
+                  }
                 : item,
             ),
           };
