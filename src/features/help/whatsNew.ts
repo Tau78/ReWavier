@@ -122,6 +122,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Mix nuovo da Drive',
         body: 'Se sostituisci un brano su Drive, ReWavier se ne accorge e lo scarica da solo. Gli appunti del mix vecchio si nascondono; sul nuovo puoi scriverne altri.',
       },
+      {
+        title: 'Elimina un appunto',
+        body: 'Tieni premuto un appunto sull’onda, o aprilo: c’è Elimina. Lo togli del tutto, non solo lo nascondi.',
+      },
     ],
   },
 ];

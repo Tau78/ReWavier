@@ -715,6 +715,7 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
   const setPracticeHole = usePlayerStore((s) => s.setPracticeHole);
   const clearExercise = usePlayerStore((s) => s.clearExercise);
   const clearPracticeHole = usePlayerStore((s) => s.clearPracticeHole);
+  const deleteMarker = usePlayerStore((s) => s.deleteMarker);
   const [menuMarkerId, setMenuMarkerId] = useState<string | null>(null);
   const [detailPage, setDetailPage] = useState<DetailCarouselPage>('detail');
   const [slotWidth, setSlotWidth] = useState(0);
@@ -1359,6 +1360,11 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
                 {
                   label: 'Apri appunto',
                   onPress: () => openMarker(menuMarker.id),
+                },
+                {
+                  label: 'Elimina appunto',
+                  danger: true,
+                  onPress: () => deleteMarker(menuMarker.id),
                 },
               ]
             : []

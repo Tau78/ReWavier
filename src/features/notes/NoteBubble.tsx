@@ -331,7 +331,7 @@ export function NoteBubble() {
                 </Pressable>
 
                 <View style={styles.actionsRight}>
-                  {isEditing && !readOnly && !chatView ? (
+                  {isEditing && !readOnly ? (
                     <Pressable
                       onPress={() => {
                         if (bubble.markerId) {
@@ -347,7 +347,7 @@ export function NoteBubble() {
                     </Pressable>
                   ) : null}
 
-                  {isEditing && !readOnly && !chatView ? (
+                  {isEditing && !readOnly ? (
                     <Pressable
                       onPress={onDelete}
                       hitSlop={layout.hitSlop}

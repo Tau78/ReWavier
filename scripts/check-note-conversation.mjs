@@ -75,7 +75,12 @@ assert.match(bubble, /canShowNoteReply/);
 assert.match(bubble, /chatView/);
 assert.match(bubble, /startReply/);
 assert.match(bubble, /Scrivi la tua risposta/);
+assert.match(bubble, /Elimina appunto/);
+assert.doesNotMatch(bubble, /!readOnly && !chatView/);
 assert.doesNotMatch(bubble, /Stesso momento/);
+
+const waveform = readFileSync(join(root, 'src/features/player/Waveform.tsx'), 'utf8');
+assert.match(waveform, /Elimina appunto/);
 
 const store = readFileSync(join(root, 'src/store/playerStore.ts'), 'utf8');
 assert.match(store, /captureResumeAfterBubble/);
