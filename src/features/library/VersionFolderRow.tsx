@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { AlbumVersionFolder } from '../../domain/library';
+import type { NoteAuthorDot } from '../../domain/markers';
 import type { Track } from '../../domain/models';
 import { colors } from '../../theme/colors';
 import { TrackRow } from './TrackRow';
@@ -10,7 +11,7 @@ export function VersionFolderRow({
   tracks,
   open,
   playerTrackId,
-  noteCountOf,
+  noteAuthorsOf,
   downloadingOf,
   blockedOf,
   embedChildren = true,
@@ -26,7 +27,7 @@ export function VersionFolderRow({
   tracks: Track[];
   open: boolean;
   playerTrackId?: string;
-  noteCountOf: (trackId: string) => number;
+  noteAuthorsOf: (trackId: string) => NoteAuthorDot[];
   downloadingOf: (trackId: string) => boolean;
   blockedOf?: (trackId: string) => boolean;
   /** When false, children are separate reorderable rows in the parent list. */
@@ -93,7 +94,7 @@ export function VersionFolderRow({
                 track={track}
                 hideArtist
                 active={track.id === playerTrackId || track.id === folder.chosenId}
-                noteCount={noteCountOf(track.id)}
+                noteAuthors={noteAuthorsOf(track.id)}
                 downloading={downloadingOf(track.id)}
                 blocked={blockedOf?.(track.id) === true}
                 swipeEnabled={swipeEnabled}

@@ -130,6 +130,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Un titolo sull’appunto',
         body: 'Sull’appunto, Conversazione sta solo in alto. Non si ripete sopra il messaggio.',
       },
+      {
+        title: 'Chi ha scritto',
+        body: 'Nella lista, al posto del numero di appunti vedi i pallini del colore di chi ha scritto.',
+      },
     ],
   },
 ];

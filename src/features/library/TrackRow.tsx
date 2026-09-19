@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { isDownloaded } from '../../domain/audioFormats';
+import type { NoteAuthorDot } from '../../domain/markers';
 import { formatTimecode, type Track } from '../../domain/models';
 import { fileCreatedAtMs, formatFileCreatedAt } from '../../files/fileCreatedAt';
 import { resolveLibraryUri } from '../../files/libraryUris';
@@ -11,9 +12,30 @@ import { SwipeableRow } from './SwipeableRow';
 
 type MetaMode = 'duration' | 'created';
 
+const MAX_AUTHOR_DOTS = 4;
+const DOT_SIZE = 12;
+const DOT_OVERLAP = 5;
+
+function authorDotsLabel(authors: NoteAuthorDot[]): string {
+  if (authors.length === 0) {
+    return 'Nessun appunto';
+  }
+  if (authors.length === 1) {
+    return `Appunti di ${authors[0]!.name}`;
+  }
+  if (authors.length === 2) {
+    return `Appunti di ${authors[0]!.name} e ${authors[1]!.name}`;
+  }
+  const shown = authors
+    .slice(0, 2)
+    .map((author) => author.name)
+    .join(', ');
+  return `Appunti di ${shown} e altri`;
+}
+
 export function TrackRow({
   track,
-  noteCount,
+  noteAuthors,
   downloading,
   blocked,
   active,
@@ -27,7 +49,7 @@ export function TrackRow({
   hideArtist = false,
 }: {
   track: Track;
-  noteCount: number;
+  noteAuthors: NoteAuthorDot[];
   downloading?: boolean;
   blocked?: boolean;
   active?: boolean;
@@ -56,6 +78,8 @@ export function TrackRow({
     return ms != null ? formatFileCreatedAt(ms) : null;
   }, [track.id, track.fileUri, track.inboxUri, track.downloadedAt, track.sourceFileName, track.remoteUri]);
   const showCreated = metaMode === 'created' && createdLabel != null;
+  const visibleAuthors = noteAuthors.slice(0, MAX_AUTHOR_DOTS);
+  const extraAuthors = noteAuthors.length - visibleAuthors.length;
 
   useEffect(() => {
     setMetaMode('duration');
@@ -143,9 +167,37 @@ export function TrackRow({
                 {track.artist}
               </Text>
             )}
-            <Text style={styles.notes} numberOfLines={1}>
-              {noteCount === 0 ? 'Nessun appunto' : `${noteCount} appunti`}
-            </Text>
+            {noteAuthors.length === 0 ? (
+              <Text style={styles.notes} numberOfLines={1}>
+                Nessun appunto
+              </Text>
+            ) : (
+              <View
+                style={styles.authorDots}
+                accessible
+                accessibilityRole="text"
+                accessibilityLabel={authorDotsLabel(noteAuthors)}
+              >
+                {visibleAuthors.map((author, index) => (
+                  <View
+                    key={author.key}
+                    style={[
+                      styles.authorDot,
+                      {
+                        backgroundColor: author.color,
+                        marginLeft: index === 0 ? 0 : -DOT_OVERLAP,
+                        zIndex: visibleAuthors.length - index,
+                      },
+                    ]}
+                  />
+                ))}
+                {extraAuthors > 0 ? (
+                  <Text style={styles.authorMore} importantForAccessibility="no">
+                    +{extraAuthors}
+                  </Text>
+                ) : null}
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -270,6 +322,24 @@ const styles = StyleSheet.create({
     color: colors.accent,
     fontSize: 11,
     fontWeight: '600',
+  },
+  authorDots: {
+    flexShrink: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  authorDot: {
+    width: DOT_SIZE,
+    height: DOT_SIZE,
+    borderRadius: DOT_SIZE / 2,
+    borderWidth: 1.5,
+    borderColor: colors.background,
+  },
+  authorMore: {
+    marginLeft: 3,
+    color: colors.textMuted,
+    fontSize: 10,
+    fontWeight: '700',
   },
   download: {
     width: 36,
