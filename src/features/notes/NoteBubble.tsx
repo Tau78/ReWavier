@@ -203,9 +203,9 @@ export function NoteBubble() {
 
               {threadItems.length > 0 ? (
                 <View style={styles.thread} accessibilityLabel="Conversazione su questo momento">
-                  <Text style={styles.threadTitle}>
-                    {conversation.length === 1 ? 'Conversazione' : `${conversation.length} messaggi`}
-                  </Text>
+                  {conversation.length > 1 ? (
+                    <Text style={styles.threadTitle}>{`${conversation.length} messaggi`}</Text>
+                  ) : null}
                   <ScrollView
                     style={threadItems.length > THREAD_VISIBLE_ROWS ? styles.threadList : undefined}
                     contentContainerStyle={styles.threadRows}

@@ -126,6 +126,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Elimina un appunto',
         body: 'Tieni premuto un appunto sull’onda, o aprilo: c’è Elimina. Lo togli del tutto, non solo lo nascondi.',
       },
+      {
+        title: 'Un titolo sull’appunto',
+        body: 'Sull’appunto, Conversazione sta solo in alto. Non si ripete sopra il messaggio.',
+      },
     ],
   },
 ];

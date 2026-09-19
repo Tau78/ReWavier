@@ -77,6 +77,8 @@ assert.match(bubble, /startReply/);
 assert.match(bubble, /Scrivi la tua risposta/);
 assert.match(bubble, /Elimina appunto/);
 assert.doesNotMatch(bubble, /!readOnly && !chatView/);
+assert.doesNotMatch(bubble, /conversation.length === 1 \? 'Conversazione'/);
+assert.match(bubble, /conversation.length > 1/);
 assert.doesNotMatch(bubble, /Stesso momento/);
 
 const waveform = readFileSync(join(root, 'src/features/player/Waveform.tsx'), 'utf8');
