@@ -48,11 +48,13 @@ export function VersionFolderRow({
     <View>
       <Pressable
         onPress={onToggle}
-        onLongPress={onPlayChosen}
-        delayLongPress={280}
         style={({ pressed }) => [styles.header, pressed && styles.pressed]}
         accessibilityRole="button"
-        accessibilityLabel={open ? `Nascondi versioni di ${folder.name}` : `Mostra versioni di ${folder.name}`}
+        accessibilityLabel={
+          open
+            ? `Nascondi versioni di ${folder.name}`
+            : `Mostra versioni di ${folder.name}. Tieni premuto per spostare la cartella.`
+        }
         accessibilityState={{ expanded: open }}
       >
         <Text style={styles.stack} importantForAccessibility="no">
