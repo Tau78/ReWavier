@@ -23,6 +23,30 @@ export function markerColor(marker: Marker): string {
   return marker.color || colors.marker;
 }
 
+/** One swatch per unique note author (most recently active first). */
+export type NoteAuthorDot = {
+  key: string;
+  color: string;
+  name: string;
+};
+
+export function noteAuthorDots(markers: Marker[]): NoteAuthorDot[] {
+  const sorted = [...visibleMarkers(markers)].sort((a, b) => b.updatedAt - a.updatedAt);
+  const byKey = new Map<string, NoteAuthorDot>();
+  for (const marker of sorted) {
+    const key = marker.authorId?.trim() || marker.authorName?.trim() || 'self';
+    if (byKey.has(key)) {
+      continue;
+    }
+    byKey.set(key, {
+      key,
+      color: markerColor(marker),
+      name: markerAuthorLabel(marker),
+    });
+  }
+  return [...byKey.values()];
+}
+
 export function isMarkerHidden(marker: Marker): boolean {
   return marker.hidden === true;
 }

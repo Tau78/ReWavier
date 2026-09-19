@@ -32,6 +32,7 @@ import {
 import type { Album, AlbumVersionFolder, CollectionKind } from '../../domain/library';
 import { collectionResumeKey } from '../../domain/playbackResume';
 import { isSeparatorId, isVersionFolderId } from '../../domain/library';
+import { noteAuthorDots } from '../../domain/markers';
 import type { Track } from '../../domain/models';
 import { recoverAudioRelative } from '../../files/libraryUris';
 import { hydratePlaybackPersist } from '../../files/playbackPersist';
@@ -821,9 +822,7 @@ export function CollectionScreen() {
                     embedChildren={false}
                     swipeEnabled={!dragging}
                     playerTrackId={playerTrackId}
-                    noteCountOf={(trackId) =>
-                      (markersByTrackId[trackId] ?? []).filter((marker) => marker.hidden !== true).length
-                    }
+                    noteAuthorsOf={(trackId) => noteAuthorDots(markersByTrackId[trackId] ?? [])}
                     downloadingOf={(trackId) => downloadingIds[trackId] != null}
                     blockedOf={(trackId) => blockedIds.has(trackId)}
                     onToggle={() =>
@@ -875,10 +874,7 @@ export function CollectionScreen() {
                         item.track.id === playerTrackId ||
                         versionFolderById(album!, item.folderId)?.chosenId === item.track.id
                       }
-                      noteCount={
-                        (markersByTrackId[item.track.id] ?? []).filter((marker) => marker.hidden !== true)
-                          .length
-                      }
+                      noteAuthors={noteAuthorDots(markersByTrackId[item.track.id] ?? [])}
                       downloading={downloadingIds[item.track.id] != null}
                       blocked={blockedIds.has(item.track.id)}
                       swipeEnabled={!dragging}
@@ -920,10 +916,7 @@ export function CollectionScreen() {
                     track={item.track}
                     hideArtist={kind === 'album'}
                     active={item.track.id === playerTrackId}
-                    noteCount={
-                      (markersByTrackId[item.track.id] ?? []).filter((marker) => marker.hidden !== true)
-                        .length
-                    }
+                    noteAuthors={noteAuthorDots(markersByTrackId[item.track.id] ?? [])}
                     downloading={downloadingIds[item.track.id] != null}
                     blocked={blockedIds.has(item.track.id)}
                     swipeEnabled={!dragging}

@@ -5,6 +5,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { RootStackParamList } from '../../navigation/types';
+import { noteAuthorDots } from '../../domain/markers';
 import { useLibraryStore } from '../../store/libraryStore';
 import { colors, DeepBackdrop, GlassCard, layout } from '../../theme';
 import { EmptyGraphic } from '../../theme/graphics';
@@ -86,10 +87,7 @@ export function LibraryScreen() {
                 <TrackRow
                   key={track.id}
                   track={track}
-                  noteCount={
-                    (markersByTrackId[track.id] ?? []).filter((marker) => marker.hidden !== true)
-                      .length
-                  }
+                  noteAuthors={noteAuthorDots(markersByTrackId[track.id] ?? [])}
                   downloading={downloadingIds[track.id] != null}
                   onPress={() => play(track.id)}
                   onArtwork={() => actions.pickTrackArtwork(track)}

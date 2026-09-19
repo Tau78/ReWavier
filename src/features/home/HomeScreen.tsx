@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { canWriteWithRole, FOLDER_READ_ONLY_MESSAGE } from '../../domain/folderRole';
 import { albumTrackCount, type CollectionKind } from '../../domain/library';
+import { noteAuthorDots } from '../../domain/markers';
 import { resolveLibraryUri } from '../../files/libraryUris';
 import type { RootStackParamList } from '../../navigation/types';
 import { isDemoUser } from '../../auth/demoAccount';
@@ -541,10 +542,7 @@ export function HomeScreen() {
                   <TrackRow
                     track={track}
                     active={dragId === track.id}
-                    noteCount={
-                      (markersByTrackId[track.id] ?? []).filter((marker) => marker.hidden !== true)
-                        .length
-                    }
+                    noteAuthors={noteAuthorDots(markersByTrackId[track.id] ?? [])}
                     downloading={downloadingIds[track.id] != null}
                     swipeEnabled={dragId == null}
                     onPress={() => play(track.id)}
