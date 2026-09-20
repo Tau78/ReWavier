@@ -11,4 +11,13 @@ assert.match(src, /\.maxPointers\(1\)/);
 assert.match(src, /pinchActive/);
 assert.doesNotMatch(src, /Gesture\.Simultaneous\(pinch/);
 
-console.log('ok pinch zoom no seek');
+// Detail: scroll the off-screen tape; overview still scrubs.
+assert.match(src, /mode: 'scrub' \| 'scroll'/);
+assert.match(src, /'scroll'/);
+assert.match(src, /beginDetailScroll/);
+assert.match(src, /applyDetailViewStart/);
+assert.match(src, /followPlayheadRef/);
+assert.match(src, /playheadOutsideView/);
+assert.match(src, /Trascina per scorrere l’onda fuori schermo/);
+
+console.log('ok pinch zoom no seek; detail pan scrolls view');

@@ -186,6 +186,10 @@ function useWaveformGestures(
   setSpanMs: (ms: number) => void,
   minMs: number,
   maxMs: number,
+  mode: 'scrub' | 'scroll',
+  setViewStartMs?: (ms: number, spanForClamp?: number) => void,
+  onScrollBegin?: () => void,
+  onSeekFromTap?: () => void,
 ) {
   const startSpan = useRef(viewSpanMs);
   const spanRef = useRef(viewSpanMs);
@@ -194,13 +198,23 @@ function useWaveformGestures(
   const widthRef = useRef(width);
   const viewStartRef = useRef(viewStartMs);
   const scrubOrigin = useRef(0);
+  const scrollOriginStart = useRef(0);
   const scrubActive = useRef(false);
+  const scrollActive = useRef(false);
   const pinchActive = useRef(false);
+  const modeRef = useRef(mode);
+  const setViewStartRef = useRef(setViewStartMs);
+  const onScrollBeginRef = useRef(onScrollBegin);
+  const onSeekFromTapRef = useRef(onSeekFromTap);
   spanRef.current = viewSpanMs;
   minRef.current = minMs;
   maxRef.current = maxMs;
   widthRef.current = width;
   viewStartRef.current = viewStartMs;
+  modeRef.current = mode;
+  setViewStartRef.current = setViewStartMs;
+  onScrollBeginRef.current = onScrollBegin;
+  onSeekFromTapRef.current = onSeekFromTap;
 
   return useMemo(() => {
     const pinch = Gesture.Pinch()
@@ -211,7 +225,16 @@ function useWaveformGestures(
       })
       .onUpdate((event) => {
         const scale = event.scale > 0 ? event.scale : 1;
-        setSpanMs(Math.min(maxRef.current, Math.max(minRef.current, startSpan.current / scale)));
+        const nextSpan = Math.min(
+          maxRef.current,
+          Math.max(minRef.current, startSpan.current / scale),
+        );
+        // Keep the middle of the visible window under the fingers while zooming.
+        if (modeRef.current === 'scroll' && setViewStartRef.current) {
+          const center = viewStartRef.current + spanRef.current / 2;
+          setViewStartRef.current(center - nextSpan / 2, nextSpan);
+        }
+        setSpanMs(nextSpan);
       })
       .onFinalize(() => {
         pinchActive.current = false;
@@ -223,8 +246,14 @@ function useWaveformGestures(
       .activeOffsetX([-10, 10])
       .failOffsetY([-24, 24])
       .onStart(() => {
-        // Pinch zoom must not scrub — that seeks and makes audio skip.
+        // Pinch zoom must not scrub/scroll — that jumps the audio or the window.
         if (pinchActive.current) {
+          return;
+        }
+        if (modeRef.current === 'scroll') {
+          scrollOriginStart.current = viewStartRef.current;
+          scrollActive.current = true;
+          onScrollBeginRef.current?.();
           return;
         }
         scrubOrigin.current = usePlayerStore.getState().positionMs;
@@ -235,12 +264,24 @@ function useWaveformGestures(
         beginWaveformScrub();
       })
       .onUpdate((event) => {
-        if (pinchActive.current || !scrubActive.current || event.numberOfPointers > 1) {
+        if (pinchActive.current || event.numberOfPointers > 1) {
           return;
         }
         const w = widthRef.current;
         const span = spanRef.current;
         if (w <= 0 || span <= 0) {
+          return;
+        }
+        if (modeRef.current === 'scroll') {
+          if (!scrollActive.current || !setViewStartRef.current) {
+            return;
+          }
+          const maxStart = Math.max(0, maxRef.current - span);
+          const next = scrollOriginStart.current - (event.translationX / w) * span;
+          setViewStartRef.current(Math.max(0, Math.min(maxStart, next)));
+          return;
+        }
+        if (!scrubActive.current) {
           return;
         }
         const next = scrubOrigin.current - (event.translationX / w) * span;
@@ -249,6 +290,10 @@ function useWaveformGestures(
         scheduleScrubNativeSeek(next);
       })
       .onFinalize(() => {
+        if (scrollActive.current) {
+          scrollActive.current = false;
+          return;
+        }
         if (!scrubActive.current) {
           return;
         }
@@ -272,11 +317,29 @@ function useWaveformGestures(
         }
         const ratio = Math.max(0, Math.min(1, event.x / w));
         usePlayerStore.getState().seekTo(viewStartRef.current + ratio * span);
+        if (modeRef.current === 'scroll') {
+          onSeekFromTapRef.current?.();
+        }
       });
 
-    // Pinch first: zoom must not run together with scrub pan (audio skip).
+    // Pinch first: zoom must not run together with scrub/scroll pan.
     return Gesture.Exclusive(pinch, Gesture.Exclusive(pan, tap));
   }, [setSpanMs]);
+}
+
+/** Left edge of the detail window while following the playhead. */
+function followViewStartMs(positionMs: number, durationMs: number, windowMs: number): number {
+  return getTimeWindow(positionMs, durationMs, windowMs).startMs;
+}
+
+/** Resume follow when the playhead leaves the visible band (with a little margin). */
+function playheadOutsideView(
+  positionMs: number,
+  viewStartMs: number,
+  viewSpanMs: number,
+): boolean {
+  const margin = Math.min(400, viewSpanMs * 0.08);
+  return positionMs < viewStartMs - margin || positionMs > viewStartMs + viewSpanMs + margin;
 }
 
 function samplePeaks(
@@ -330,39 +393,6 @@ function tapeStartFor(
     return current;
   }
   return Math.max(0, Math.min(maxStart, positionMs - span / 2));
-}
-
-function playheadOffsetPx(
-  positionMs: number,
-  durationMs: number,
-  width: number,
-  windowMs: number,
-): number {
-  const scale = pxPerMs(width, durationMs, windowMs);
-  const half = width / 2;
-  if (durationMs <= windowMs) {
-    return positionMs * (width / Math.max(durationMs, 1));
-  }
-  if (positionMs * scale < half) {
-    return positionMs * scale;
-  }
-  if ((durationMs - positionMs) * scale < half) {
-    return width - (durationMs - positionMs) * scale;
-  }
-  return half;
-}
-
-function tapeTranslateX(
-  positionMs: number,
-  tapeStartMs: number,
-  durationMs: number,
-  width: number,
-  windowMs: number,
-): number {
-  return (
-    playheadOffsetPx(positionMs, durationMs, width, windowMs) -
-    (positionMs - tapeStartMs) * pxPerMs(width, durationMs, windowMs)
-  );
 }
 
 function PeakBars({
@@ -758,12 +788,16 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
   const [tapeStartMs, setTapeStartMs] = useState(0);
   const [detailWindowMs, setDetailWindowMs] = useState(DEFAULT_DETAIL_MS);
   const [overviewWindowMs, setOverviewWindowMs] = useState(Number.MAX_SAFE_INTEGER);
+  /** Left edge of the detail viewport (ms). Independent of playhead while scrolling. */
+  const [detailViewStartMs, setDetailViewStartMs] = useState(0);
+  const followPlayheadRef = useRef(true);
 
   const translateX = useRef(new Animated.Value(0)).current;
   const playheadX = useRef(new Animated.Value(0)).current;
   const playheadAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   const tapeStartRef = useRef(0);
   const lastDetailSpan = useRef(DEFAULT_DETAIL_MS);
+  const detailViewStartRef = useRef(0);
 
   const stopPlayheadAnim = () => {
     playheadAnimRef.current?.stop();
@@ -782,19 +816,42 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
   const holeSpan = holeMarker ? holeRangeForMarker(holeMarker, durationMs) : null;
   const menuMarker = markerById(markers, menuMarkerId ?? undefined);
   const window = useMemo(
-    () => getTimeWindow(positionMs, durationMs, detailSpan),
-    [positionMs, durationMs, detailSpan],
+    () => ({
+      startMs: detailViewStartMs,
+      endMs: Math.min(durationMs, detailViewStartMs + detailSpan),
+      spanMs: detailSpan,
+    }),
+    [detailViewStartMs, detailSpan, durationMs],
   );
   const overviewView = useMemo(
     () => getTimeWindow(positionMs, durationMs, overviewSpan),
     [positionMs, durationMs, overviewSpan],
   );
 
+  const applyDetailViewStart = (ms: number, spanForClamp?: number) => {
+    const span = spanForClamp ?? detailSpan;
+    const maxStart = Math.max(0, durationMs - span);
+    const next = Math.max(0, Math.min(maxStart, ms));
+    detailViewStartRef.current = next;
+    setDetailViewStartMs(next);
+  };
+
+  const beginDetailScroll = () => {
+    followPlayheadRef.current = false;
+  };
+
+  const resumeDetailFollow = () => {
+    followPlayheadRef.current = true;
+  };
+
   useEffect(() => {
     setDetailWindowMs(Math.min(DEFAULT_DETAIL_MS, Math.max(track.durationMs, 1)));
     setOverviewWindowMs(Number.MAX_SAFE_INTEGER);
     tapeStartRef.current = 0;
     setTapeStartMs(0);
+    followPlayheadRef.current = true;
+    detailViewStartRef.current = 0;
+    setDetailViewStartMs(0);
     setDetailPage('detail');
     detailPagerRef.current?.scrollTo({ x: 0, animated: false });
   }, [track.id]);
@@ -828,18 +885,59 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
     setOverviewWindowMs,
     MIN_WINDOW_MS,
     durationMs,
+    'scrub',
   );
   const detailGestures = useWaveformGestures(
     zoomWidth,
-    window.startMs,
-    window.spanMs,
+    detailViewStartMs,
+    detailSpan,
     setDetailWindowMs,
     MIN_WINDOW_MS,
     durationMs,
+    'scroll',
+    applyDetailViewStart,
+    beginDetailScroll,
+    resumeDetailFollow,
   );
 
+  // Follow playhead → keep the detail window glued to playback.
+  // After a manual scroll, stay put until the playhead leaves the band (or seek/tap).
   useEffect(() => {
-    const nextTape = tapeStartFor(positionMs, durationMs, tapeStartRef.current, detailSpan);
+    if (followPlayheadRef.current) {
+      const next = followViewStartMs(positionMs, durationMs, detailSpan);
+      if (next !== detailViewStartRef.current) {
+        detailViewStartRef.current = next;
+        setDetailViewStartMs(next);
+      }
+      return;
+    }
+    if (isPlaying && playheadOutsideView(positionMs, detailViewStartRef.current, detailSpan)) {
+      followPlayheadRef.current = true;
+      const next = followViewStartMs(positionMs, durationMs, detailSpan);
+      detailViewStartRef.current = next;
+      setDetailViewStartMs(next);
+    }
+  }, [positionMs, isPlaying, durationMs, detailSpan]);
+
+  // Clamp view start when zoom span changes (pinch).
+  useEffect(() => {
+    const maxStart = Math.max(0, durationMs - detailSpan);
+    if (detailViewStartRef.current > maxStart) {
+      detailViewStartRef.current = maxStart;
+      setDetailViewStartMs(maxStart);
+    }
+  }, [detailSpan, durationMs]);
+
+  useEffect(() => {
+    const viewStart = detailViewStartMs;
+    // Prefer a tape that covers the visible window; recenter when the view
+    // approaches the tape edges (same pad logic as playhead follow).
+    const nextTape = tapeStartFor(
+      viewStart + detailSpan / 2,
+      durationMs,
+      tapeStartRef.current,
+      detailSpan,
+    );
     const tapeChanged = nextTape !== tapeStartRef.current;
     const spanChanged = lastDetailSpan.current !== detailSpan;
     lastDetailSpan.current = detailSpan;
@@ -847,15 +945,15 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
       tapeStartRef.current = nextTape;
       setTapeStartMs(nextTape);
     }
-    if (zoomWidth <= 0) {
+    if (zoomWidth <= 0 || scale <= 0) {
       stopPlayheadAnim();
       return;
     }
-    const tx = tapeTranslateX(positionMs, nextTape, durationMs, zoomWidth, detailSpan);
-    const hx = playheadOffsetPx(positionMs, durationMs, zoomWidth, detailSpan) - PLAYHEAD_HALF;
-    // One in-flight timing only: positionMs arrives ~20Hz; stacking 52ms parallels freezes JS/native.
+    // Viewport left edge maps to viewStart; playhead is absolute on that ruler.
+    const tx = -(viewStart - nextTape) * scale;
+    const hx = (positionMs - viewStart) * scale - PLAYHEAD_HALF;
     stopPlayheadAnim();
-    if (isPlaying && !tapeChanged && !spanChanged) {
+    if (isPlaying && followPlayheadRef.current && !tapeChanged && !spanChanged) {
       const anim = Animated.parallel([
         Animated.timing(translateX, {
           toValue: tx,
@@ -880,7 +978,17 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
     }
     translateX.setValue(tx);
     playheadX.setValue(hx);
-  }, [positionMs, isPlaying, zoomWidth, durationMs, detailSpan, translateX, playheadX]);
+  }, [
+    positionMs,
+    isPlaying,
+    zoomWidth,
+    durationMs,
+    detailSpan,
+    detailViewStartMs,
+    scale,
+    translateX,
+    playheadX,
+  ]);
 
   useEffect(() => () => stopPlayheadAnim(), []);
 
@@ -953,7 +1061,7 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
           style={StyleSheet.absoluteFill}
           accessibilityRole="adjustable"
           accessibilityLabel="Forma d'onda ingrandita"
-          accessibilityHint="Trascina per scorrere. Tocca per andare a quel punto. Pizzica per ingrandire."
+          accessibilityHint="Trascina per scorrere l’onda fuori schermo. Tocca per andare a quel punto. Pizzica per ingrandire."
         >
           <Animated.View
             pointerEvents="box-none"

@@ -154,6 +154,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Cartella condivisa che resta',
         body: 'Su Android, se riapri l’app o la tiri fuori dallo sfondo, l’album da Drive della band resta. Non serve ricollegare la cartella ogni volta.',
       },
+      {
+        title: 'Scorri il dettaglio',
+        body: 'Sull’onda ingrandita: pizzica per zoom. Con un dito scorri a destra e sinistra per vedere il pezzo fuori schermo. Tocca per andare a quel punto.',
+      },
     ],
   },
 ];
