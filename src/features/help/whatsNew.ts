@@ -150,6 +150,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Ascolto più stabile su Android',
         body: 'Meno chiusure improvvise quando cambi brano o scarichi da Drive, anche con nomi file strani.',
       },
+      {
+        title: 'Cartella condivisa che resta',
+        body: 'Su Android, se riapri l’app o la tiri fuori dallo sfondo, l’album da Drive della band resta. Non serve ricollegare la cartella ogni volta.',
+      },
     ],
   },
 ];

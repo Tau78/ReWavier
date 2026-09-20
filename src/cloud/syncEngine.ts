@@ -56,6 +56,7 @@ import {
   fetchFolderRole,
   findChildByName,
   findFolderByName,
+  getDriveFile,
   getDriveFileParentId,
   hasDriveToken,
   isDriveFolder,
@@ -79,6 +80,57 @@ import {
   trackNameMatchesRemote,
   uniqueRemotes,
 } from './remoteAudioChange';
+
+/** Shared Drive id from a Drive file/folder metadata (`driveId` field). */
+function sharedDriveIdFromFile(file: Pick<DriveFile, 'driveId'> | null | undefined): string | undefined {
+  const id = file?.driveId?.trim();
+  return id || undefined;
+}
+
+/** Persist folder link and keep Shared Drive id when Drive returns it. */
+function linkAlbumDriveFolder(
+  albumId: string,
+  folderId: string,
+  folderName: string,
+  extras?: { driveRecursive?: boolean; driveSharedDriveId?: string },
+): void {
+  useLibraryStore.getState().linkAlbumDrive(albumId, folderId, folderName, {
+    driveRecursive: extras?.driveRecursive,
+    driveSharedDriveId: extras?.driveSharedDriveId,
+  });
+}
+
+/**
+ * Heal missing driveSharedDriveId so Shared Drive listings work after resume.
+ * Returns the id to use for the next listDriveFolderTree call.
+ */
+async function ensureAlbumSharedDriveId(album: {
+  id: string;
+  driveFolderId?: string;
+  driveFolderName?: string;
+  name: string;
+  driveSharedDriveId?: string;
+  driveRecursive?: boolean;
+}): Promise<string | undefined> {
+  const existing = album.driveSharedDriveId?.trim();
+  if (existing) {
+    return existing;
+  }
+  const folderId = album.driveFolderId?.trim();
+  if (!folderId) {
+    return undefined;
+  }
+  const meta = await getDriveFile(folderId);
+  const sharedDriveId = sharedDriveIdFromFile(meta);
+  if (!sharedDriveId) {
+    return undefined;
+  }
+  linkAlbumDriveFolder(album.id, folderId, album.driveFolderName || meta?.name || album.name, {
+    driveRecursive: album.driveRecursive,
+    driveSharedDriveId: sharedDriveId,
+  });
+  return sharedDriveId;
+}
 
 function syncAlbumMessage(input: {
   added: number;
@@ -230,7 +282,9 @@ export async function peekDriveAlbum(albumId: string): Promise<DriveAlbumPeek> {
     const found = await findFolderByName(album.driveFolderName || album.name);
     if (found) {
       folderId = found.id;
-      useLibraryStore.getState().linkAlbumDrive(album.id, found.id, found.name);
+      linkAlbumDriveFolder(album.id, found.id, found.name, {
+        driveSharedDriveId: sharedDriveIdFromFile(found),
+      });
       await refreshAlbumDriveRole(album.id);
     }
   }
@@ -239,11 +293,15 @@ export async function peekDriveAlbum(albumId: string): Promise<DriveAlbumPeek> {
     return empty;
   }
 
+  const sharedDriveId = await ensureAlbumSharedDriveId({
+    ...album,
+    driveFolderId: folderId,
+  });
   const { nodes: tree } = await listDriveFolderTree(
     folderId,
     album.driveFolderName || album.name,
     album.driveRecursive ? 8 : 0,
-    album.driveSharedDriveId ? { sharedDriveId: album.driveSharedDriveId } : undefined,
+    sharedDriveId ? { sharedDriveId } : undefined,
   );
   const treeFolderIds = new Set(tree.map((node) => node.id));
   const audios = uniqueRemotes(
@@ -472,7 +530,9 @@ async function syncOneDriveAlbum(
     }
     if (found) {
       folderId = found.id;
-      store.linkAlbumDrive(album.id, found.id, found.name);
+      linkAlbumDriveFolder(album.id, found.id, found.name, {
+        driveSharedDriveId: sharedDriveIdFromFile(found),
+      });
     }
   }
   if (!folderId) {
@@ -487,17 +547,33 @@ async function syncOneDriveAlbum(
     }
   }
 
+  const sharedDriveId = await ensureAlbumSharedDriveId({
+    ...album,
+    driveFolderId: folderId,
+  });
+  if (!isCloudSyncUserActive(expectedUserId)) {
+    sync.finish({ lastSyncedAt: Date.now(), message: null });
+    return { ...empty, aborted: true };
+  }
   const { nodes: tree, truncated: treeTruncated } = await listDriveFolderTree(
     folderId,
     album.driveFolderName || album.name,
     album.driveRecursive ? 8 : 0,
-    album.driveSharedDriveId ? { sharedDriveId: album.driveSharedDriveId } : undefined,
+    sharedDriveId ? { sharedDriveId } : undefined,
   );
   if (!isCloudSyncUserActive(expectedUserId)) {
     sync.finish({ lastSyncedAt: Date.now(), message: null });
     return { ...empty, aborted: true };
   }
   const children = tree[0]?.children ?? [];
+  if (!sharedDriveId) {
+    const fromChildren = children.map(sharedDriveIdFromFile).find(Boolean);
+    if (fromChildren) {
+      linkAlbumDriveFolder(album.id, folderId, album.driveFolderName || album.name, {
+        driveSharedDriveId: fromChildren,
+      });
+    }
+  }
   const treeFolderIds = new Set(tree.map((node) => node.id));
   const audios = uniqueRemotes(
     tree.flatMap((node) => node.children.filter((file) => isDriveAudio(file))),
@@ -581,12 +657,17 @@ async function syncOneDriveAlbum(
     versioned += 1;
   }
 
-  // Incomplete Drive view (tree node cap or folder page cap): never surplus-delete.
-  // A truncated listing would look like missing remotes and wipe local tracks.
-  if (treeTruncated) {
+  // Incomplete Drive view: never surplus-delete.
+  // Truncated pages, OR empty remote list while locals exist (flaky Shared Drive /
+  // Android resume listing) would otherwise wipe the album and force a re-link.
+  const listingSuspectEmpty = audios.length === 0 && locals.length > 0;
+  const skipSurplusDeletes = treeTruncated || listingSuspectEmpty;
+  if (skipSurplusDeletes) {
     if (__DEV__) {
       console.warn(
-        `[sync] skip surplus delete for album ${album.id}: Drive tree truncated`,
+        `[sync] skip surplus delete for album ${album.id}: ${
+          treeTruncated ? 'Drive tree truncated' : 'empty remote list with local tracks'
+        }`,
       );
     }
   } else {
@@ -736,7 +817,7 @@ async function syncOneDriveAlbum(
     sync.finish({ lastSyncedAt: Date.now(), message: null });
     return { ...empty, added, removed, versioned, notesPulled, aborted: true };
   }
-  await applyDriveMediaTree(album.id, tree, { skipSurplusDeletes: treeTruncated });
+  await applyDriveMediaTree(album.id, tree, { skipSurplusDeletes });
   if (!isCloudSyncUserActive(expectedUserId)) {
     sync.finish({ lastSyncedAt: Date.now(), message: null });
     return { ...empty, added, removed, versioned, notesPulled, aborted: true };

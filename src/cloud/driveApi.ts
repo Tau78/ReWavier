@@ -636,21 +636,24 @@ export async function listFolderChildren(
   options?: { sharedDriveId?: string },
 ): Promise<DriveFolderChildrenResult> {
   const first = await listFolderChildrenWithExtra(folderId, '');
-  if (first.files.length > 0 || !options?.sharedDriveId) {
+  if (first.files.length > 0) {
     return first;
   }
-  // corpora=drive often returns nothing with the same permission that still
-  // lists the folder’s children via supportsAllDrives alone.
-  try {
-    const scoped = await listFolderChildrenWithExtra(
-      folderId,
-      `&corpora=drive&driveId=${encodeURIComponent(options.sharedDriveId)}`,
-    );
-    if (scoped.files.length > 0) {
-      return scoped;
+  // Empty page is common on Shared Drives / shared-with-me, especially on Android
+  // after resume when corpora defaults miss the folder. Always try fallbacks —
+  // never treat "empty first page" as a definitive empty folder without them.
+  if (options?.sharedDriveId) {
+    try {
+      const scoped = await listFolderChildrenWithExtra(
+        folderId,
+        `&corpora=drive&driveId=${encodeURIComponent(options.sharedDriveId)}`,
+      );
+      if (scoped.files.length > 0) {
+        return scoped;
+      }
+    } catch {
+      // keep trying
     }
-  } catch {
-    // keep first
   }
   try {
     const all = await listFolderChildrenWithExtra(folderId, '&corpora=allDrives');
