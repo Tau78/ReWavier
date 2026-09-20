@@ -34,7 +34,7 @@ export function TrackOverviewWaveform() {
   const positionMs = usePlayerStore((s) => s.positionMs);
   const durationMs = Math.max(usePlayerStore((s) => s.track.durationMs), 1);
   const seekTo = usePlayerStore((s) => s.seekTo);
-  const openMarker = usePlayerStore((s) => s.openMarker);
+  const playFrom = usePlayerStore((s) => s.playFrom);
   const [width, setWidth] = useState(0);
 
   const visiblePins = useMemo(
@@ -98,7 +98,7 @@ export function TrackOverviewWaveform() {
           return (
             <Pressable
               key={marker.id}
-              onPress={() => openMarker(marker.id)}
+              onPress={() => playFrom(marker.timestampMs)}
               hitSlop={8}
               style={[
                 styles.dot,
@@ -109,7 +109,7 @@ export function TrackOverviewWaveform() {
                 },
               ]}
               accessibilityRole="button"
-              accessibilityLabel={`Appunto a ${formatTimecode(marker.timestampMs)}`}
+              accessibilityLabel={`Parti da ${formatTimecode(marker.timestampMs)}`}
             />
           );
         })}

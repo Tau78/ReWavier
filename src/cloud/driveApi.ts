@@ -886,10 +886,24 @@ async function downloadDriveFileOnce(
   }
 
   onProgress?.(0.15);
+  // Full-buffer download: refuse huge files before arrayBuffer OOMs Android.
+  const MAX_IN_MEMORY_DOWNLOAD = 80 * 1024 * 1024;
+  const lengthHeader = response.headers.get('Content-Length');
+  const declared = lengthHeader ? Number(lengthHeader) : NaN;
+  if (Number.isFinite(declared) && declared > MAX_IN_MEMORY_DOWNLOAD) {
+    throw new Error(
+      'Questo brano è troppo grande per scaricarlo così. Prova un file più leggero, oppure chiedi a chi gestisce Drive.',
+    );
+  }
   const buffer = await response.arrayBuffer();
   throwIfDownloadPaused();
   if (buffer.byteLength === 0) {
     throw new Error('Drive non ha scaricato il brano. Riprova.');
+  }
+  if (buffer.byteLength > MAX_IN_MEMORY_DOWNLOAD) {
+    throw new Error(
+      'Questo brano è troppo grande per scaricarlo così. Prova un file più leggero, oppure chiedi a chi gestisce Drive.',
+    );
   }
   onProgress?.(0.85);
   const written = await writeDownloadBytes(dest, new Uint8Array(buffer));

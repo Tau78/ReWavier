@@ -598,7 +598,7 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     }
 
     engine().seekTo(next);
-    set({ positionMs: next });
+    set({ positionMs: next, isPlaying: true });
     engine().play();
   },
 

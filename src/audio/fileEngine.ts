@@ -5,8 +5,13 @@ import {
   type AudioPlayer,
   type AudioStatus,
 } from 'expo-audio';
+import { Platform } from 'react-native';
 
+import { toFileUri } from '../files/fsSafe';
 import type { PlaybackListener } from './mockEngine';
+
+/** Native player teardown settle time before the next createAudioPlayer. */
+const RELEASE_SETTLE_MS = Platform.OS === 'android' ? 140 : 40;
 
 /** Thrown when a load is superseded by cancelLoad / a newer load / unload. */
 export class LoadAbortedError extends Error {
@@ -93,8 +98,10 @@ export class FileAudioEngine {
       throw new LoadAbortedError();
     }
 
+    const playable =
+      uri.startsWith('http://') || uri.startsWith('https://') ? uri : toFileUri(uri);
     const player = createAudioPlayer(
-      { uri },
+      { uri: playable },
       { updateInterval: 120, keepAudioSessionActive: true },
     );
 
@@ -199,8 +206,9 @@ export class FileAudioEngine {
     this.durationMs = 0;
     if (player) {
       disposeOrphanPlayer(player);
-      // Let AVPlayer finish teardown before the next createAudioPlayer (iOS crash).
-      await new Promise<void>((resolve) => setTimeout(resolve, 40));
+      // Let the native player finish teardown before the next createAudioPlayer
+      // (iOS AVPlayer race; Android ExoPlayer / MediaPlayer race).
+      await new Promise<void>((resolve) => setTimeout(resolve, RELEASE_SETTLE_MS));
     }
     this.emit();
   }

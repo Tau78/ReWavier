@@ -142,6 +142,14 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Zoom sull’onda',
         body: 'Con due dita ingrandisci o rimpicciolisci il dettaglio: l’ascolto non salta più.',
       },
+      {
+        title: 'Fumetto e segnalibro',
+        body: 'Tocchi il fumetto: si apre la nota e parte da lì. Tocchi solo il segnalibro rosso: parte da quel punto, senza aprire la nota.',
+      },
+      {
+        title: 'Ascolto più stabile su Android',
+        body: 'Meno chiusure improvvise quando cambi brano o scarichi da Drive, anche con nomi file strani.',
+      },
     ],
   },
 ];

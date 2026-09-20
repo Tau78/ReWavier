@@ -1,6 +1,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
 import { decodePathSegment, pickRecoveredAudioName, storedBasename } from './fileNames';
+import { toFileUri } from './fsSafe';
 import { audioRelativePrefix } from './libraryOwner';
 import {
   audioDirectory,
@@ -101,7 +102,8 @@ export function libraryFileExists(stored?: string): boolean {
     return false;
   }
   try {
-    return new File(resolved).exists === true;
+    // Android URI.create rejects unencoded `[` `]` / spaces in the path.
+    return new File(toFileUri(resolved)).exists === true;
   } catch {
     return false;
   }
@@ -188,7 +190,7 @@ export function resolvedPlayableUri(track: {
     }
     const resolved = resolveLibraryUri(stored);
     if (resolved && libraryFileExists(stored)) {
-      return resolved;
+      return toFileUri(resolved);
     }
   }
   if (track.id) {
@@ -199,7 +201,8 @@ export function resolvedPlayableUri(track: {
       sourceFileName: track.sourceFileName,
     });
     const stored = recovered.fileUri || recovered.inboxUri;
-    return stored ? resolveLibraryUri(stored) : undefined;
+    const resolved = stored ? resolveLibraryUri(stored) : undefined;
+    return resolved ? toFileUri(resolved) : undefined;
   }
   return undefined;
 }

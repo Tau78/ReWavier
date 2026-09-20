@@ -437,6 +437,7 @@ function ZoomMarkerPin({
   onLongPress: (id: string) => void;
 }) {
   const openMarker = usePlayerStore((s) => s.openMarker);
+  const playFrom = usePlayerStore((s) => s.playFrom);
   const moveMarker = usePlayerStore((s) => s.moveMarker);
   const [dragMs, setDragMs] = useState<number | null>(null);
 
@@ -501,7 +502,8 @@ function ZoomMarkerPin({
         }
         if (!didDrag.current) {
           setDragMs(null);
-          openMarker(m.id);
+          // Vertical cue only: seek/play, do not open the note.
+          playFrom(m.timestampMs);
           return;
         }
         const next = clampTime(originMs.current + (scale > 0 ? gesture.dx / scale : 0), dur);
@@ -536,6 +538,7 @@ function ZoomMarkerPin({
 
   return (
     <View
+      pointerEvents="box-none"
       style={[
         styles.zoomPinWrap,
         {
@@ -545,10 +548,6 @@ function ZoomMarkerPin({
         },
         dragging && styles.zoomPinDragging,
       ]}
-      {...pan.panHandlers}
-      accessibilityRole="adjustable"
-      accessibilityLabel={`${says} ${preview || formatTimecode(displayMs)}`}
-      accessibilityHint="Tocca per aprire. Tieni premuto il fumetto per leggere tutto. Trascina per spostare."
     >
       {dragging ? (
         <Text style={[styles.dragTime, { left: flipLeft ? bubbleExtra : 0 }]}>
@@ -556,13 +555,22 @@ function ZoomMarkerPin({
         </Text>
       ) : null}
       {!dragging ? (
-        <View
+        <Pressable
+          onPress={() => {
+            openMarker(marker.id);
+            playFrom(marker.timestampMs);
+          }}
+          onLongPress={() => onLongPress(marker.id)}
+          delayLongPress={LONG_PRESS_MS}
           style={[
             styles.pinBubble,
             { borderColor: pinColor },
             flipLeft ? styles.pinBubbleLeft : styles.pinBubbleRight,
             marker.hidden && styles.pinHidden,
           ]}
+          accessibilityRole="button"
+          accessibilityLabel={`${says} ${preview || formatTimecode(displayMs)}`}
+          accessibilityHint="Tocca per aprire la nota e ascoltare da qui. Tieni premuto per leggere tutto."
         >
           <Text style={[styles.pinBubbleWho, { color: pinColor }]} numberOfLines={1}>
             {says}
@@ -578,11 +586,14 @@ function ZoomMarkerPin({
               {preview}
             </Text>
           ) : null}
-        </View>
+        </Pressable>
       ) : null}
       <View
-        pointerEvents="none"
+        {...pan.panHandlers}
         style={[styles.pinColumn, { left: flipLeft ? bubbleExtra : 0 }]}
+        accessibilityRole="adjustable"
+        accessibilityLabel={`Segnalibro a ${formatTimecode(displayMs)}`}
+        accessibilityHint="Tocca per ascoltare da qui. Trascina per spostare. Tieni premuto per i comandi."
       >
         <View
           style={[
@@ -1075,7 +1086,7 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
               return (
                 <Pressable
                   key={marker.id}
-                  onPress={() => openMarker(marker.id)}
+                  onPress={() => playFrom(marker.timestampMs)}
                   onLongPress={() => setMenuMarkerId(marker.id)}
                   delayLongPress={LONG_PRESS_MS}
                   hitSlop={8}
@@ -1088,7 +1099,8 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
                     },
                   ]}
                   accessibilityRole="button"
-                  accessibilityLabel={`Appunto a ${formatTimecode(marker.timestampMs)}`}
+                  accessibilityLabel={`Parti da ${formatTimecode(marker.timestampMs)}`}
+                  accessibilityHint="Parte da questo punto. Tieni premuto per i comandi."
                 />
               );
             })}
