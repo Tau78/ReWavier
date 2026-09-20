@@ -1,11 +1,10 @@
 import { useEffect, useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { albumMentionCandidates } from '../../domain/albumPeople';
+import { albumMemberRows } from '../../domain/albumPeople';
 import { ColorSwatches } from '../auth/BandFields';
 import { canWriteWithRole, roleOfAlbum } from '../../domain/folderRole';
 import type { Album } from '../../domain/library';
-import { markerColor } from '../../domain/markers';
 import type { Marker } from '../../domain/models';
 import { refreshAlbumMemberEmails } from '../../cloud/syncEngine';
 import { useLibraryStore } from '../../store/libraryStore';
@@ -23,49 +22,10 @@ export function AlbumMembersSection({
   const setAlbumMemberColor = useLibraryStore((s) => s.setAlbumMemberColor);
   const canEdit = canWriteWithRole(roleOfAlbum(album));
 
-  const members = useMemo(() => {
-    const fromNotes = albumMentionCandidates(album, markersByTrackId, user);
-    const byKey = new Map(
-      fromNotes.map((person) => [
-        person.key,
-        {
-          key: person.key,
-          name: album.memberNames?.[person.key] || person.name,
-          email:
-            album.memberEmails?.[person.key] ||
-            (user && (user.id === person.key || user.displayName === person.name)
-              ? user.email
-              : undefined),
-          color: album.memberColors?.[person.key] || person.color,
-        },
-      ]),
-    );
-    // Drive-only names (shared but not yet written a note).
-    for (const [key, name] of Object.entries(album.memberNames ?? {})) {
-      if (byKey.has(key)) {
-        continue;
-      }
-      byKey.set(key, {
-        key,
-        name,
-        email: album.memberEmails?.[key],
-        color:
-          album.memberColors?.[key] ||
-          markerColor({
-            id: key,
-            timestampMs: 0,
-            text: '',
-            createdAt: 0,
-            updatedAt: 0,
-            authorId: key,
-            authorName: name,
-          }),
-      });
-    }
-    return [...byKey.values()].sort((a, b) =>
-      a.name.localeCompare(b.name, 'it', { sensitivity: 'base' }),
-    );
-  }, [album, markersByTrackId, user]);
+  const members = useMemo(
+    () => albumMemberRows(album, markersByTrackId, user),
+    [album, markersByTrackId, user],
+  );
 
   useEffect(() => {
     if (!album.driveFolderId) {

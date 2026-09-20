@@ -27,6 +27,7 @@ import {
   shouldApplyRemoteMembers,
 } from '../domain/albumMembers';
 import { albumMentionCandidates } from '../domain/albumPeople';
+import { normalizeDisplayName } from '../domain/displayNames';
 import { isDriveAudio, isDownloaded, playableUri } from '../domain/audioFormats';
 import {
   findAlbumCoverFile,
@@ -1382,9 +1383,10 @@ export async function refreshAlbumMemberEmails(albumId: string): Promise<void> {
       continue;
     }
     if (person.displayName?.trim()) {
-      const key = person.displayName.trim().toLowerCase();
+      const displayName = normalizeDisplayName(person.displayName);
+      const key = displayName.toLowerCase();
       emails[key] = person.email;
-      names[key] = person.displayName.trim();
+      names[key] = displayName;
     }
   }
   if (Object.keys(emails).length === 0) {

@@ -1,6 +1,7 @@
 import * as LegacyFS from 'expo-file-system/legacy';
 
 import { albumHasCustomOrder, orderedAlbumItemIds } from '../domain/albumOrder';
+import { healLibraryAuthorData } from '../domain/healAuthorNames';
 import {
   isSeparatorId,
   SEEDED_SMART_IDS,
@@ -119,6 +120,10 @@ export async function adoptLegacyLibraryIfNeeded(userId: string): Promise<void> 
 }
 
 export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
+  const healedAuthors = healLibraryAuthorData({
+    albums: snapshot.albums,
+    markersByTrackId: snapshot.markersByTrackId,
+  });
   const tracks = snapshot.tracks.map(reconcileTrack);
   const keep = new Set(tracks.map((track) => track.id));
   const pruneIds = (ids: string[]) => ids.filter((id) => keep.has(id));
@@ -135,7 +140,7 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
       ...folder,
       trackIds: pruneIds(folder.trackIds),
     })),
-    albums: snapshot.albums
+    albums: healedAuthors.albums
       .filter((album) => {
         if (removedAlbumSet.has(album.id)) {
           return false;
@@ -218,7 +223,7 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
       }))
       .filter((item) => item.id.length > 0),
     markersByTrackId: Object.fromEntries(
-      Object.entries(snapshot.markersByTrackId).filter(([id]) => keep.has(id)),
+      Object.entries(healedAuthors.markersByTrackId).filter(([id]) => keep.has(id)),
     ),
     keptAudioNames: (snapshot.keptAudioNames ?? []).filter((name) => name.trim().length > 0),
     removedAlbumIds,

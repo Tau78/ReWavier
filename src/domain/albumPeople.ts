@@ -1,6 +1,12 @@
 import { colorForAuthorSeed, resolveAuthorColor } from './bandColors';
 import { playableAlbumTrackIds } from './albumVersions';
 import {
+  looksLikeAuthorId,
+  memberHandleFromName,
+  normalizeDisplayName,
+  preferDisplayName,
+} from './displayNames';
+import {
   markerAuthorLabel,
   markerAuthorSeed,
   markerColor,
@@ -15,12 +21,19 @@ export type AlbumMentionPerson = NoteAuthorDot & {
   handle: string;
 };
 
+export type AlbumMemberRow = {
+  key: string;
+  name: string;
+  email?: string;
+  color: string;
+};
+
 function displayNameForMember(
   album: Album | undefined,
   key: string,
   fallback: string,
 ): string {
-  return album?.memberNames?.[key]?.trim() || fallback.trim();
+  return normalizeDisplayName(album?.memberNames?.[key] || fallback);
 }
 
 function mentionPersonFromName(
@@ -29,7 +42,7 @@ function mentionPersonFromName(
   rawName: string,
 ): AlbumMentionPerson {
   const name = displayNameForMember(album, key, rawName);
-  const handle = slugFromName(name);
+  const handle = memberHandleFromName(name);
   return {
     key,
     name,
@@ -40,7 +53,7 @@ function mentionPersonFromName(
         text: '',
         createdAt: 0,
         updatedAt: 0,
-        authorId: key,
+        authorId: looksLikeAuthorId(key) ? key : undefined,
         authorName: name,
       },
       album?.memberColors,
@@ -50,27 +63,42 @@ function mentionPersonFromName(
   };
 }
 
-/** Prefer readable UTF-8 name and album member label when two rows share a handle. */
+function mentionScore(person: AlbumMentionPerson, album: Album | undefined): number {
+  const name = displayNameForMember(album, person.key, person.name);
+  let score = 0;
+  if (looksLikeAuthorId(person.key)) {
+    score += 100;
+  }
+  if (album?.memberEmails?.[person.key]?.trim()) {
+    score += 40;
+  }
+  if (!/(?:Ã|Â|ï¿½)/.test(name)) {
+    score += 20;
+  }
+  score += name.length;
+  return score;
+}
+
+/** Prefer account id + readable UTF-8 name when two rows share a handle. */
 function preferMentionPerson(
   left: AlbumMentionPerson,
   right: AlbumMentionPerson,
   album: Album | undefined,
 ): AlbumMentionPerson {
-  const leftName = displayNameForMember(album, left.key, left.name);
-  const rightName = displayNameForMember(album, right.key, right.name);
-  const mojibake = /Ã|Â|�/;
-  const leftBad = mojibake.test(leftName);
-  const rightBad = mojibake.test(rightName);
-  if (leftBad !== rightBad) {
-    return rightBad ? { ...left, name: leftName } : { ...right, name: rightName };
-  }
-  const pick = rightName.length > leftName.length ? right : left;
-  const name = rightName.length > leftName.length ? rightName : leftName;
+  const pick = mentionScore(right, album) > mentionScore(left, album) ? right : left;
+  const other = pick === right ? left : right;
+  const name = preferDisplayName(
+    displayNameForMember(album, pick.key, pick.name),
+    displayNameForMember(album, other.key, other.name),
+  );
+  const key = mentionScore(right, album) > mentionScore(left, album) ? right.key : left.key;
   return {
     ...pick,
+    key: looksLikeAuthorId(pick.key) ? pick.key : key,
     name,
-    color: album?.memberColors?.[pick.key] || pick.color,
+    color: album?.memberColors?.[pick.key] || album?.memberColors?.[other.key] || pick.color,
     initial: noteAuthorInitial(name),
+    handle: memberHandleFromName(name),
   };
 }
 
@@ -90,20 +118,19 @@ export function albumMentionCandidates(
         continue;
       }
       const name = displayNameForMember(album, key, markerAuthorLabel(marker));
-      const handle = slugFromName(name);
       byKey.set(key, {
         key,
         name,
         color: markerColor(marker, album?.memberColors),
         initial: noteAuthorInitial(name),
-        handle,
+        handle: memberHandleFromName(name),
       });
     }
   }
 
   if (user) {
     const key = user.id?.trim() || user.displayName?.trim() || 'self';
-    const name = user.displayName?.trim() || 'Tu';
+    const name = normalizeDisplayName(user.displayName) || 'Tu';
     const handle = (user.authorSlug?.trim() || slugFromName(name)).toLowerCase();
     const color = resolveAuthorColor(user.bandColor, key) || colorForAuthorSeed(key);
     if (!byKey.has(key)) {
@@ -119,12 +146,11 @@ export function albumMentionCandidates(
       byKey.set(key, {
         ...existing,
         handle: handle || existing.handle,
-        name: name || existing.name,
+        name: preferDisplayName(existing.name, name),
       });
     }
   }
 
-  // Drive / album roster: shared on the folder but not yet written a note.
   for (const [key, rawName] of Object.entries(album?.memberNames ?? {})) {
     if (!key.trim() || !rawName.trim() || byKey.has(key)) {
       continue;
@@ -148,6 +174,24 @@ export function albumMentionCandidates(
   return [...byHandle.values()].sort((a, b) =>
     a.name.localeCompare(b.name, 'it', { sensitivity: 'base' }),
   );
+}
+
+/** Membri album per pannello info — stessa unificazione di @. */
+export function albumMemberRows(
+  album: Album,
+  markersByTrackId: Record<string, Marker[]>,
+  user: Pick<SessionUser, 'id' | 'displayName' | 'email' | 'authorSlug' | 'bandColor'> | null,
+): AlbumMemberRow[] {
+  return albumMentionCandidates(album, markersByTrackId, user).map((person) => ({
+    key: person.key,
+    name: person.name,
+    email:
+      album.memberEmails?.[person.key] ||
+      (user && (user.id === person.key || normalizeDisplayName(user.displayName) === person.name)
+        ? user.email
+        : undefined),
+    color: album.memberColors?.[person.key] || person.color,
+  }));
 }
 
 /** Handles that mean “me” on this phone. */

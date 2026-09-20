@@ -1,9 +1,12 @@
 import { colorForAuthorSeed, resolveAuthorColor } from './bandColors';
+import { normalizeDisplayName } from './displayNames';
 import { canWriteWithRole, type FolderRole } from './folderRole';
 import type { Marker } from './models';
 import { userHasUsage, type SessionUser } from './session';
 
 export function normalizeMarker(raw: Partial<Marker> & Pick<Marker, 'id' | 'timestampMs'>): Marker {
+  const authorNameRaw = raw.authorName?.trim();
+  const authorName = authorNameRaw ? normalizeDisplayName(authorNameRaw) : undefined;
   return {
     id: raw.id,
     timestampMs: raw.timestampMs,
@@ -12,7 +15,7 @@ export function normalizeMarker(raw: Partial<Marker> & Pick<Marker, 'id' | 'time
     updatedAt: raw.updatedAt ?? raw.createdAt ?? Date.now(),
     hidden: raw.hidden === true,
     authorId: raw.authorId,
-    authorName: raw.authorName,
+    authorName: authorName || undefined,
     color: raw.color,
     editableByOthers: raw.editableByOthers,
     placeholder: raw.placeholder === true ? true : undefined,
@@ -95,7 +98,7 @@ export function visibleMarkers(markers: Marker[]): Marker[] {
 }
 
 export function markerAuthorLabel(marker: Marker): string {
-  const name = marker.authorName?.trim();
+  const name = normalizeDisplayName(marker.authorName);
   return name || 'Tu';
 }
 

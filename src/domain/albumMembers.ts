@@ -1,5 +1,6 @@
 import type { Album } from './library';
 import { BAND_COLORS, isBandColor } from './bandColors';
+import { normalizeDisplayName } from './displayNames';
 
 export const MEMBERS_FILE_NAME = '.rewavier.members.json';
 
@@ -36,7 +37,7 @@ export function parseAlbumMembersFile(raw: string): AlbumMembersFile | null {
           continue;
         }
         const key = typeof row.key === 'string' ? row.key.trim() : '';
-        const name = typeof row.name === 'string' ? row.name.trim() : '';
+        const name = normalizeDisplayName(typeof row.name === 'string' ? row.name : '');
         if (!key || !name) {
           continue;
         }

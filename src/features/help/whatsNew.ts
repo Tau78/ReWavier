@@ -166,6 +166,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Membri dell’album',
         body: 'Tocca i accanto all’album: vedi chi c’è, con nome e email. Puoi scegliere un colore per ciascuno: vale in questo album per tutti.',
       },
+      {
+        title: 'Nomi corretti',
+        body: 'Se un nome era scritto male (es. accenti strani), l’app lo sistema da sola. In @ e in Membri ogni persona compare una volta sola.',
+      },
     ],
   },
 ];
