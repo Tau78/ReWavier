@@ -9,7 +9,7 @@ import { WhatsNewModal } from '../features/help/WhatsNewModal';
 import { flushPlaybackPersist, hydratePlaybackPersist } from '../files/playbackPersist';
 import { AppStack } from '../navigation/AppStack';
 import { useHelpStore } from '../store/helpStore';
-import { flushLibraryPersist, waitForLibraryHydrated } from '../store/libraryStore';
+import { flushLibraryPersist, recoverLibraryFromDiskIfWeaker, waitForLibraryHydrated } from '../store/libraryStore';
 import { flushNotifications, useNotificationStore } from '../store/notificationStore';
 import { useSessionStore } from '../store/sessionStore';
 
@@ -49,6 +49,7 @@ export function AuthenticatedApp() {
       }
       void (async () => {
         await waitForLibraryHydrated();
+        await recoverLibraryFromDiskIfWeaker();
         await hydratePlaybackPersist();
         await useNotificationStore.getState().hydrate();
         void runCloudSync();

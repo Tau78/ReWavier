@@ -54,6 +54,7 @@ import { withPractice, type PracticeIds } from '../domain/practice';
 import { isDemoUser } from '../auth/demoAccount';
 import {
   adoptLegacyLibraryIfNeeded,
+  isWeakerLibrarySnapshot,
   loadLibrarySnapshot,
   saveLibrarySnapshot,
   sanitizeSnapshot,
@@ -321,6 +322,40 @@ export async function flushLibraryPersist(): Promise<void> {
   }
   await saveLibrarySnapshot(snapshotFrom(useLibraryStore.getState()));
   await waitForLibraryPersistIdle();
+}
+
+/**
+ * After Android background/blur, memory can be empty while library.json still has
+ * albums. Restore from disk before cloud sync so Home does not stay blank.
+ */
+export async function recoverLibraryFromDiskIfWeaker(): Promise<boolean> {
+  const user = useSessionStore.getState().user;
+  if (!user || isDemoUser(user)) {
+    return false;
+  }
+  await waitForLibraryHydrated();
+  const loadResult = await loadLibrarySnapshot({ requireOwnerKey: false });
+  if (loadResult.status !== 'loaded') {
+    return false;
+  }
+  const memory = snapshotFrom(useLibraryStore.getState());
+  if (!isWeakerLibrarySnapshot(memory, loadResult.snapshot)) {
+    return false;
+  }
+  const disk = loadResult.snapshot;
+  useLibraryStore.setState({
+    tracks: disk.tracks,
+    folders: disk.folders,
+    albums: disk.albums,
+    playlists: disk.playlists,
+    smartPlaylists: disk.smartPlaylists,
+    markersByTrackId: disk.markersByTrackId,
+    keptAudioNames: disk.keptAudioNames ?? [],
+    removedAlbumIds: disk.removedAlbumIds ?? [],
+    removedDriveFolderIds: disk.removedDriveFolderIds ?? [],
+  });
+  persistReady = true;
+  return true;
 }
 
 function importNameKey(track: { sourceFileName?: string; title: string }): string {

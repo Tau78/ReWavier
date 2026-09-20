@@ -63,6 +63,36 @@ export function shouldPersistAfterHydrate(result: LibraryLoadResult): boolean {
   return result.status === 'loaded' || result.status === 'missing';
 }
 
+function albumSurvivesTombstones(
+  album: { id: string; driveFolderId?: string },
+  removedAlbumIds: Set<string>,
+  removedDriveFolderIds: Set<string>,
+): boolean {
+  if (removedAlbumIds.has(album.id)) {
+    return false;
+  }
+  const folderId = album.driveFolderId?.trim();
+  return !(folderId && removedDriveFolderIds.has(folderId));
+}
+
+/**
+ * Incoming would wipe albums that still live on disk without tombstones.
+ * Used to block background/blur flushes from clobbering library.json after a bad
+ * in-memory hydrate (Android often fires inactive/blur during startup and resume).
+ */
+export function isWeakerLibrarySnapshot(
+  incoming: LibrarySnapshot,
+  onDisk: LibrarySnapshot,
+): boolean {
+  const removedAlbums = new Set(uniquePersistIds(incoming.removedAlbumIds));
+  const removedFolders = new Set(uniquePersistIds(incoming.removedDriveFolderIds));
+  const diskAlbums = onDisk.albums.filter((album) =>
+    albumSurvivesTombstones(album, removedAlbums, removedFolders),
+  );
+  const incomingAlbumIds = new Set(incoming.albums.map((album) => album.id));
+  return diskAlbums.some((album) => !incomingAlbumIds.has(album.id));
+}
+
 export function emptyLibrarySnapshot(): LibrarySnapshot {
   return {
     version: LIBRARY_SNAPSHOT_VERSION,
@@ -361,6 +391,23 @@ async function writeLibrarySnapshotAtomic(snapshot: LibrarySnapshot): Promise<vo
   const dest = snapshotFileUri();
   const tmp = snapshotTempFileUri();
   const bak = snapshotBackupFileUri();
+
+  // Never let a stripped in-memory library (common after Android blur/background
+  // during a flaky load) overwrite a richer library.json already on disk.
+  let diskSnapshot: LibrarySnapshot | null = null;
+  const existing = await readSnapshotFile(dest);
+  if (existing.status === 'loaded') {
+    diskSnapshot = existing.snapshot;
+  } else {
+    const backup = await readSnapshotFile(bak);
+    if (backup.status === 'loaded') {
+      diskSnapshot = backup.snapshot;
+    }
+  }
+  if (diskSnapshot && isWeakerLibrarySnapshot(snapshot, diskSnapshot)) {
+    return;
+  }
+
   const body = JSON.stringify({
     ...snapshot,
     version: LIBRARY_SNAPSHOT_VERSION,

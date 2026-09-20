@@ -176,7 +176,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Album che restano',
-        body: 'Su Android gli album restano dopo che chiudi l’app, la aggiorni o si chiude da sola. Non serve ricrearli.',
+        body: 'Su Android gli album restano dopo che chiudi l’app, la metti in sottofondo, la aggiorni o si chiude da sola. Non serve ricrearli.',
       },
     ],
   },
