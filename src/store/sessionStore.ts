@@ -130,6 +130,12 @@ async function releaseSessionRuntime() {
   } catch {
     // player already gone
   }
+  try {
+    const { useNotificationStore } = await import('./notificationStore');
+    useNotificationStore.getState().reset();
+  } catch {
+    // notifications already gone
+  }
 }
 
 /** Bumps on every account transition so a stale hydrate/logout tail cannot win. */

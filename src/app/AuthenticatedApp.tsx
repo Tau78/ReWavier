@@ -10,6 +10,7 @@ import { flushPlaybackPersist, hydratePlaybackPersist } from '../files/playbackP
 import { AppStack } from '../navigation/AppStack';
 import { useHelpStore } from '../store/helpStore';
 import { flushLibraryPersist, waitForLibraryHydrated } from '../store/libraryStore';
+import { flushNotifications, useNotificationStore } from '../store/notificationStore';
 import { useSessionStore } from '../store/sessionStore';
 
 export function AuthenticatedApp() {
@@ -29,6 +30,10 @@ export function AuthenticatedApp() {
       if (cancelled) {
         return;
       }
+      await useNotificationStore.getState().hydrate();
+      if (cancelled) {
+        return;
+      }
       await useHelpStore.getState().hydrate(userId);
       void runCloudSync();
     })();
@@ -36,6 +41,7 @@ export function AuthenticatedApp() {
       if (state === 'background' || state === 'inactive') {
         void flushLibraryPersist();
         void flushPlaybackPersist();
+        void flushNotifications();
         return;
       }
       if (state !== 'active') {
@@ -44,12 +50,14 @@ export function AuthenticatedApp() {
       void (async () => {
         await waitForLibraryHydrated();
         await hydratePlaybackPersist();
+        await useNotificationStore.getState().hydrate();
         void runCloudSync();
       })();
     });
     const blurSub = AppState.addEventListener('blur', () => {
       void flushLibraryPersist();
       void flushPlaybackPersist();
+      void flushNotifications();
     });
     return () => {
       cancelled = true;

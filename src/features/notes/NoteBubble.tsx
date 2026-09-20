@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
+import { albumMentionCandidates } from '../../domain/albumPeople';
 import { albumContainsTrackId } from '../../domain/albumVersions';
 import { canWriteWithRole, roleOfAlbum } from '../../domain/folderRole';
 import {
@@ -22,6 +23,11 @@ import {
   markerAuthorLabel,
   markerColor,
 } from '../../domain/markers';
+import {
+  activeMentionQuery,
+  filtersMentionCandidates,
+  insertMentionAt,
+} from '../../domain/mentions';
 import { formatTimecode } from '../../domain/models';
 import { conversationAtTime } from '../../domain/practice';
 import { shareMarkerClip } from '../../files/shareMarkerClip';
@@ -78,11 +84,27 @@ export function NoteBubble() {
   const folderRole = useLibraryStore((state) =>
     roleOfAlbum(state.albums.find((album) => albumContainsTrackId(album, track.id))),
   );
+  const album = useLibraryStore((state) =>
+    state.albums.find((item) => albumContainsTrackId(item, track.id)),
+  );
+  const markersByTrackId = useLibraryStore((state) => state.markersByTrackId);
+  const mentionPeople = useMemo(
+    () => albumMentionCandidates(album, markersByTrackId, user),
+    [album, markersByTrackId, user],
+  );
   const folderReadOnly = !canWriteWithRole(folderRole);
   const readOnly =
     folderReadOnly || (isEditing && current != null && !canEditMarkerInAlbum(current, user, folderRole));
   const inputRef = useRef<TextInput>(null);
   const [chatView, setChatView] = useState(false);
+  const mentionQuery = useMemo(
+    () => (chatView || readOnly ? null : activeMentionQuery(bubble.draft)),
+    [bubble.draft, chatView, readOnly],
+  );
+  const mentionSuggestions = useMemo(
+    () => (mentionQuery ? filtersMentionCandidates(mentionPeople, mentionQuery.query) : []),
+    [mentionPeople, mentionQuery],
+  );
 
   useEffect(() => {
     if (!bubble.visible) {
@@ -288,6 +310,41 @@ export function NoteBubble() {
                 </Pressable>
               </View>
 
+              {mentionSuggestions.length > 0 && mentionQuery ? (
+                <View style={styles.mentionBox} accessibilityLabel="Persone da taggare">
+                  {mentionSuggestions.map((person) => (
+                    <Pressable
+                      key={person.key}
+                      onPress={() => {
+                        setDraft(
+                          insertMentionAt(
+                            bubble.draft,
+                            mentionQuery.start,
+                            mentionQuery.query,
+                            person.handle,
+                          ),
+                        );
+                      }}
+                      style={({ pressed }) => [styles.mentionRow, pressed && styles.mentionRowPressed]}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Tagga ${person.name}`}
+                    >
+                      <View style={[styles.mentionDot, { backgroundColor: person.color }]}>
+                        <Text style={styles.mentionInitial}>{person.initial}</Text>
+                      </View>
+                      <View style={styles.mentionCopy}>
+                        <Text style={styles.mentionName} numberOfLines={1}>
+                          {person.name}
+                        </Text>
+                        <Text style={styles.mentionHandle} numberOfLines={1}>
+                          @{person.handle}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+
               <TextInput
                 ref={inputRef}
                 style={[styles.input, showingStamp && !chatView && styles.stampInput]}
@@ -307,8 +364,8 @@ export function NoteBubble() {
                   chatView || (conversation.length > 0 && !isEditing)
                     ? 'Scrivi la tua risposta…'
                     : isEditing
-                      ? 'Scrivi qui il tuo appunto…'
-                      : prompt || 'Scrivi qui il tuo appunto…'
+                      ? 'Scrivi qui il tuo appunto… Usa @ per taggare'
+                      : prompt || 'Scrivi qui il tuo appunto… Usa @ per taggare'
                 }
                 placeholderTextColor={colors.textMuted}
                 multiline
@@ -561,6 +618,52 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: colors.accent,
+  },
+  mentionBox: {
+    marginTop: 10,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+  },
+  mentionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  mentionRowPressed: {
+    opacity: 0.75,
+  },
+  mentionDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mentionInitial: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  mentionCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  mentionName: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  mentionHandle: {
+    marginTop: 1,
+    color: colors.textMuted,
+    fontSize: 12,
   },
   input: {
     marginTop: 14,

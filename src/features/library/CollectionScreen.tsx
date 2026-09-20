@@ -39,10 +39,15 @@ import { hydratePlaybackPersist } from '../../files/playbackPersist';
 import type { RootStackParamList } from '../../navigation/types';
 import { isCollectionDownloadBusy, useDownloadProgressStore } from '../../store/downloadProgressStore';
 import { flushLibraryPersist, useLibraryStore } from '../../store/libraryStore';
+import {
+  ingestMentionsForAlbum,
+  useNotificationStore,
+} from '../../store/notificationStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { useSyncStore } from '../../store/syncStore';
 import { colors, layout } from '../../theme/colors';
 import { EmptyGraphic, KindRow } from '../../theme/graphics';
+import { AlbumNotificationBell } from './AlbumNotificationBell';
 import { CollectionMarkers } from './CollectionMarkers';
 import { CollectionDownloadButton } from './CollectionDownloadButton';
 import { AlbumHero, albumListMeta } from './AlbumHero';
@@ -319,10 +324,20 @@ export function CollectionScreen() {
           restoreCollectionPlayback(collectionKey, trackIds);
         }
       });
+      if (kind === 'album') {
+        void useNotificationStore
+          .getState()
+          .hydrate()
+          .then(() => {
+            if (!cancelled) {
+              ingestMentionsForAlbum(id);
+            }
+          });
+      }
       return () => {
         cancelled = true;
       };
-    }, [collectionKey, trackIds]),
+    }, [collectionKey, trackIds, kind, id]),
   );
   const playerTrackId = usePlayerStore((s) => s.track.id);
   const isPlaying = usePlayerStore((s) => s.isPlaying);
@@ -601,6 +616,7 @@ export function CollectionScreen() {
           </Pressable>
         ) : kind === 'album' ? (
           <View style={styles.headerButtons}>
+            <AlbumNotificationBell albumId={id} queueIds={trackIds} />
             <CollectionDownloadButton
               visual={downloadVisual}
               busy={downloadButtonBusy}

@@ -158,6 +158,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Scorri il dettaglio',
         body: 'Sull’onda ingrandita: pizzica per zoom. Con un dito scorri a destra e sinistra per vedere il pezzo fuori schermo. Tocca per andare a quel punto.',
       },
+      {
+        title: 'Tag con @',
+        body: 'Nell’appunto scrivi @ e scegli chi è in questo album. Se ti taggano, la campanella in alto sull’album ha un pallino: tocca e parti da quel momento.',
+      },
     ],
   },
 ];

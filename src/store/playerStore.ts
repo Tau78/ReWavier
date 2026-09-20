@@ -119,6 +119,9 @@ export type PlayerStore = PlayerState & PlayerActions;
 
 function persistMarkers(trackId: string, markers: Marker[]) {
   useLibraryStore.getState().setTrackMarkers(trackId, markers);
+  void import('./notificationStore').then(({ ingestMentionsForSavedTrack }) => {
+    ingestMentionsForSavedTrack(trackId, markers);
+  });
 }
 
 function refuseFolderWrite(trackId?: string): boolean {

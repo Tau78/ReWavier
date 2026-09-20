@@ -777,6 +777,9 @@ async function syncOneDriveAlbum(
       notesPulled += addedMarkers;
       store.setTrackMarkers(track.id, merged);
       refreshMarkersIfPlaying(track.id, merged);
+      void import('../store/notificationStore').then(({ ingestMentionsForSavedTrack }) => {
+        ingestMentionsForSavedTrack(track.id, merged);
+      });
     }
 
     if (boundsChanged) {
