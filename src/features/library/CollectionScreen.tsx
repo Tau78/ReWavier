@@ -48,6 +48,7 @@ import { useSyncStore } from '../../store/syncStore';
 import { colors, layout } from '../../theme/colors';
 import { EmptyGraphic, KindRow } from '../../theme/graphics';
 import { AlbumNotificationBell } from './AlbumNotificationBell';
+import { AlbumMembersSection } from './AlbumMembersSection';
 import { CollectionMarkers } from './CollectionMarkers';
 import { CollectionDownloadButton } from './CollectionDownloadButton';
 import { AlbumHero, albumListMeta } from './AlbumHero';
@@ -756,6 +757,7 @@ export function CollectionScreen() {
                 cartella: lo stacchi.
               </Text>
             ) : null}
+            <AlbumMembersSection album={album} markersByTrackId={markersByTrackId} />
           </View>
         ) : null}
         {!album && canReorder && listItems.length > 1 ? (
@@ -840,7 +842,9 @@ export function CollectionScreen() {
                     embedChildren={false}
                     swipeEnabled={!dragging}
                     playerTrackId={playerTrackId}
-                    noteAuthorsOf={(trackId) => noteAuthorDots(markersByTrackId[trackId] ?? [])}
+                    noteAuthorsOf={(trackId) =>
+                      noteAuthorDots(markersByTrackId[trackId] ?? [], album?.memberColors)
+                    }
                     downloadingOf={(trackId) => downloadingIds[trackId] != null}
                     blockedOf={(trackId) => blockedIds.has(trackId)}
                     onToggle={() =>

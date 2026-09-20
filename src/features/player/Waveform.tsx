@@ -30,6 +30,7 @@ import {
   markerById,
   resolveExerciseRange,
 } from '../../domain/practice';
+import { albumContainsTrackId } from '../../domain/albumVersions';
 import { shareMarkerClip } from '../../files/shareMarkerClip';
 import {
   beginWaveformScrub,
@@ -39,6 +40,7 @@ import {
   suppressPausePrompt,
   usePlayerStore,
 } from '../../store/playerStore';
+import { useLibraryStore } from '../../store/libraryStore';
 import { colors } from '../../theme/colors';
 import { ActionMenu } from '../library/ActionMenu';
 import { DetailLyricsPanel } from './DetailLyricsPanel';
@@ -457,6 +459,7 @@ function ZoomMarkerPin({
   px,
   durationMs,
   onLongPress,
+  colorOverrides,
 }: {
   marker: Marker;
   tapeStartMs: number;
@@ -465,6 +468,7 @@ function ZoomMarkerPin({
   px: number;
   durationMs: number;
   onLongPress: (id: string) => void;
+  colorOverrides?: Record<string, string> | null;
 }) {
   const openMarker = usePlayerStore((s) => s.openMarker);
   const playFrom = usePlayerStore((s) => s.playFrom);
@@ -550,7 +554,7 @@ function ZoomMarkerPin({
     }),
   ).current;
 
-  const pinColor = markerColor(marker);
+  const pinColor = markerColor(marker, colorOverrides);
   const displayMs = dragMs ?? marker.timestampMs;
   const onTape =
     displayMs >= tapeStartMs - 40 && displayMs <= tapeStartMs + tapeSpanMs + 40;
@@ -756,6 +760,9 @@ function RangeHandle({
 
 export function Waveform({ compact = false }: { compact?: boolean } = {}) {
   const track = usePlayerStore((s) => s.track);
+  const memberColors = useLibraryStore(
+    (s) => s.albums.find((album) => albumContainsTrackId(album, track.id))?.memberColors,
+  );
   const peaks = usePlayerStore((s) => s.peaks);
   const markers = usePlayerStore((s) => s.markers);
   const showHidden = usePlayerStore((s) => s.showHidden);
@@ -1090,6 +1097,7 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
                 px={scale}
                 durationMs={durationMs}
                 onLongPress={setMenuMarkerId}
+                colorOverrides={memberColors}
               />
             ))}
             <RangeHandle
@@ -1202,7 +1210,7 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
                     styles.overviewDot,
                     {
                       left: `${left}%`,
-                      backgroundColor: markerColor(marker),
+                      backgroundColor: markerColor(marker, memberColors),
                       opacity: marker.hidden ? 0.4 : 1,
                     },
                   ]}
@@ -1317,7 +1325,7 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
             {cuePoints.map((marker) => {
               const preview = markerPreview(marker.text);
               const active = Math.abs(positionMs - marker.timestampMs) < 280;
-              const pinColor = markerColor(marker);
+              const pinColor = markerColor(marker, memberColors);
               return (
                 <Pressable
                   key={marker.id}

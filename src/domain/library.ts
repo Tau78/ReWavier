@@ -56,6 +56,16 @@ export type Album = {
   artworkUri?: string;
   notes?: string;
   notesUpdatedAt?: number;
+  /**
+   * Album-level color for each member (author key). Overrides their personal
+   * band color for notes in this album (synced via `.rewavier.members.json`).
+   */
+  memberColors?: Record<string, string>;
+  /** Cached emails (Drive permissions or self). */
+  memberEmails?: Record<string, string>;
+  /** Display names keyed like memberColors. */
+  memberNames?: Record<string, string>;
+  membersUpdatedAt?: number;
   separators?: AlbumSeparator[];
   versionFolders?: AlbumVersionFolder[];
   documents?: AlbumDocument[];

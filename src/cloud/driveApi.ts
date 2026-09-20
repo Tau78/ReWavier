@@ -556,6 +556,46 @@ export async function fetchFolderRole(folderId: string): Promise<FolderRole> {
   return roleFromDriveCapabilities(data);
 }
 
+export type DrivePermissionPerson = {
+  email?: string;
+  displayName?: string;
+  role?: string;
+};
+
+/** People shared on this folder (email when Drive returns it). Soft-fails to []. */
+export async function listFolderPermissionPeople(
+  folderId: string,
+): Promise<DrivePermissionPerson[]> {
+  try {
+    const fields = 'permissions(id,type,role,emailAddress,displayName)';
+    const data = await driveGet<{
+      permissions?: Array<{
+        type?: string;
+        role?: string;
+        emailAddress?: string;
+        displayName?: string;
+      }>;
+    }>(
+      `/files/${encodeURIComponent(folderId)}/permissions?supportsAllDrives=true&fields=${encodeURIComponent(fields)}`,
+    );
+    const out: DrivePermissionPerson[] = [];
+    for (const row of data.permissions ?? []) {
+      if (row.type === 'anyone' || row.type === 'domain') {
+        continue;
+      }
+      const email = row.emailAddress?.trim().toLowerCase();
+      const displayName = row.displayName?.trim();
+      if (!email && !displayName) {
+        continue;
+      }
+      out.push({ email, displayName, role: row.role });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 export async function getDriveFile(fileId: string): Promise<DriveFile | null> {
   try {
     const file = await driveGet<DriveFile>(

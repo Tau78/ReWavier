@@ -162,6 +162,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Tag con @',
         body: 'Nell’appunto scrivi @ e scegli chi è in questo album. Se ti taggano, la campanella in alto sull’album ha un pallino: tocca e parti da quel momento.',
       },
+      {
+        title: 'Membri dell’album',
+        body: 'Tocca i accanto all’album: vedi chi c’è, con nome e email. Puoi scegliere un colore per ciascuno: vale in questo album per tutti.',
+      },
     ],
   },
 ];

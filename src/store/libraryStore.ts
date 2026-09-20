@@ -142,6 +142,17 @@ export type LibraryActions = {
   upsertAlbumDocument: (albumId: string, document: AlbumDocument) => void;
   deleteAlbumDocument: (albumId: string, documentId: string) => void;
   setAlbumNotes: (id: string, notes: string, extras?: { updatedAt?: number; fromCloud?: boolean }) => void;
+  setAlbumMemberColor: (albumId: string, memberKey: string, color: string) => void;
+  applyCloudAlbumMembers: (
+    albumId: string,
+    input: {
+      memberColors: Record<string, string>;
+      memberEmails: Record<string, string>;
+      memberNames: Record<string, string>;
+      membersUpdatedAt: number;
+    },
+  ) => void;
+  mergeAlbumMemberEmails: (albumId: string, emails: Record<string, string>) => void;
   addAlbumSeparator: (albumId: string, name: string) => string;
   renameAlbumSeparator: (albumId: string, separatorId: string, name: string) => void;
   deleteAlbumSeparator: (albumId: string, separatorId: string) => void;
@@ -790,6 +801,69 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     if (!extras.fromCloud) {
       void flushLibraryPersist();
     }
+  },
+
+  setAlbumMemberColor(albumId, memberKey, color) {
+    if (refuseAlbumWrite(albumId)) {
+      return;
+    }
+    const key = memberKey.trim();
+    const nextColor = color.trim();
+    if (!key || !nextColor) {
+      return;
+    }
+    set((state) => ({
+      albums: state.albums.map((album) => {
+        if (album.id !== albumId) {
+          return album;
+        }
+        return {
+          ...album,
+          memberColors: { ...(album.memberColors ?? {}), [key]: nextColor },
+          membersUpdatedAt: Date.now(),
+        };
+      }),
+    }));
+    void flushLibraryPersist();
+    void import('../cloud/syncEngine').then((mod) => {
+      void mod.pushAlbumMembers(albumId);
+    });
+  },
+
+  applyCloudAlbumMembers(albumId, input) {
+    set((state) => ({
+      albums: state.albums.map((album) =>
+        album.id === albumId
+          ? {
+              ...album,
+              memberColors: input.memberColors,
+              memberEmails: { ...(album.memberEmails ?? {}), ...input.memberEmails },
+              memberNames: { ...(album.memberNames ?? {}), ...input.memberNames },
+              membersUpdatedAt: input.membersUpdatedAt,
+            }
+          : album,
+      ),
+    }));
+  },
+
+  mergeAlbumMemberEmails(albumId, emails) {
+    const entries = Object.entries(emails).filter(([key, email]) => key.trim() && email.trim());
+    if (entries.length === 0) {
+      return;
+    }
+    set((state) => ({
+      albums: state.albums.map((album) => {
+        if (album.id !== albumId) {
+          return album;
+        }
+        const memberEmails = { ...(album.memberEmails ?? {}) };
+        for (const [key, email] of entries) {
+          memberEmails[key] = email.trim().toLowerCase();
+        }
+        return { ...album, memberEmails };
+      }),
+    }));
+    void flushLibraryPersist();
   },
 
   addAlbumSeparator(albumId, name) {

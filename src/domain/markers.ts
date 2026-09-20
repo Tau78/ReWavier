@@ -23,8 +23,18 @@ export function markerAuthorSeed(marker: Pick<Marker, 'authorId' | 'authorName'>
   return marker.authorId?.trim() || marker.authorName?.trim() || 'self';
 }
 
-export function markerColor(marker: Marker): string {
-  return resolveAuthorColor(marker.color, markerAuthorSeed(marker));
+export function markerColor(
+  marker: Marker,
+  colorOverrides?: Record<string, string> | null,
+): string {
+  const seed = markerAuthorSeed(marker);
+  const fromAlbum =
+    colorOverrides?.[seed]?.trim() ||
+    (marker.authorId ? colorOverrides?.[marker.authorId]?.trim() : undefined);
+  if (fromAlbum) {
+    return fromAlbum;
+  }
+  return resolveAuthorColor(marker.color, seed);
 }
 
 /** One swatch per unique note author (most recently active first). */
@@ -45,7 +55,10 @@ export function noteAuthorInitial(name: string): string {
   return letter.toLocaleUpperCase('it-IT');
 }
 
-export function noteAuthorDots(markers: Marker[]): NoteAuthorDot[] {
+export function noteAuthorDots(
+  markers: Marker[],
+  colorOverrides?: Record<string, string> | null,
+): NoteAuthorDot[] {
   const sorted = [...visibleMarkers(markers)].sort((a, b) => b.updatedAt - a.updatedAt);
   const byKey = new Map<string, NoteAuthorDot>();
   for (const marker of sorted) {
@@ -56,7 +69,7 @@ export function noteAuthorDots(markers: Marker[]): NoteAuthorDot[] {
     const name = markerAuthorLabel(marker);
     byKey.set(key, {
       key,
-      color: markerColor(marker),
+      color: markerColor(marker, colorOverrides),
       name,
       initial: noteAuthorInitial(name),
     });
@@ -65,7 +78,10 @@ export function noteAuthorDots(markers: Marker[]): NoteAuthorDot[] {
   // Same stamp for everyone (old orange fallback) → one distinct color per person.
   const uniqueColors = new Set(list.map((dot) => dot.color.toLowerCase()));
   if (list.length >= 2 && uniqueColors.size === 1) {
-    return list.map((dot) => ({ ...dot, color: colorForAuthorSeed(dot.key) }));
+    return list.map((dot) => ({
+      ...dot,
+      color: colorOverrides?.[dot.key] || colorForAuthorSeed(dot.key),
+    }));
   }
   return list;
 }

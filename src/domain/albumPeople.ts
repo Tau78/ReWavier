@@ -35,7 +35,7 @@ export function albumMentionCandidates(
       byKey.set(key, {
         key,
         name,
-        color: markerColor(marker),
+        color: markerColor(marker, album?.memberColors),
         initial: noteAuthorInitial(name),
         handle,
       });

@@ -181,6 +181,19 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
           artworkUri: persistAndKeep(album.artworkUri),
           notes: album.notes?.trim() ? album.notes : undefined,
           notesUpdatedAt: album.notes?.trim() ? album.notesUpdatedAt : undefined,
+          memberColors:
+            album.memberColors && Object.keys(album.memberColors).length > 0
+              ? album.memberColors
+              : undefined,
+          memberEmails:
+            album.memberEmails && Object.keys(album.memberEmails).length > 0
+              ? album.memberEmails
+              : undefined,
+          memberNames:
+            album.memberNames && Object.keys(album.memberNames).length > 0
+              ? album.memberNames
+              : undefined,
+          membersUpdatedAt: album.membersUpdatedAt,
           versionFolders: nextAlbum.versionFolders,
           documents: (album.documents ?? [])
             .map((document) => {

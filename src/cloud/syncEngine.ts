@@ -16,6 +16,17 @@ import {
   albumNotesFromRemote,
   isAlbumNotesFileName,
 } from '../domain/albumNotes';
+import {
+  MEMBERS_FILE_NAME,
+  buildAlbumMembersFile,
+  isAlbumMembersFileName,
+  memberColorMapFromFile,
+  memberEmailMapFromFile,
+  memberNameMapFromFile,
+  parseAlbumMembersFile,
+  shouldApplyRemoteMembers,
+} from '../domain/albumMembers';
+import { albumMentionCandidates } from '../domain/albumPeople';
 import { isDriveAudio, isDownloaded, playableUri } from '../domain/audioFormats';
 import {
   findAlbumCoverFile,
@@ -62,6 +73,7 @@ import {
   isDriveFolder,
   listDriveFolderTree,
   listFolderChildren,
+  listFolderPermissionPeople,
   renameDriveFile,
   updateDriveFileMedia,
   uploadDriveFile,
@@ -1266,6 +1278,127 @@ export async function pushAlbumNotes(albumId: string): Promise<void> {
   });
 }
 
+export async function pushAlbumMembers(albumId: string): Promise<void> {
+  const album = sharedDriveAlbum(albumId);
+  if (!album?.driveFolderId || !canWriteWithRole(roleOfAlbum(album))) {
+    return;
+  }
+  if (!(await hasDriveToken())) {
+    return;
+  }
+  const people = albumMentionCandidates(
+    album,
+    useLibraryStore.getState().markersByTrackId,
+    useSessionStore.getState().user,
+  );
+  const fallback = people.map((person) => ({
+    key: person.key,
+    name: person.name,
+    email: album.memberEmails?.[person.key],
+    color: album.memberColors?.[person.key],
+  }));
+  const body = buildAlbumMembersFile(album, fallback);
+  if (body.members.length === 0) {
+    return;
+  }
+  const dest = new File(inboxDirectory(), `members-${albumId}.json`);
+  dest.write(JSON.stringify(body, null, 2));
+  const existing = await findChildByName(album.driveFolderId, MEMBERS_FILE_NAME);
+  if (existing) {
+    await updateDriveFileMedia(existing.id, dest.uri, 'application/json');
+    return;
+  }
+  await uploadDriveFile({
+    name: MEMBERS_FILE_NAME,
+    folderId: album.driveFolderId,
+    fileUri: dest.uri,
+    mimeType: 'application/json',
+  });
+}
+
+export async function pullAlbumMembers(albumId: string): Promise<boolean> {
+  const album = useLibraryStore.getState().albums.find((item) => item.id === albumId);
+  if (!album?.driveFolderId) {
+    return false;
+  }
+  if (!(await hasDriveToken())) {
+    return false;
+  }
+  const remote = await findChildByName(album.driveFolderId, MEMBERS_FILE_NAME);
+  if (!remote) {
+    return false;
+  }
+  const dest = new File(inboxDirectory(), `pull-members-${albumId}.json`);
+  try {
+    await downloadDriveFile(remote.id, dest.uri);
+    const parsed = parseAlbumMembersFile(await dest.text());
+    if (!parsed || !shouldApplyRemoteMembers(album.membersUpdatedAt, parsed.updatedAt)) {
+      return false;
+    }
+    useLibraryStore.getState().applyCloudAlbumMembers(albumId, {
+      memberColors: memberColorMapFromFile(parsed),
+      memberEmails: memberEmailMapFromFile(parsed),
+      memberNames: memberNameMapFromFile(parsed),
+      membersUpdatedAt: parsed.updatedAt,
+    });
+    await flushLibraryPersist();
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (dest.exists) {
+      dest.delete();
+    }
+  }
+}
+
+/** Refresh emails from Drive permissions (best-effort) and merge into album. */
+export async function refreshAlbumMemberEmails(albumId: string): Promise<void> {
+  const album = useLibraryStore.getState().albums.find((item) => item.id === albumId);
+  if (!album?.driveFolderId || !(await hasDriveToken())) {
+    return;
+  }
+  const people = await listFolderPermissionPeople(album.driveFolderId);
+  if (people.length === 0) {
+    return;
+  }
+  const candidates = albumMentionCandidates(
+    album,
+    useLibraryStore.getState().markersByTrackId,
+    useSessionStore.getState().user,
+  );
+  const emails: Record<string, string> = {};
+  const names: Record<string, string> = { ...(album.memberNames ?? {}) };
+  for (const person of people) {
+    if (!person.email) {
+      continue;
+    }
+    const byName = person.displayName
+      ? candidates.find((row) => row.name.toLowerCase() === person.displayName!.toLowerCase())
+      : undefined;
+    if (byName) {
+      emails[byName.key] = person.email;
+      names[byName.key] = byName.name;
+      continue;
+    }
+    if (person.displayName?.trim()) {
+      const key = person.displayName.trim().toLowerCase();
+      emails[key] = person.email;
+      names[key] = person.displayName.trim();
+    }
+  }
+  if (Object.keys(emails).length === 0) {
+    return;
+  }
+  useLibraryStore.getState().applyCloudAlbumMembers(albumId, {
+    memberColors: album.memberColors ?? {},
+    memberEmails: { ...(album.memberEmails ?? {}), ...emails },
+    memberNames: names,
+    membersUpdatedAt: album.membersUpdatedAt ?? Date.now(),
+  });
+  await flushLibraryPersist();
+}
+
 export async function pushAlbumOrder(albumId: string): Promise<void> {
   const album = sharedDriveAlbum(albumId);
   if (!album?.driveFolderId || !canWriteWithRole(roleOfAlbum(album))) {
@@ -1374,6 +1507,8 @@ export async function pullAlbumLayout(albumId: string): Promise<boolean> {
   if (!(await hasDriveToken())) {
     return false;
   }
+  void pullAlbumMembers(albumId).catch(() => undefined);
+  void refreshAlbumMemberEmails(albumId).catch(() => undefined);
   const remoteFile = await findAlbumOrderRemote(album.driveFolderId);
   if (!remoteFile) {
     return false;
