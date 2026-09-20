@@ -159,6 +159,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         body: 'Sull’onda ingrandita: pizzica per zoom. Con un dito scorri a destra e sinistra per vedere il pezzo fuori schermo. Tocca per andare a quel punto.',
       },
       {
+        title: 'Fumetti più chiari',
+        body: 'Quando molti appunti sono vicini, i fumetti si spostano in verticale così li leggi tutti.',
+      },
+      {
         title: 'Tag con @',
         body: 'Nell’appunto scrivi @ e scegli chi è in questo album — anche chi non ha ancora scritto un appunto. Se ti taggano, la campanella in alto ha un pallino: tocca e parti da quel momento.',
       },

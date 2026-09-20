@@ -3,8 +3,6 @@ import {
   Animated,
   AppState,
   Easing,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
   PanResponder,
   Platform,
   Pressable,
@@ -54,6 +52,8 @@ const LONG_PRESS_MS = 480;
 const PIN_HIT = 44;
 const PIN_BUBBLE_W = 132;
 const PIN_BUBBLE_GAP = 6;
+/** Vertical step when detail bubbles overlap in time. */
+const BUBBLE_LANE_STEP = 36;
 const HANDLE_HIT = 28;
 const PLAYHEAD_HALF = 7;
 /** Cap native seeks during pan scrub; UI position updates every frame. */
@@ -245,8 +245,8 @@ function useWaveformGestures(
     const pan = Gesture.Pan()
       .runOnJS(true)
       .maxPointers(1)
-      .activeOffsetX([-10, 10])
-      .failOffsetY([-24, 24])
+      .activeOffsetX(mode === 'scroll' ? [-8, 8] : [-10, 10])
+      .failOffsetY(mode === 'scroll' ? [-80, 80] : [-24, 24])
       .onStart(() => {
         // Pinch zoom must not scrub/scroll — that jumps the audio or the window.
         if (pinchActive.current) {
@@ -326,7 +326,7 @@ function useWaveformGestures(
 
     // Pinch first: zoom must not run together with scrub/scroll pan.
     return Gesture.Exclusive(pinch, Gesture.Exclusive(pan, tap));
-  }, [setSpanMs]);
+  }, [mode, setSpanMs]);
 }
 
 /** Left edge of the detail window while following the playhead. */
@@ -375,6 +375,36 @@ function pxPerMs(width: number, durationMs: number, windowMs: number): number {
 
 function tapeSpanFor(windowMs: number, durationMs: number): number {
   return Math.min(Math.max(windowMs * 3, windowMs), Math.max(durationMs, 1));
+}
+
+/** Stack overlapping detail bubbles into lanes so every note stays readable. */
+function assignMarkerLanes(
+  markers: Marker[],
+  pxPerMs: number,
+): Map<string, number> {
+  const lanes = new Map<string, number>();
+  if (markers.length === 0 || pxPerMs <= 0) {
+    return lanes;
+  }
+  const minGapMs = (PIN_BUBBLE_W + PIN_BUBBLE_GAP) / pxPerMs;
+  const sorted = [...markers].sort((a, b) => a.timestampMs - b.timestampMs);
+  const laneEnds: number[] = [];
+  for (const marker of sorted) {
+    const t = marker.timestampMs;
+    let lane = 0;
+    for (; lane < laneEnds.length; lane += 1) {
+      if (t - (laneEnds[lane] ?? 0) >= minGapMs) {
+        break;
+      }
+    }
+    if (lane === laneEnds.length) {
+      laneEnds.push(t);
+    } else {
+      laneEnds[lane] = t;
+    }
+    lanes.set(marker.id, lane);
+  }
+  return lanes;
 }
 
 function tapeStartFor(
@@ -458,6 +488,7 @@ function ZoomMarkerPin({
   tapeWidth,
   px,
   durationMs,
+  lane,
   onLongPress,
   colorOverrides,
 }: {
@@ -467,6 +498,7 @@ function ZoomMarkerPin({
   tapeWidth: number;
   px: number;
   durationMs: number;
+  lane: number;
   onLongPress: (id: string) => void;
   colorOverrides?: Record<string, string> | null;
 }) {
@@ -598,7 +630,7 @@ function ZoomMarkerPin({
           delayLongPress={LONG_PRESS_MS}
           style={[
             styles.pinBubble,
-            { borderColor: pinColor },
+            { borderColor: pinColor, top: -(lane * BUBBLE_LANE_STEP) },
             flipLeft ? styles.pinBubbleLeft : styles.pinBubbleRight,
             marker.hidden && styles.pinHidden,
           ]}
@@ -783,8 +815,6 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
   const deleteMarker = usePlayerStore((s) => s.deleteMarker);
   const [menuMarkerId, setMenuMarkerId] = useState<string | null>(null);
   const [detailPage, setDetailPage] = useState<DetailCarouselPage>('detail');
-  const [slotWidth, setSlotWidth] = useState(0);
-  const detailPagerRef = useRef<ScrollView>(null);
   const cuePoints = useMemo(
     () => [...visiblePins].sort((a, b) => a.timestampMs - b.timestampMs),
     [visiblePins],
@@ -860,24 +890,9 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
     detailViewStartRef.current = 0;
     setDetailViewStartMs(0);
     setDetailPage('detail');
-    detailPagerRef.current?.scrollTo({ x: 0, animated: false });
   }, [track.id]);
 
   const goDetailPage = (page: DetailCarouselPage) => {
-    setDetailPage(page);
-    if (slotWidth > 0) {
-      detailPagerRef.current?.scrollTo({
-        x: page === 'lyrics' ? slotWidth : 0,
-        animated: true,
-      });
-    }
-  };
-
-  const onDetailPagerScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (slotWidth <= 0) {
-      return;
-    }
-    const page = Math.round(event.nativeEvent.contentOffset.x / slotWidth) >= 1 ? 'lyrics' : 'detail';
     setDetailPage(page);
   };
 
@@ -1028,6 +1043,21 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
     return samplePeaks(peaks, tapeStartMs / durationMs, (tapeStartMs + tapeSpanMs) / durationMs, count);
   }, [peaks, tapeWidth, tapeStartMs, tapeSpanMs, durationMs]);
 
+  const detailMarkerLanes = useMemo(
+    () => assignMarkerLanes(visiblePins, scale),
+    [visiblePins, scale],
+  );
+  const maxDetailBubbleLane = useMemo(() => {
+    let max = 0;
+    for (const lane of detailMarkerLanes.values()) {
+      if (lane > max) {
+        max = lane;
+      }
+    }
+    return max;
+  }, [detailMarkerLanes]);
+  const detailBubblePad = maxDetailBubbleLane * BUBBLE_LANE_STEP;
+
   const overviewPlayed =
     overviewView.spanMs > 0 ? (positionMs - overviewView.startMs) / overviewView.spanMs : 0;
   const zoomPlayed = tapeSpanMs > 0 ? (positionMs - tapeStartMs) / tapeSpanMs : 0;
@@ -1063,23 +1093,24 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
 
   const zoomTrack = (
     <GestureDetector gesture={detailGestures}>
-      <View onLayout={onZoomLayout} style={styles.zoomTrack}>
-        <View
-          style={StyleSheet.absoluteFill}
-          accessibilityRole="adjustable"
-          accessibilityLabel="Forma d'onda ingrandita"
-          accessibilityHint="Trascina per scorrere l’onda fuori schermo. Tocca per andare a quel punto. Pizzica per ingrandire."
+      <View
+        onLayout={onZoomLayout}
+        style={[styles.zoomTrack, detailBubblePad > 0 && { marginTop: detailBubblePad }]}
+        accessibilityRole="adjustable"
+        accessibilityLabel="Forma d'onda ingrandita"
+        accessibilityHint="Trascina per scorrere l’onda fuori schermo. Tocca per andare a quel punto. Pizzica per ingrandire."
+      >
+        <Animated.View
+          pointerEvents="box-none"
+          style={[
+            styles.zoomTape,
+            {
+              width: Math.max(tapeWidth, zoomWidth),
+              transform: [{ translateX }],
+            },
+          ]}
         >
-          <Animated.View
-            pointerEvents="box-none"
-            style={[
-              styles.zoomTape,
-              {
-                width: Math.max(tapeWidth, zoomWidth),
-                transform: [{ translateX }],
-              },
-            ]}
-          >
+          <View style={styles.zoomWaveClip}>
             <PeakBars
               values={zoomBars}
               height={ZOOM_HEIGHT}
@@ -1087,6 +1118,8 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
               barWidth={2.5}
               rowWidth={Math.max(tapeWidth, zoomWidth)}
             />
+          </View>
+          <View pointerEvents="box-none" style={styles.zoomMarkersLayer}>
             {visiblePins.map((marker) => (
               <ZoomMarkerPin
                 key={marker.id}
@@ -1096,6 +1129,7 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
                 tapeWidth={Math.max(tapeWidth, zoomWidth)}
                 px={scale}
                 durationMs={durationMs}
+                lane={detailMarkerLanes.get(marker.id) ?? 0}
                 onLongPress={setMenuMarkerId}
                 colorOverrides={memberColors}
               />
@@ -1120,8 +1154,8 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
               seekWhileDrag={false}
               leftPx={(range.endMs - tapeStartMs) * scale}
             />
-          </Animated.View>
-        </View>
+          </View>
+        </Animated.View>
         <Animated.View
           pointerEvents="none"
           style={[styles.playhead, styles.playheadTall, { transform: [{ translateX: playheadX }] }]}
@@ -1418,41 +1452,11 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
         </View>
         {compact ? (
           <View style={[styles.zoomBody, styles.zoomBodyCompact]}>{zoomTrack}</View>
+        ) : detailPage === 'detail' ? (
+          <View style={styles.zoomBody}>{zoomTrack}</View>
         ) : (
-          <View
-            style={styles.zoomBody}
-            onLayout={(event) => {
-              const width = event.nativeEvent.layout.width;
-              if (width > 0 && Math.abs(width - slotWidth) > 0.5) {
-                setSlotWidth(width);
-                requestAnimationFrame(() => {
-                  detailPagerRef.current?.scrollTo({
-                    x: detailPage === 'lyrics' ? width : 0,
-                    animated: false,
-                  });
-                });
-              }
-            }}
-          >
-            <ScrollView
-              ref={detailPagerRef}
-              horizontal
-              pagingEnabled
-              nestedScrollEnabled
-              scrollEnabled={detailPage === 'lyrics'}
-              showsHorizontalScrollIndicator={false}
-              onMomentumScrollEnd={onDetailPagerScrollEnd}
-              scrollEventThrottle={16}
-              style={styles.detailPager}
-              contentContainerStyle={styles.detailPagerContent}
-            >
-              <View style={[styles.detailPage, slotWidth > 0 && { width: slotWidth }]}>
-                {zoomTrack}
-              </View>
-              <View style={[styles.detailPage, styles.lyricsPage, slotWidth > 0 && { width: slotWidth }]}>
-                <DetailLyricsPanel trackId={track.id} />
-              </View>
-            </ScrollView>
+          <View style={[styles.zoomBody, styles.lyricsPage]}>
+            <DetailLyricsPanel trackId={track.id} />
           </View>
         )}
       </View>
@@ -1749,13 +1753,22 @@ const styles = StyleSheet.create({
     minHeight: ZOOM_HEIGHT,
     borderRadius: 10,
     backgroundColor: colors.surfaceRaised,
-    overflow: 'hidden',
+    overflow: 'visible',
   },
   zoomTape: {
     position: 'absolute',
     top: 0,
     bottom: 0,
     left: 0,
+  },
+  zoomWaveClip: {
+    height: ZOOM_HEIGHT,
+    overflow: 'hidden',
+    borderRadius: 10,
+  },
+  zoomMarkersLayer: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'visible',
   },
   barsRow: {
     flex: 1,

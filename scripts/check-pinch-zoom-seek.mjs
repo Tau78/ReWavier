@@ -19,5 +19,8 @@ assert.match(src, /applyDetailViewStart/);
 assert.match(src, /followPlayheadRef/);
 assert.match(src, /playheadOutsideView/);
 assert.match(src, /Trascina per scorrere l’onda fuori schermo/);
+assert.match(src, /assignMarkerLanes/);
+assert.match(src, /BUBBLE_LANE_STEP/);
+assert.doesNotMatch(src, /detailPagerRef/);
 
-console.log('ok pinch zoom no seek; detail pan scrolls view');
+console.log('ok pinch zoom no seek; detail pan scrolls view; bubble lanes');
