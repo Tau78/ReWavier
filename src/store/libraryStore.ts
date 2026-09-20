@@ -57,6 +57,7 @@ import {
   loadLibrarySnapshot,
   saveLibrarySnapshot,
   sanitizeSnapshot,
+  shouldPersistAfterHydrate,
   uniquePersistIds,
   waitForLibraryPersistIdle,
   type LibrarySnapshot,
@@ -574,6 +575,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         ? state.removedDriveFolderIds.filter((item) => item !== driveFolderId)
         : state.removedDriveFolderIds,
     }));
+    void flushLibraryPersist();
     return id;
   },
 
@@ -603,6 +605,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           : state.removedDriveFolderIds,
       };
     });
+    void flushLibraryPersist();
   },
 
   setAlbumDriveRole(id, role) {
@@ -1880,10 +1883,12 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         if (!isHydrateStillCurrent(generation, expectedUserId)) {
           return;
         }
-        const snapshot = await loadLibrarySnapshot({ requireOwnerKey: isDemoUser(user) });
+        const loadResult = await loadLibrarySnapshot({ requireOwnerKey: isDemoUser(user) });
         if (!isHydrateStillCurrent(generation, expectedUserId)) {
           return;
         }
+        const snapshot = loadResult.status === 'loaded' ? loadResult.snapshot : null;
+        const allowPersist = shouldPersistAfterHydrate(loadResult);
         set({
           tracks: snapshot?.tracks ?? [],
           folders: snapshot?.folders ?? [],
@@ -1908,12 +1913,17 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         }
         // Keep persistReady false through migrate/scan so subscribers cannot write a
         // partial library.json mid-hydrate.
-        await finishLibraryHydrate(snapshot != null, generation, expectedUserId);
+        await finishLibraryHydrate(allowPersist, generation, expectedUserId);
         if (!isHydrateStillCurrent(generation, expectedUserId)) {
           return;
         }
-        persistReady = true;
-        schedulePersist();
+        // Only arm disk writes after a good load or a genuine empty library.
+        // If library.json was unreadable, leave persistReady false so a later
+        // tap cannot overwrite the on-disk albums with the empty in-memory state.
+        persistReady = allowPersist;
+        if (allowPersist) {
+          schedulePersist();
+        }
       } finally {
         if (generation === libraryHydrateGeneration) {
           set({ libraryHydrated: true });
@@ -1996,7 +2006,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
 useLibraryStore.subscribe(schedulePersist);
 
 async function finishLibraryHydrate(
-  hadSnapshot: boolean,
+  allowPersist: boolean,
   generation: number,
   expectedUserId: string | null,
 ) {
@@ -2038,7 +2048,9 @@ async function finishLibraryHydrate(
       albums: collapsed.albums,
       markersByTrackId,
     });
-    if (extras.length > 0 || hadSnapshot) {
+    // persistReady is still false here — schedulePersist is a no-op until hydrate
+    // sets it. Outer hydrate persists only when allowPersist is true.
+    if (allowPersist && extras.length > 0) {
       schedulePersist();
     }
   } catch {

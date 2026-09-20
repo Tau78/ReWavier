@@ -15,7 +15,7 @@ import { fileExists, reconcileTrack } from './downloads';
 import { persistLibraryUri } from './libraryUris';
 import { getActiveLibraryOwner, snapshotBelongsToOwner } from './libraryOwner';
 import { libraryDirectory, userLibraryDirectory } from './libraryPaths';
-import { ensureDirAsync, pathExistsAsync, withTimeout } from './fsSafe';
+import { ensureDirAsync, pathExistsAsync } from './fsSafe';
 
 function persistAndKeep(uri?: string): string | undefined {
   const stored = persistLibraryUri(uri);
@@ -25,6 +25,7 @@ function persistAndKeep(uri?: string): string | undefined {
 export const LIBRARY_SNAPSHOT_VERSION = 2;
 const SNAPSHOT_NAME = 'library.json';
 const SNAPSHOT_TMP_NAME = 'library.json.tmp';
+const SNAPSHOT_BAK_NAME = 'library.json.bak';
 
 /** One in-flight disk write; later saves queue on this chain. */
 let saveChain: Promise<void> = Promise.resolve();
@@ -44,6 +45,23 @@ export type LibrarySnapshot = {
   /** Drive folders of removed cloud albums (same folder, other phone id). */
   removedDriveFolderIds?: string[];
 };
+
+/**
+ * Load outcome for hydrate.
+ * - loaded: use snapshot
+ * - missing: first launch / empty library — safe to persist after scan
+ * - unreadable: file may exist but timed out, corrupt, or owner mismatch —
+ *   never overwrite disk with an empty in-memory library
+ */
+export type LibraryLoadResult =
+  | { status: 'loaded'; snapshot: LibrarySnapshot }
+  | { status: 'missing' }
+  | { status: 'unreadable' };
+
+/** True only when hydrate may write library.json (fresh install or good load). */
+export function shouldPersistAfterHydrate(result: LibraryLoadResult): boolean {
+  return result.status === 'loaded' || result.status === 'missing';
+}
 
 export function emptyLibrarySnapshot(): LibrarySnapshot {
   return {
@@ -86,6 +104,10 @@ function snapshotFileUri(): string {
 
 function snapshotTempFileUri(): string {
   return `${userLibraryDirectory().uri}/${SNAPSHOT_TMP_NAME}`;
+}
+
+function snapshotBackupFileUri(): string {
+  return `${userLibraryDirectory().uri}/${SNAPSHOT_BAK_NAME}`;
 }
 
 function legacySnapshotFileUri(): string {
@@ -268,27 +290,28 @@ function parseLibrarySnapshot(parsed: LibrarySnapshot): LibrarySnapshot | null {
   };
 }
 
-export async function loadLibrarySnapshot(opts?: {
-  requireOwnerKey?: boolean;
-}): Promise<LibrarySnapshot | null> {
-  const uri = snapshotFileUri();
-  const exists = await withTimeout(pathExistsAsync(uri), 2000, false);
+async function readSnapshotFile(
+  uri: string,
+  opts?: { requireOwnerKey?: boolean },
+): Promise<LibraryLoadResult> {
+  let exists: boolean;
+  try {
+    exists = await pathExistsAsync(uri);
+  } catch {
+    return { status: 'unreadable' };
+  }
   if (!exists) {
-    return null;
+    return { status: 'missing' };
   }
   try {
-    const raw = await withTimeout(
-      LegacyFS.readAsStringAsync(uri),
-      3000,
-      '',
-    );
+    const raw = await LegacyFS.readAsStringAsync(uri);
     if (!raw) {
-      return null;
+      return { status: 'unreadable' };
     }
     const parsed = JSON.parse(raw) as LibrarySnapshot;
     const snapshot = parseLibrarySnapshot(parsed);
     if (!snapshot) {
-      return null;
+      return { status: 'unreadable' };
     }
     const sanitized = sanitizeSnapshot(snapshot);
     if (
@@ -300,29 +323,70 @@ export async function loadLibrarySnapshot(opts?: {
     ) {
       // Never wipe disk on mismatch — wrong activeOwner during account switch
       // used to overwrite library.json with an empty snapshot.
-      return null;
+      return { status: 'unreadable' };
     }
-    return sanitized;
+    return { status: 'loaded', snapshot: sanitized };
   } catch {
-    return null;
+    return { status: 'unreadable' };
   }
+}
+
+export async function loadLibrarySnapshot(opts?: {
+  requireOwnerKey?: boolean;
+}): Promise<LibraryLoadResult> {
+  const primary = await readSnapshotFile(snapshotFileUri(), opts);
+  if (primary.status === 'loaded') {
+    return primary;
+  }
+  const backup = await readSnapshotFile(snapshotBackupFileUri(), opts);
+  if (backup.status === 'loaded') {
+    return backup;
+  }
+  const temp = await readSnapshotFile(snapshotTempFileUri(), opts);
+  if (temp.status === 'loaded') {
+    return temp;
+  }
+  if (
+    primary.status === 'unreadable' ||
+    backup.status === 'unreadable' ||
+    temp.status === 'unreadable'
+  ) {
+    return { status: 'unreadable' };
+  }
+  return { status: 'missing' };
 }
 
 async function writeLibrarySnapshotAtomic(snapshot: LibrarySnapshot): Promise<void> {
   await ensureDirAsync(userLibraryDirectory().uri);
   const dest = snapshotFileUri();
   const tmp = snapshotTempFileUri();
+  const bak = snapshotBackupFileUri();
   const body = JSON.stringify({
     ...snapshot,
     version: LIBRARY_SNAPSHOT_VERSION,
     ownerKey: getActiveLibraryOwner() ?? snapshot.ownerKey,
   });
   await LegacyFS.writeAsStringAsync(tmp, body);
+  // Confirm tmp is valid JSON before touching the live file.
+  const verify = await LegacyFS.readAsStringAsync(tmp);
+  if (!verify || verify !== body) {
+    throw new Error('library.json.tmp write verify failed');
+  }
   try {
     await LegacyFS.moveAsync({ from: tmp, to: dest });
   } catch {
     // Android may refuse rename over an existing file; iOS overwrites.
-    await LegacyFS.deleteAsync(dest, { idempotent: true });
+    // Keep a backup BEFORE deleting dest so a crash mid-replace cannot
+    // leave the user with audio files and zero albums/playlists.
+    if (await pathExistsAsync(dest)) {
+      try {
+        await LegacyFS.deleteAsync(bak, { idempotent: true });
+        await LegacyFS.copyAsync({ from: dest, to: bak });
+      } catch {
+        // best-effort backup; still try to replace
+      }
+      await LegacyFS.deleteAsync(dest, { idempotent: true });
+    }
     await LegacyFS.moveAsync({ from: tmp, to: dest });
   }
 }

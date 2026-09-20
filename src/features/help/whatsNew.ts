@@ -174,6 +174,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Nomi corretti',
         body: 'Se un nome era scritto male (es. accenti strani), l’app lo sistema da sola. In @ e in Membri ogni persona compare una volta sola.',
       },
+      {
+        title: 'Album che restano',
+        body: 'Su Android gli album restano dopo che chiudi l’app, la aggiorni o si chiude da sola. Non serve ricrearli.',
+      },
     ],
   },
 ];
