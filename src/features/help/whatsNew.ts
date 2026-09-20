@@ -160,7 +160,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Tag con @',
-        body: 'Nell’appunto scrivi @ e scegli chi è in questo album. Se ti taggano, la campanella in alto sull’album ha un pallino: tocca e parti da quel momento.',
+        body: 'Nell’appunto scrivi @ e scegli chi è in questo album — anche chi non ha ancora scritto un appunto. Se ti taggano, la campanella in alto ha un pallino: tocca e parti da quel momento.',
       },
       {
         title: 'Membri dell’album',

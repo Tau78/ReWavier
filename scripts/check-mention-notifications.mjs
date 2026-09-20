@@ -18,6 +18,8 @@ assert.match(mentions, /export function filtersMentionCandidates/);
 
 const people = load('src/domain/albumPeople.ts');
 assert.match(people, /albumMentionCandidates/);
+assert.match(people, /memberNames/);
+assert.match(people, /preferMentionPerson/);
 assert.match(people, /selfMentionHandles/);
 
 // Store + persist
