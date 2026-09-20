@@ -1,4 +1,4 @@
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -14,6 +14,13 @@ import { LinkedDevicesCard } from './LinkedDevicesCard';
 import { createId } from '../../domain/library';
 import { userHasUsage, userUsages, type UsageType } from '../../domain/session';
 import type { RootStackParamList } from '../../navigation/types';
+import {
+  openSystemNotificationSettings,
+  readPushPermissionState,
+  requestPushPermission,
+  type PushPermissionState,
+} from '../../notifications/pushNotifications';
+import { useNotificationStore } from '../../store/notificationStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { colors, DeepBackdrop, layout } from '../../theme';
 import { KindRow } from '../../theme/graphics';
@@ -28,6 +35,7 @@ const USAGES: { id: UsageType; title: string }[] = [
 
 type SectionId =
   | 'account'
+  | 'notifiche'
   | 'profilo'
   | 'band'
   | 'file'
@@ -132,6 +140,10 @@ export function SettingsScreen() {
   const version = Constants.expoConfig?.version ?? '1.0.0';
   const build = Constants.expoConfig?.ios?.buildNumber;
   const googleDrive = useGoogleDriveConnect();
+  const osEnabled = useNotificationStore((s) => s.prefs.osEnabled);
+  const setOsEnabled = useNotificationStore((s) => s.setOsEnabled);
+  const refreshPushToken = useNotificationStore((s) => s.refreshPushToken);
+  const [pushPermission, setPushPermission] = useState<PushPermissionState>('undetermined');
   const driveLinked = user?.driveConnected === true && user.driveLink === 'google';
   const showBand = userHasUsage(user, 'band');
   const showDevices = !isDemoUser(user);
@@ -143,12 +155,17 @@ export function SettingsScreen() {
   const [draftColor, setDraftColor] = useState(lastColor);
   const [open, setOpen] = useState<Record<SectionId, boolean>>({
     account: true,
+    notifiche: false,
     profilo: false,
     band: false,
     file: false,
     aiuto: false,
     esci: true,
   });
+
+  useEffect(() => {
+    void readPushPermissionState().then(setPushPermission);
+  }, [osEnabled]);
 
   const toggle = (id: SectionId) => {
     setOpen((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -324,6 +341,59 @@ export function SettingsScreen() {
               accessibilityLabel="Collega Google Drive"
             />
           )}
+        </SettingsSection>
+
+        <SettingsSection
+          title="Notifiche"
+          summary={
+            !osEnabled
+              ? 'Disattivate'
+              : pushPermission === 'granted'
+                ? 'Attive sul telefono'
+                : 'Serve permesso iOS/Android'
+          }
+          open={open.notifiche}
+          onToggle={() => toggle('notifiche')}
+        >
+          <InfoBlock
+            label="Tag con @"
+            hint="Quando qualcuno ti tagga in un album condiviso, puoi ricevere un avviso sul telefono. Tocca l’avviso e parti da quel momento."
+          />
+          <Pressable
+            onPress={() => {
+              const next = !osEnabled;
+              setOsEnabled(next);
+              if (next) {
+                void (async () => {
+                  const state = await requestPushPermission();
+                  setPushPermission(state);
+                  if (state === 'granted') {
+                    await refreshPushToken();
+                  }
+                })();
+              }
+            }}
+            style={({ pressed }) => [styles.block, styles.linkBlock, pressed && styles.pressed]}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: osEnabled }}
+            accessibilityLabel="Notifiche sul telefono"
+          >
+            <Text style={styles.rowLabel}>Notifiche sul telefono</Text>
+            <Text style={styles.rowValue}>{osEnabled ? 'Attive' : 'Disattivate'}</Text>
+            <Text style={styles.rowHint}>
+              {pushPermission === 'denied'
+                ? 'Il permesso è negato: apri le impostazioni del telefono e riattivalo.'
+                : 'Compare anche fuori dall’app, nel Centro notifiche.'}
+            </Text>
+          </Pressable>
+          {pushPermission === 'denied' ? (
+            <LinkRow
+              label="Impostazioni del telefono"
+              value="Apri notifiche per ReWavier"
+              onPress={openSystemNotificationSettings}
+              accessibilityLabel="Apri impostazioni notifiche del telefono"
+            />
+          ) : null}
         </SettingsSection>
 
         <SettingsSection

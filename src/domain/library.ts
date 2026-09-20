@@ -65,6 +65,8 @@ export type Album = {
   memberEmails?: Record<string, string>;
   /** Display names keyed like memberColors. */
   memberNames?: Record<string, string>;
+  /** Expo push tokens for remote @ alerts (synced via `.rewavier.members.json`). */
+  memberPushTokens?: Record<string, string>;
   membersUpdatedAt?: number;
   separators?: AlbumSeparator[];
   versionFolders?: AlbumVersionFolder[];

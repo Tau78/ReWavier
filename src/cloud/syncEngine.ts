@@ -23,6 +23,7 @@ import {
   memberColorMapFromFile,
   memberEmailMapFromFile,
   memberNameMapFromFile,
+  memberPushTokenMapFromFile,
   parseAlbumMembersFile,
   shouldApplyRemoteMembers,
 } from '../domain/albumMembers';
@@ -1340,6 +1341,7 @@ export async function pullAlbumMembers(albumId: string): Promise<boolean> {
       memberColors: memberColorMapFromFile(parsed),
       memberEmails: memberEmailMapFromFile(parsed),
       memberNames: memberNameMapFromFile(parsed),
+      memberPushTokens: memberPushTokenMapFromFile(parsed),
       membersUpdatedAt: parsed.updatedAt,
     });
     await flushLibraryPersist();
@@ -1396,6 +1398,7 @@ export async function refreshAlbumMemberEmails(albumId: string): Promise<void> {
     memberColors: album.memberColors ?? {},
     memberEmails: { ...(album.memberEmails ?? {}), ...emails },
     memberNames: names,
+    memberPushTokens: album.memberPushTokens ?? {},
     membersUpdatedAt: album.membersUpdatedAt ?? Date.now(),
   });
   await flushLibraryPersist();

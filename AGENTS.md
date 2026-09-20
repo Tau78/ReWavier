@@ -22,6 +22,10 @@ Product/scope/default/A/B choices: use **AskQuestion** (tappable form), never nu
 
 The word **VAI** means run `scripts/vai.sh`. After a **user-visible bugfix**, run it yourself — do not wait for the user to type VAI. The script re-detects the stack each run (it may have grown) and only runs FTP / deploy / OTA / build for files that actually changed; git push always. Follow `.cursor/rules/vai.mdc`. JS on the stores: OTA (`eas update` production). iOS native: **Xcode local** → TestFlight. If this machine has no Xcode, the script uses EAS.
 
+# Push notifications
+
+In-app bell ≠ OS Notification Center. Follow `.cursor/skills/push-notifications/SKILL.md` (global copy: `~/.cursor/skills/push-notifications/`). After `expo-notifications` plugin changes, ship a **native build** — OTA alone is not enough.
+
 # Apple release
 
 TestFlight (VAI / `scripts/xcode-testflight.sh`) ≠ App Store review. Before Submit for Review, or after Guideline 2.1 Information Needed, read `.cursor/skills/apple-release/SKILL.md`. Fill `review-notes.template.txt`. Do not call the store listing ready without the review packet (7-point notes, demo login, physical iPhone recording, privacy URL, real screenshots). To reuse on the next app, copy that skill folder — see `.cursor/skills/apple-release/INSTALL.md`.

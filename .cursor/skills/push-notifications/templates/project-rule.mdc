@@ -1,0 +1,11 @@
+---
+description: OS push and local notifications — follow push-notifications skill
+globs:
+alwaysApply: false
+---
+
+# Push notifications
+
+In-app notification list ≠ OS Notification Center. For phone alerts read `.cursor/skills/push-notifications/SKILL.md` (or `~/.cursor/skills/push-notifications/`).
+
+After `expo-notifications` plugin changes: new native build required; OTA alone is not enough.

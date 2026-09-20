@@ -10,6 +10,11 @@ import { flushPlaybackPersist, hydratePlaybackPersist } from '../files/playbackP
 import { AppStack } from '../navigation/AppStack';
 import { useHelpStore } from '../store/helpStore';
 import { flushLibraryPersist, recoverLibraryFromDiskIfWeaker, waitForLibraryHydrated } from '../store/libraryStore';
+import {
+  installNotificationListeners,
+  readInitialNotificationResponse,
+  requestPushPermission,
+} from '../notifications/pushNotifications';
 import { flushNotifications, useNotificationStore } from '../store/notificationStore';
 import { useSessionStore } from '../store/sessionStore';
 
@@ -21,6 +26,7 @@ export function AuthenticatedApp() {
 
   useEffect(() => {
     let cancelled = false;
+    let removeNotificationListeners: (() => void) | undefined;
     void (async () => {
       await waitForLibraryHydrated();
       if (cancelled) {
@@ -34,6 +40,12 @@ export function AuthenticatedApp() {
       if (cancelled) {
         return;
       }
+      removeNotificationListeners = installNotificationListeners();
+      if (useNotificationStore.getState().prefs.osEnabled) {
+        await requestPushPermission();
+        await useNotificationStore.getState().refreshPushToken();
+      }
+      await readInitialNotificationResponse();
       await useHelpStore.getState().hydrate(userId);
       void runCloudSync();
     })();
@@ -64,6 +76,7 @@ export function AuthenticatedApp() {
       cancelled = true;
       sub.remove();
       blurSub.remove();
+      removeNotificationListeners?.();
     };
   }, [userId]);
 

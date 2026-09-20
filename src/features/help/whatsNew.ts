@@ -167,6 +167,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         body: 'Nell’appunto scrivi @ e scegli chi è in questo album — anche chi non ha ancora scritto un appunto. Se ti taggano, la campanella in alto ha un pallino: tocca e parti da quel momento.',
       },
       {
+        title: 'Notifiche sul telefono',
+        body: 'Se ti taggano, puoi ricevere l’avviso anche fuori dall’app. Attivalo in Impostazioni → Notifiche. Tocca l’avviso e parti da quel momento.',
+      },
+      {
         title: 'Membri dell’album',
         body: 'Tocca i accanto all’album: vedi chi c’è, con nome e email. Puoi scegliere un colore per ciascuno: vale in questo album per tutti.',
       },

@@ -151,10 +151,12 @@ export type LibraryActions = {
       memberColors: Record<string, string>;
       memberEmails: Record<string, string>;
       memberNames: Record<string, string>;
+      memberPushTokens?: Record<string, string>;
       membersUpdatedAt: number;
     },
   ) => void;
   mergeAlbumMemberEmails: (albumId: string, emails: Record<string, string>) => void;
+  setMemberPushTokenForUser: (userId: string, pushToken: string) => void;
   addAlbumSeparator: (albumId: string, name: string) => string;
   renameAlbumSeparator: (albumId: string, separatorId: string, name: string) => void;
   deleteAlbumSeparator: (albumId: string, separatorId: string) => void;
@@ -877,11 +879,43 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
               memberColors: input.memberColors,
               memberEmails: { ...(album.memberEmails ?? {}), ...input.memberEmails },
               memberNames: { ...(album.memberNames ?? {}), ...input.memberNames },
+              memberPushTokens: {
+                ...(album.memberPushTokens ?? {}),
+                ...(input.memberPushTokens ?? {}),
+              },
               membersUpdatedAt: input.membersUpdatedAt,
             }
           : album,
       ),
     }));
+  },
+
+  setMemberPushTokenForUser(userId, pushToken) {
+    const key = userId.trim();
+    const token = pushToken.trim();
+    if (!key || !token.startsWith('ExponentPushToken[')) {
+      return;
+    }
+    const touched: string[] = [];
+    set((state) => ({
+      albums: state.albums.map((album) => {
+        if (album.memberPushTokens?.[key] === token) {
+          return album;
+        }
+        touched.push(album.id);
+        return {
+          ...album,
+          memberPushTokens: { ...(album.memberPushTokens ?? {}), [key]: token },
+          membersUpdatedAt: Date.now(),
+        };
+      }),
+    }));
+    void flushLibraryPersist();
+    void import('../cloud/syncEngine').then((mod) => {
+      for (const albumId of touched) {
+        void mod.pushAlbumMembers(albumId);
+      }
+    });
   },
 
   mergeAlbumMemberEmails(albumId, emails) {

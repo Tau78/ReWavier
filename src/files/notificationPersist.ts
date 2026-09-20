@@ -1,8 +1,10 @@
 import * as LegacyFS from 'expo-file-system/legacy';
 
 import {
+  defaultNotificationPrefs,
   emptyNotificationSnapshot,
   type AppNotification,
+  type NotificationPrefs,
   type NotificationSnapshot,
 } from '../domain/notifications';
 import { ensureDirAsync, pathExistsAsync, withTimeout } from './fsSafe';
@@ -51,6 +53,22 @@ function asItem(value: unknown): AppNotification | undefined {
     snippet: typeof row.snippet === 'string' ? row.snippet : '',
     createdAt: Math.round(createdAt),
     readAt: readAtRaw != null && Number.isFinite(readAtRaw) ? Math.round(readAtRaw) : undefined,
+    osNotifiedAt:
+      row.osNotifiedAt != null && Number.isFinite(Number(row.osNotifiedAt))
+        ? Math.round(Number(row.osNotifiedAt))
+        : undefined,
+  };
+}
+
+function sanitizePrefs(raw: unknown): NotificationPrefs {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return defaultNotificationPrefs();
+  }
+  const row = raw as Record<string, unknown>;
+  const token = typeof row.expoPushToken === 'string' ? row.expoPushToken.trim() : undefined;
+  return {
+    osEnabled: row.osEnabled !== false,
+    expoPushToken: token || undefined,
   };
 }
 
@@ -69,7 +87,10 @@ function sanitizeSnapshot(raw: unknown): NotificationSnapshot {
     }
   }
   items.sort((a, b) => b.createdAt - a.createdAt);
-  return { items: items.slice(0, 200) };
+  return {
+    items: items.slice(0, 200),
+    prefs: sanitizePrefs(parsed.prefs),
+  };
 }
 
 export function resetNotificationPersist(): void {
@@ -142,6 +163,7 @@ export function readNotificationSnapshot(): NotificationSnapshot {
 export function writeNotificationSnapshot(next: NotificationSnapshot): void {
   cache = {
     items: [...next.items].sort((a, b) => b.createdAt - a.createdAt).slice(0, 200),
+    prefs: sanitizePrefs(next.prefs),
   };
   loaded = true;
   scheduleSave();

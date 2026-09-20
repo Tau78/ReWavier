@@ -250,6 +250,10 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
             album.memberNames && Object.keys(album.memberNames).length > 0
               ? album.memberNames
               : undefined,
+          memberPushTokens:
+            album.memberPushTokens && Object.keys(album.memberPushTokens).length > 0
+              ? album.memberPushTokens
+              : undefined,
           membersUpdatedAt: album.membersUpdatedAt,
           versionFolders: nextAlbum.versionFolders,
           documents: (album.documents ?? [])

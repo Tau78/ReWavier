@@ -46,7 +46,8 @@
         "CFBundleDevelopmentRegion": "it",
         "NSMicrophoneUsageDescription": "ReWavier usa il microfono solo quando registri una bozza musicale.",
         "UIBackgroundModes": [
-          "audio"
+          "audio",
+          "remote-notification"
         ],
         "UIUserInterfaceStyle": "Dark",
         "NSUbiquitousContainers": {
@@ -104,7 +105,8 @@
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
-        "android.permission.WAKE_LOCK"
+        "android.permission.WAKE_LOCK",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -141,6 +143,15 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/android-icon-monochrome.png",
+          "color": "#FF6B35",
+          "defaultChannel": "mentions",
+          "sounds": []
         }
       ]
     ],

@@ -19,6 +19,7 @@ import { HelpScreen } from '../features/help/HelpScreen';
 import { PrivacyScreen } from '../features/settings/PrivacyScreen';
 import { SettingsScreen } from '../features/settings/SettingsScreen';
 import { colors } from '../theme/colors';
+import { navigationRef } from './navigationRef';
 import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -37,7 +38,7 @@ const theme = {
 
 export function AppStack() {
   return (
-    <NavigationContainer theme={theme}>
+    <NavigationContainer ref={navigationRef} theme={theme}>
       <Stack.Navigator
         initialRouteName="Home"
         screenOptions={{

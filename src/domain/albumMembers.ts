@@ -9,6 +9,7 @@ export type AlbumMemberRecord = {
   name: string;
   email?: string;
   color?: string;
+  pushToken?: string;
 };
 
 export type AlbumMembersFile = {
@@ -44,7 +45,11 @@ export function parseAlbumMembersFile(raw: string): AlbumMembersFile | null {
         const email = typeof row.email === 'string' ? row.email.trim() : undefined;
         const color =
           typeof row.color === 'string' && isBandColor(row.color) ? row.color : undefined;
-        members.push({ key, name, email: email || undefined, color });
+        const pushToken =
+          typeof row.pushToken === 'string' && row.pushToken.trim().startsWith('ExponentPushToken[')
+            ? row.pushToken.trim()
+            : undefined;
+        members.push({ key, name, email: email || undefined, color, pushToken });
       }
     }
     return { updatedAt: Math.round(updatedAt), members };
@@ -54,13 +59,17 @@ export function parseAlbumMembersFile(raw: string): AlbumMembersFile | null {
 }
 
 export function buildAlbumMembersFile(
-  album: Pick<Album, 'memberColors' | 'memberEmails' | 'memberNames' | 'membersUpdatedAt'>,
+  album: Pick<
+    Album,
+    'memberColors' | 'memberEmails' | 'memberNames' | 'memberPushTokens' | 'membersUpdatedAt'
+  >,
   fallback: AlbumMemberRecord[],
 ): AlbumMembersFile {
   const keys = new Set<string>([
     ...Object.keys(album.memberColors ?? {}),
     ...Object.keys(album.memberEmails ?? {}),
     ...Object.keys(album.memberNames ?? {}),
+    ...Object.keys(album.memberPushTokens ?? {}),
     ...fallback.map((row) => row.key),
   ]);
   const members: AlbumMemberRecord[] = [];
@@ -72,11 +81,14 @@ export function buildAlbumMembersFile(
     }
     const email = album.memberEmails?.[key]?.trim() || fromFallback?.email?.trim();
     const color = album.memberColors?.[key];
+    const pushToken =
+      album.memberPushTokens?.[key]?.trim() || fromFallback?.pushToken?.trim() || undefined;
     members.push({
       key,
       name,
       email: email || undefined,
       color: color && isBandColor(color) ? color : undefined,
+      pushToken: pushToken?.startsWith('ExponentPushToken[') ? pushToken : undefined,
     });
   }
   members.sort((a, b) => a.name.localeCompare(b.name, 'it', { sensitivity: 'base' }));
@@ -111,6 +123,17 @@ export function memberNameMapFromFile(file: AlbumMembersFile): Record<string, st
   for (const row of file.members) {
     if (row.name.trim()) {
       out[row.key] = row.name.trim();
+    }
+  }
+  return out;
+}
+
+export function memberPushTokenMapFromFile(file: AlbumMembersFile): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const row of file.members) {
+    const token = row.pushToken?.trim();
+    if (token?.startsWith('ExponentPushToken[')) {
+      out[row.key] = token;
     }
   }
   return out;
