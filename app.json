@@ -92,7 +92,7 @@
     },
     "android": {
       "package": "app.rewavier",
-      "versionCode": 13,
+      "versionCode": 14,
       "adaptiveIcon": {
         "backgroundColor": "#0D0D0F",
         "foregroundImage": "./assets/android-icon-foreground.png",
