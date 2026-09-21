@@ -1,7 +1,5 @@
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
-import { requireOptionalNativeModule } from 'expo-modules-core';
-import * as Notifications from 'expo-notifications';
 import { Linking, Platform } from 'react-native';
 
 import type { AppNotification } from '../domain/notifications';
@@ -11,36 +9,52 @@ import {
   type MentionNotificationPayload,
 } from './mentionPayload';
 import { openMentionNotification } from './notificationRouter';
+import {
+  isOsNotificationsAvailable,
+  markOsNotificationsUnavailable,
+} from './osNotificationsAvailability';
+
+export { isOsNotificationsAvailable } from './osNotificationsAvailability';
 
 const ANDROID_CHANNEL_ID = 'mentions';
 
+type NotificationsModule = typeof import('expo-notifications');
+
 let handlerInstalled = false;
 let listenersInstalled = false;
-let availabilityCache: boolean | null = null;
+let notificationsModule: NotificationsModule | null = null;
+let notificationsLoad: Promise<NotificationsModule | null> | null = null;
+
+async function loadNotifications(): Promise<NotificationsModule | null> {
+  if (!isOsNotificationsAvailable()) {
+    return null;
+  }
+  if (notificationsModule) {
+    return notificationsModule;
+  }
+  if (!notificationsLoad) {
+    notificationsLoad = import('expo-notifications')
+      .then((mod) => {
+        notificationsModule = mod;
+        return mod;
+      })
+      .catch(() => {
+        markOsNotificationsUnavailable();
+        notificationsModule = null;
+        return null;
+      });
+  }
+  return notificationsLoad;
+}
 
 export type PushPermissionState = 'granted' | 'denied' | 'undetermined';
 
-/** Native expo-notifications linked in this build (OTA alone is not enough). */
-export function isOsNotificationsAvailable(): boolean {
-  if (availabilityCache != null) {
-    return availabilityCache;
-  }
-  try {
-    const permissions = requireOptionalNativeModule('ExpoNotificationPermissionsModule');
-    const scheduler = requireOptionalNativeModule('ExpoNotificationScheduler');
-    availabilityCache =
-      permissions != null &&
-      typeof permissions.getPermissionsAsync === 'function' &&
-      scheduler != null &&
-      typeof scheduler.scheduleNotificationAsync === 'function';
-  } catch {
-    availabilityCache = false;
-  }
-  return availabilityCache;
-}
-
-export function configureOsNotificationHandler(): void {
+export async function configureOsNotificationHandler(): Promise<void> {
   if (!isOsNotificationsAvailable() || handlerInstalled) {
+    return;
+  }
+  const Notifications = await loadNotifications();
+  if (!Notifications) {
     return;
   }
   handlerInstalled = true;
@@ -58,8 +72,8 @@ export function configureOsNotificationHandler(): void {
   }
 }
 
-async function ensureAndroidChannel(): Promise<void> {
-  if (Platform.OS !== 'android' || !isOsNotificationsAvailable()) {
+async function ensureAndroidChannel(Notifications: NotificationsModule): Promise<void> {
+  if (Platform.OS !== 'android') {
     return;
   }
   try {
@@ -79,6 +93,10 @@ export async function readPushPermissionState(): Promise<PushPermissionState> {
     return 'undetermined';
   }
   try {
+    const Notifications = await loadNotifications();
+    if (!Notifications) {
+      return 'undetermined';
+    }
     const settings = await Notifications.getPermissionsAsync();
     if (settings.granted || settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL) {
       return 'granted';
@@ -97,7 +115,11 @@ export async function requestPushPermission(): Promise<PushPermissionState> {
     return 'undetermined';
   }
   try {
-    await ensureAndroidChannel();
+    const Notifications = await loadNotifications();
+    if (!Notifications) {
+      return 'undetermined';
+    }
+    await ensureAndroidChannel(Notifications);
     const current = await Notifications.getPermissionsAsync();
     if (
       current.granted ||
@@ -130,6 +152,10 @@ export async function registerExpoPushToken(): Promise<string | null> {
     if (permission !== 'granted') {
       return null;
     }
+    const Notifications = await loadNotifications();
+    if (!Notifications) {
+      return null;
+    }
     const projectId =
       Constants.expoConfig?.extra?.eas?.projectId ??
       Constants.easConfig?.projectId;
@@ -155,7 +181,11 @@ export async function presentMentionOsNotification(
     if (permission !== 'granted') {
       return;
     }
-    await ensureAndroidChannel();
+    const Notifications = await loadNotifications();
+    if (!Notifications) {
+      return;
+    }
+    await ensureAndroidChannel(Notifications);
     const title = albumName?.trim()
       ? `${item.fromAuthorName} in ${albumName}`
       : `${item.fromAuthorName} ti ha taggato`;
@@ -234,14 +264,18 @@ export function openSystemNotificationSettings(): void {
   void Linking.openSettings();
 }
 
-export function installNotificationListeners(): () => void {
+export async function installNotificationListeners(): Promise<() => void> {
   if (!isOsNotificationsAvailable() || listenersInstalled) {
     return () => undefined;
   }
+  const Notifications = await loadNotifications();
+  if (!Notifications) {
+    return () => undefined;
+  }
   listenersInstalled = true;
-  configureOsNotificationHandler();
+  await configureOsNotificationHandler();
 
-  let onResponse: Notifications.Subscription | undefined;
+  let onResponse: { remove: () => void } | undefined;
   try {
     onResponse = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data as Record<string, unknown> | undefined;
@@ -266,6 +300,10 @@ export async function readInitialNotificationResponse(): Promise<void> {
     return;
   }
   try {
+    const Notifications = await loadNotifications();
+    if (!Notifications) {
+      return;
+    }
     const last = await Notifications.getLastNotificationResponseAsync();
     if (!last) {
       return;

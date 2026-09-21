@@ -172,7 +172,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Apertura su Android',
-        body: 'Se l’app si chiudeva da sola all’avvio, riapri dopo l’aggiornamento: ora parte anche senza la versione store nuova. Le notifiche sul telefono restano nello store.',
+        body: 'Se ReWavier si chiudeva subito all’apertura, riaprila dopo questo aggiornamento: parte di nuovo. Le notifiche fuori dall’app arrivano con la versione del Play Store.',
       },
       {
         title: 'Membri dell’album',

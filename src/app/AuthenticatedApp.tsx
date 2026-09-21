@@ -42,7 +42,11 @@ export function AuthenticatedApp() {
         return;
       }
       if (isOsNotificationsAvailable()) {
-        removeNotificationListeners = installNotificationListeners();
+        removeNotificationListeners = await installNotificationListeners();
+        if (cancelled) {
+          removeNotificationListeners();
+          return;
+        }
         if (useNotificationStore.getState().prefs.osEnabled) {
           await requestPushPermission();
           await useNotificationStore.getState().refreshPushToken();
