@@ -9,7 +9,11 @@ import { WhatsNewModal } from '../features/help/WhatsNewModal';
 import { flushPlaybackPersist, hydratePlaybackPersist } from '../files/playbackPersist';
 import { AppStack } from '../navigation/AppStack';
 import { useHelpStore } from '../store/helpStore';
-import { flushLibraryPersist, recoverLibraryFromDiskIfWeaker, waitForLibraryHydrated } from '../store/libraryStore';
+import {
+  recoverLibraryFromDiskIfWeaker,
+  scheduleLibraryPersistFlush,
+  waitForLibraryHydrated,
+} from '../store/libraryStore';
 import {
   installNotificationListeners,
   isOsNotificationsAvailable,
@@ -58,7 +62,7 @@ export function AuthenticatedApp() {
     })();
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'background' || state === 'inactive') {
-        void flushLibraryPersist();
+        scheduleLibraryPersistFlush();
         void flushPlaybackPersist();
         void flushNotifications();
         return;
@@ -75,7 +79,7 @@ export function AuthenticatedApp() {
       })();
     });
     const blurSub = AppState.addEventListener('blur', () => {
-      void flushLibraryPersist();
+      scheduleLibraryPersistFlush();
       void flushPlaybackPersist();
       void flushNotifications();
     });

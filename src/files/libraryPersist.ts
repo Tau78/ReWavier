@@ -16,7 +16,7 @@ import { fileExists, reconcileTrack } from './downloads';
 import { persistLibraryUri } from './libraryUris';
 import { getActiveLibraryOwner, snapshotBelongsToOwner } from './libraryOwner';
 import { libraryDirectory, userLibraryDirectory } from './libraryPaths';
-import { ensureDirAsync, pathExistsAsync } from './fsSafe';
+import { ensureDirAsync, pathExistsAsync, toFileUri } from './fsSafe';
 
 function persistAndKeep(uri?: string): string | undefined {
   const stored = persistLibraryUri(uri);
@@ -200,6 +200,83 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
   const removedDriveFolderIds = uniquePersistIds(snapshot.removedDriveFolderIds);
   const removedAlbumSet = new Set(removedAlbumIds);
   const removedFolderSet = new Set(removedDriveFolderIds);
+  const filteredAlbums = healedAuthors.albums
+    .filter((album) => {
+      if (removedAlbumSet.has(album.id)) {
+        return false;
+      }
+      const folderId = album.driveFolderId?.trim();
+      return !(folderId && removedFolderSet.has(folderId));
+    })
+    .map((album) => {
+      const names = new Map((album.separators ?? []).map((item) => [item.id, item.name]));
+      const versionFolders = (album.versionFolders ?? [])
+        .map((folder) => {
+          const folderTracks = folder.trackIds.filter((id) => keep.has(id));
+          const chosenId = folderTracks.includes(folder.chosenId)
+            ? folder.chosenId
+            : (folderTracks[0] ?? folder.chosenId);
+          return {
+            ...folder,
+            name: folder.name.trim() || 'Versioni',
+            trackIds: folderTracks,
+            chosenId,
+          };
+        })
+        .filter((folder) => folder.trackIds.length >= 1);
+      const folderIds = new Set(versionFolders.map((folder) => folder.id));
+      const trackIds = album.trackIds.filter(
+        (id) => keep.has(id) || names.has(id) || isSeparatorId(id) || folderIds.has(id),
+      );
+      const separators = trackIds
+        .filter((id) => names.has(id) || isSeparatorId(id))
+        .map((id) => ({ id, name: names.get(id)?.trim() || 'Separatore' }));
+      const nextAlbum = {
+        ...album,
+        trackIds,
+        separators: separators.length > 0 ? separators : undefined,
+        versionFolders: versionFolders.length > 0 ? versionFolders : undefined,
+      };
+      return {
+        ...nextAlbum,
+        trackIds: albumHasCustomOrder(nextAlbum)
+          ? trackIds
+          : orderedAlbumItemIds(nextAlbum, tracks),
+        separators: separators.length > 0 ? separators : undefined,
+        artworkUri: persistAndKeep(album.artworkUri),
+        notes: album.notes?.trim() ? album.notes : undefined,
+        notesUpdatedAt: album.notes?.trim() ? album.notesUpdatedAt : undefined,
+        memberColors:
+          album.memberColors && Object.keys(album.memberColors).length > 0
+            ? album.memberColors
+            : undefined,
+        memberEmails:
+          album.memberEmails && Object.keys(album.memberEmails).length > 0
+            ? album.memberEmails
+            : undefined,
+        memberNames:
+          album.memberNames && Object.keys(album.memberNames).length > 0
+            ? album.memberNames
+            : undefined,
+        memberPushTokens:
+          album.memberPushTokens && Object.keys(album.memberPushTokens).length > 0
+            ? album.memberPushTokens
+            : undefined,
+        membersUpdatedAt: album.membersUpdatedAt,
+        versionFolders: nextAlbum.versionFolders,
+        documents: (album.documents ?? [])
+          .map((document) => {
+            const fileUri = persistAndKeep(document.fileUri);
+            return fileUri ? { ...document, fileUri } : null;
+          })
+          .filter((document): document is NonNullable<typeof document> => document != null),
+      };
+    });
+  const deduped = dedupeAlbumsByDriveFolder(filteredAlbums);
+  const nextRemovedAlbumIds = uniquePersistIds([
+    ...removedAlbumIds,
+    ...deduped.removedDuplicateIds,
+  ]);
 
   return {
     version: LIBRARY_SNAPSHOT_VERSION,
@@ -209,78 +286,7 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
       ...folder,
       trackIds: pruneIds(folder.trackIds),
     })),
-    albums: healedAuthors.albums
-      .filter((album) => {
-        if (removedAlbumSet.has(album.id)) {
-          return false;
-        }
-        const folderId = album.driveFolderId?.trim();
-        return !(folderId && removedFolderSet.has(folderId));
-      })
-      .map((album) => {
-        const names = new Map((album.separators ?? []).map((item) => [item.id, item.name]));
-        const versionFolders = (album.versionFolders ?? [])
-          .map((folder) => {
-            const folderTracks = folder.trackIds.filter((id) => keep.has(id));
-            const chosenId = folderTracks.includes(folder.chosenId)
-              ? folder.chosenId
-              : (folderTracks[0] ?? folder.chosenId);
-            return {
-              ...folder,
-              name: folder.name.trim() || 'Versioni',
-              trackIds: folderTracks,
-              chosenId,
-            };
-          })
-          .filter((folder) => folder.trackIds.length >= 1);
-        const folderIds = new Set(versionFolders.map((folder) => folder.id));
-        const trackIds = album.trackIds.filter(
-          (id) => keep.has(id) || names.has(id) || isSeparatorId(id) || folderIds.has(id),
-        );
-        const separators = trackIds
-          .filter((id) => names.has(id) || isSeparatorId(id))
-          .map((id) => ({ id, name: names.get(id)?.trim() || 'Separatore' }));
-        const nextAlbum = {
-          ...album,
-          trackIds,
-          separators: separators.length > 0 ? separators : undefined,
-          versionFolders: versionFolders.length > 0 ? versionFolders : undefined,
-        };
-        return {
-          ...nextAlbum,
-          trackIds: albumHasCustomOrder(nextAlbum)
-            ? trackIds
-            : orderedAlbumItemIds(nextAlbum, tracks),
-          separators: separators.length > 0 ? separators : undefined,
-          artworkUri: persistAndKeep(album.artworkUri),
-          notes: album.notes?.trim() ? album.notes : undefined,
-          notesUpdatedAt: album.notes?.trim() ? album.notesUpdatedAt : undefined,
-          memberColors:
-            album.memberColors && Object.keys(album.memberColors).length > 0
-              ? album.memberColors
-              : undefined,
-          memberEmails:
-            album.memberEmails && Object.keys(album.memberEmails).length > 0
-              ? album.memberEmails
-              : undefined,
-          memberNames:
-            album.memberNames && Object.keys(album.memberNames).length > 0
-              ? album.memberNames
-              : undefined,
-          memberPushTokens:
-            album.memberPushTokens && Object.keys(album.memberPushTokens).length > 0
-              ? album.memberPushTokens
-              : undefined,
-          membersUpdatedAt: album.membersUpdatedAt,
-          versionFolders: nextAlbum.versionFolders,
-          documents: (album.documents ?? [])
-            .map((document) => {
-              const fileUri = persistAndKeep(document.fileUri);
-              return fileUri ? { ...document, fileUri } : null;
-            })
-            .filter((document): document is NonNullable<typeof document> => document != null),
-        };
-      }),
+    albums: deduped.albums,
     playlists: snapshot.playlists.map((playlist) => ({
       ...playlist,
       id: typeof playlist.id === 'string' ? playlist.id : '',
@@ -299,7 +305,7 @@ export function sanitizeSnapshot(snapshot: LibrarySnapshot): LibrarySnapshot {
       Object.entries(healedAuthors.markersByTrackId).filter(([id]) => keep.has(id)),
     ),
     keptAudioNames: (snapshot.keptAudioNames ?? []).filter((name) => name.trim().length > 0),
-    removedAlbumIds,
+    removedAlbumIds: nextRemovedAlbumIds,
     removedDriveFolderIds,
   };
 }
@@ -341,21 +347,36 @@ function parseLibrarySnapshot(parsed: LibrarySnapshot): LibrarySnapshot | null {
   };
 }
 
+/** True missing file vs flaky/corrupt I/O — never treat I/O errors as missing. */
+function isMissingFileError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /not found|does not exist|ENOENT|No such file|FileNotFound|couldn['’]?t be opened|could not be opened|Unable to resolve|no such file or directory/i.test(
+    message,
+  );
+}
+
+/**
+ * Read library.json (or bak/tmp) without treating I/O probe failures as missing.
+ * pathExistsAsync returns false on catch — that used to arm empty hydrates that
+ * wiped albums on the next Android blur flush.
+ */
 async function readSnapshotFile(
   uri: string,
   opts?: { requireOwnerKey?: boolean },
 ): Promise<LibraryLoadResult> {
-  let exists: boolean;
+  const fileUri = toFileUri(uri);
+  let probe: 'exists' | 'missing' | 'unknown' = 'unknown';
   try {
-    exists = await pathExistsAsync(uri);
+    const info = await LegacyFS.getInfoAsync(fileUri);
+    probe = info.exists === true ? 'exists' : 'missing';
   } catch {
-    return { status: 'unreadable' };
+    probe = 'unknown';
   }
-  if (!exists) {
+  if (probe === 'missing') {
     return { status: 'missing' };
   }
   try {
-    const raw = await LegacyFS.readAsStringAsync(uri);
+    const raw = await LegacyFS.readAsStringAsync(fileUri);
     if (!raw) {
       return { status: 'unreadable' };
     }
@@ -377,19 +398,43 @@ async function readSnapshotFile(
       return { status: 'unreadable' };
     }
     return { status: 'loaded', snapshot: sanitized };
-  } catch {
+  } catch (error) {
+    // First install / genuinely absent file (probe unknown + clear miss).
+    if (probe !== 'exists' && isMissingFileError(error)) {
+      return { status: 'missing' };
+    }
     return { status: 'unreadable' };
   }
+}
+
+function pickRicherSnapshot(
+  left: LibrarySnapshot,
+  right: LibrarySnapshot,
+): LibrarySnapshot {
+  if (isWeakerLibrarySnapshot(left, right)) {
+    return right;
+  }
+  if (isWeakerLibrarySnapshot(right, left)) {
+    return left;
+  }
+  return left.albums.length >= right.albums.length ? left : right;
 }
 
 export async function loadLibrarySnapshot(opts?: {
   requireOwnerKey?: boolean;
 }): Promise<LibraryLoadResult> {
   const primary = await readSnapshotFile(snapshotFileUri(), opts);
+  const backup = await readSnapshotFile(snapshotBackupFileUri(), opts);
+  if (primary.status === 'loaded' && backup.status === 'loaded') {
+    if (isWeakerLibrarySnapshot(primary.snapshot, backup.snapshot)) {
+      // Empty primary after a wipe still parses as loaded — prefer richer bak.
+      return backup;
+    }
+    return primary;
+  }
   if (primary.status === 'loaded') {
     return primary;
   }
-  const backup = await readSnapshotFile(snapshotBackupFileUri(), opts);
   if (backup.status === 'loaded') {
     return backup;
   }
@@ -415,17 +460,26 @@ async function writeLibrarySnapshotAtomic(snapshot: LibrarySnapshot): Promise<vo
 
   // Never let a stripped in-memory library (common after Android blur/background
   // during a flaky load) overwrite a richer library.json already on disk.
-  let diskSnapshot: LibrarySnapshot | null = null;
   const existing = await readSnapshotFile(dest);
-  if (existing.status === 'loaded') {
+  const backup = await readSnapshotFile(bak);
+  let diskSnapshot: LibrarySnapshot | null = null;
+  if (existing.status === 'loaded' && backup.status === 'loaded') {
+    diskSnapshot = pickRicherSnapshot(existing.snapshot, backup.snapshot);
+  } else if (existing.status === 'loaded') {
     diskSnapshot = existing.snapshot;
-  } else {
-    const backup = await readSnapshotFile(bak);
-    if (backup.status === 'loaded') {
-      diskSnapshot = backup.snapshot;
-    }
+  } else if (backup.status === 'loaded') {
+    diskSnapshot = backup.snapshot;
   }
   if (diskSnapshot && isWeakerLibrarySnapshot(snapshot, diskSnapshot)) {
+    return;
+  }
+  // Fail closed: disk state unknown and incoming looks like a wipe.
+  if (
+    !diskSnapshot &&
+    (existing.status === 'unreadable' || backup.status === 'unreadable') &&
+    snapshot.albums.length === 0 &&
+    uniquePersistIds(snapshot.removedAlbumIds).length === 0
+  ) {
     return;
   }
 

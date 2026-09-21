@@ -318,12 +318,29 @@ export async function flushLibraryPersist(): Promise<void> {
     clearTimeout(persistTimer);
     persistTimer = undefined;
   }
+  if (appStateFlushTimer) {
+    clearTimeout(appStateFlushTimer);
+    appStateFlushTimer = undefined;
+  }
   if (!persistReady) {
     await waitForLibraryPersistIdle();
     return;
   }
   await saveLibrarySnapshot(snapshotFrom(useLibraryStore.getState()));
   await waitForLibraryPersistIdle();
+}
+
+/** Coalesce Android inactive/blur/background into one write. */
+let appStateFlushTimer: ReturnType<typeof setTimeout> | undefined;
+
+export function scheduleLibraryPersistFlush(): void {
+  if (appStateFlushTimer) {
+    clearTimeout(appStateFlushTimer);
+  }
+  appStateFlushTimer = setTimeout(() => {
+    appStateFlushTimer = undefined;
+    void flushLibraryPersist().catch(() => undefined);
+  }, 280);
 }
 
 /**

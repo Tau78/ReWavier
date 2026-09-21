@@ -10,7 +10,7 @@ import { StartupErrorBoundary } from './src/app/StartupErrorBoundary';
 import { LoginScreen } from './src/features/auth/LoginScreen';
 import { OnboardingScreen } from './src/features/auth/OnboardingScreen';
 import { StartupScreen } from './src/features/splash/StartupScreen';
-import { flushLibraryPersist, useLibraryStore } from './src/store/libraryStore';
+import { scheduleLibraryPersistFlush, useLibraryStore } from './src/store/libraryStore';
 import { useSessionStore } from './src/store/sessionStore';
 import { colors } from './src/theme/colors';
 
@@ -42,7 +42,7 @@ export default function App() {
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'background') {
-        void flushLibraryPersist().catch(() => undefined);
+        scheduleLibraryPersistFlush();
       }
     });
     return () => sub.remove();
