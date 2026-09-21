@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
+import { requireOptionalNativeModule } from 'expo-modules-core';
 import * as Notifications from 'expo-notifications';
 import { Linking, Platform } from 'react-native';
 
@@ -15,84 +16,126 @@ const ANDROID_CHANNEL_ID = 'mentions';
 
 let handlerInstalled = false;
 let listenersInstalled = false;
+let availabilityCache: boolean | null = null;
 
 export type PushPermissionState = 'granted' | 'denied' | 'undetermined';
 
+/** Native expo-notifications linked in this build (OTA alone is not enough). */
+export function isOsNotificationsAvailable(): boolean {
+  if (availabilityCache != null) {
+    return availabilityCache;
+  }
+  try {
+    const permissions = requireOptionalNativeModule('ExpoNotificationPermissionsModule');
+    const scheduler = requireOptionalNativeModule('ExpoNotificationScheduler');
+    availabilityCache =
+      permissions != null &&
+      typeof permissions.getPermissionsAsync === 'function' &&
+      scheduler != null &&
+      typeof scheduler.scheduleNotificationAsync === 'function';
+  } catch {
+    availabilityCache = false;
+  }
+  return availabilityCache;
+}
+
 export function configureOsNotificationHandler(): void {
-  if (handlerInstalled) {
+  if (!isOsNotificationsAvailable() || handlerInstalled) {
     return;
   }
   handlerInstalled = true;
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-    }),
-  });
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+  } catch {
+    handlerInstalled = false;
+  }
 }
 
 async function ensureAndroidChannel(): Promise<void> {
-  if (Platform.OS !== 'android') {
+  if (Platform.OS !== 'android' || !isOsNotificationsAvailable()) {
     return;
   }
-  await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
-    name: 'Tag e menzioni',
-    importance: Notifications.AndroidImportance.HIGH,
-    vibrationPattern: [0, 180, 80, 180],
-    lightColor: '#FF6B35',
-  });
+  try {
+    await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
+      name: 'Tag e menzioni',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 180, 80, 180],
+      lightColor: '#FF6B35',
+    });
+  } catch {
+    // channel optional until native build includes notifications
+  }
 }
 
 export async function readPushPermissionState(): Promise<PushPermissionState> {
-  const settings = await Notifications.getPermissionsAsync();
-  if (settings.granted || settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL) {
-    return 'granted';
+  if (!isOsNotificationsAvailable()) {
+    return 'undetermined';
   }
-  if (settings.canAskAgain === false) {
-    return 'denied';
+  try {
+    const settings = await Notifications.getPermissionsAsync();
+    if (settings.granted || settings.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL) {
+      return 'granted';
+    }
+    if (settings.canAskAgain === false) {
+      return 'denied';
+    }
+    return 'undetermined';
+  } catch {
+    return 'undetermined';
   }
-  return 'undetermined';
 }
 
 export async function requestPushPermission(): Promise<PushPermissionState> {
-  await ensureAndroidChannel();
-  const current = await Notifications.getPermissionsAsync();
-  if (
-    current.granted ||
-    current.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL
-  ) {
-    return 'granted';
+  if (!isOsNotificationsAvailable()) {
+    return 'undetermined';
   }
-  const next = await Notifications.requestPermissionsAsync({
-    ios: { allowAlert: true, allowBadge: true, allowSound: true },
-  });
-  if (next.granted || next.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL) {
-    return 'granted';
-  }
-  if (next.canAskAgain === false) {
+  try {
+    await ensureAndroidChannel();
+    const current = await Notifications.getPermissionsAsync();
+    if (
+      current.granted ||
+      current.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL
+    ) {
+      return 'granted';
+    }
+    const next = await Notifications.requestPermissionsAsync({
+      ios: { allowAlert: true, allowBadge: true, allowSound: true },
+    });
+    if (next.granted || next.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL) {
+      return 'granted';
+    }
+    if (next.canAskAgain === false) {
+      return 'denied';
+    }
     return 'denied';
+  } catch {
+    return 'undetermined';
   }
-  return 'denied';
 }
 
 /** Expo push token for remote delivery (requires dev/production build, not Expo Go on Android). */
 export async function registerExpoPushToken(): Promise<string | null> {
-  if (!Device.isDevice) {
-    return null;
-  }
-  const permission = await requestPushPermission();
-  if (permission !== 'granted') {
-    return null;
-  }
-  const projectId =
-    Constants.expoConfig?.extra?.eas?.projectId ??
-    Constants.easConfig?.projectId;
-  if (!projectId) {
+  if (!isOsNotificationsAvailable() || !Device.isDevice) {
     return null;
   }
   try {
+    const permission = await requestPushPermission();
+    if (permission !== 'granted') {
+      return null;
+    }
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ??
+      Constants.easConfig?.projectId;
+    if (!projectId) {
+      return null;
+    }
     const token = await Notifications.getExpoPushTokenAsync({ projectId });
     return token.data?.trim() || null;
   } catch {
@@ -104,32 +147,39 @@ export async function presentMentionOsNotification(
   item: AppNotification,
   albumName?: string,
 ): Promise<void> {
-  const permission = await readPushPermissionState();
-  if (permission !== 'granted') {
+  if (!isOsNotificationsAvailable()) {
     return;
   }
-  await ensureAndroidChannel();
-  const title = albumName?.trim()
-    ? `${item.fromAuthorName} in ${albumName}`
-    : `${item.fromAuthorName} ti ha taggato`;
-  const body = item.snippet.trim() || 'Tocca per ascoltare da quel punto.';
-  const payload: MentionNotificationPayload = {
-    kind: 'mention',
-    albumId: item.albumId,
-    trackId: item.trackId,
-    markerId: item.markerId,
-    timestampMs: item.timestampMs,
-  };
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title,
-      body,
-      data: mentionPayloadToData(payload),
-      sound: true,
-      ...(Platform.OS === 'android' ? { channelId: ANDROID_CHANNEL_ID } : {}),
-    },
-    trigger: null,
-  });
+  try {
+    const permission = await readPushPermissionState();
+    if (permission !== 'granted') {
+      return;
+    }
+    await ensureAndroidChannel();
+    const title = albumName?.trim()
+      ? `${item.fromAuthorName} in ${albumName}`
+      : `${item.fromAuthorName} ti ha taggato`;
+    const body = item.snippet.trim() || 'Tocca per ascoltare da quel punto.';
+    const payload: MentionNotificationPayload = {
+      kind: 'mention',
+      albumId: item.albumId,
+      trackId: item.trackId,
+      markerId: item.markerId,
+      timestampMs: item.timestampMs,
+    };
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        data: mentionPayloadToData(payload),
+        sound: true,
+        ...(Platform.OS === 'android' ? { channelId: ANDROID_CHANNEL_ID } : {}),
+      },
+      trigger: null,
+    });
+  } catch {
+    // skip banner if native module missing or permission denied
+  }
 }
 
 /** Best-effort remote push via Expo Push API (no custom server). */
@@ -140,6 +190,9 @@ export async function sendExpoPushMention(input: {
   snippet: string;
   payload: MentionNotificationPayload;
 }): Promise<boolean> {
+  if (!isOsNotificationsAvailable()) {
+    return false;
+  }
   const token = input.to.trim();
   if (!token.startsWith('ExponentPushToken[')) {
     return false;
@@ -182,34 +235,47 @@ export function openSystemNotificationSettings(): void {
 }
 
 export function installNotificationListeners(): () => void {
-  if (listenersInstalled) {
+  if (!isOsNotificationsAvailable() || listenersInstalled) {
     return () => undefined;
   }
   listenersInstalled = true;
   configureOsNotificationHandler();
 
-  const onResponse = Notifications.addNotificationResponseReceivedListener((response) => {
-    const data = response.notification.request.content.data as Record<string, unknown> | undefined;
-    const payload = mentionPayloadFromData(data);
-    if (payload) {
-      void openMentionNotification(payload);
-    }
-  });
+  let onResponse: Notifications.Subscription | undefined;
+  try {
+    onResponse = Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = response.notification.request.content.data as Record<string, unknown> | undefined;
+      const payload = mentionPayloadFromData(data);
+      if (payload) {
+        void openMentionNotification(payload);
+      }
+    });
+  } catch {
+    listenersInstalled = false;
+    return () => undefined;
+  }
 
   return () => {
     listenersInstalled = false;
-    onResponse.remove();
+    onResponse?.remove();
   };
 }
 
 export async function readInitialNotificationResponse(): Promise<void> {
-  const last = await Notifications.getLastNotificationResponseAsync();
-  if (!last) {
+  if (!isOsNotificationsAvailable()) {
     return;
   }
-  const data = last.notification.request.content.data as Record<string, unknown> | undefined;
-  const payload = mentionPayloadFromData(data);
-  if (payload) {
-    await openMentionNotification(payload);
+  try {
+    const last = await Notifications.getLastNotificationResponseAsync();
+    if (!last) {
+      return;
+    }
+    const data = last.notification.request.content.data as Record<string, unknown> | undefined;
+    const payload = mentionPayloadFromData(data);
+    if (payload) {
+      await openMentionNotification(payload);
+    }
+  } catch {
+    // cold start without notification module
   }
 }

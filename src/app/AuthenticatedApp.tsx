@@ -12,6 +12,7 @@ import { useHelpStore } from '../store/helpStore';
 import { flushLibraryPersist, recoverLibraryFromDiskIfWeaker, waitForLibraryHydrated } from '../store/libraryStore';
 import {
   installNotificationListeners,
+  isOsNotificationsAvailable,
   readInitialNotificationResponse,
   requestPushPermission,
 } from '../notifications/pushNotifications';
@@ -40,12 +41,14 @@ export function AuthenticatedApp() {
       if (cancelled) {
         return;
       }
-      removeNotificationListeners = installNotificationListeners();
-      if (useNotificationStore.getState().prefs.osEnabled) {
-        await requestPushPermission();
-        await useNotificationStore.getState().refreshPushToken();
+      if (isOsNotificationsAvailable()) {
+        removeNotificationListeners = installNotificationListeners();
+        if (useNotificationStore.getState().prefs.osEnabled) {
+          await requestPushPermission();
+          await useNotificationStore.getState().refreshPushToken();
+        }
+        await readInitialNotificationResponse();
       }
-      await readInitialNotificationResponse();
       await useHelpStore.getState().hydrate(userId);
       void runCloudSync();
     })();

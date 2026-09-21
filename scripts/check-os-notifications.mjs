@@ -11,6 +11,7 @@ assert.match(load('app.json'), /expo-notifications/);
 assert.match(load('app.json'), /POST_NOTIFICATIONS/);
 
 const push = load('src/notifications/pushNotifications.ts');
+assert.match(push, /isOsNotificationsAvailable/);
 assert.match(push, /setNotificationHandler/);
 assert.match(push, /registerExpoPushToken/);
 assert.match(push, /presentMentionOsNotification/);

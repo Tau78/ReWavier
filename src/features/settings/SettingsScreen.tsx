@@ -15,6 +15,7 @@ import { createId } from '../../domain/library';
 import { userHasUsage, userUsages, type UsageType } from '../../domain/session';
 import type { RootStackParamList } from '../../navigation/types';
 import {
+  isOsNotificationsAvailable,
   openSystemNotificationSettings,
   readPushPermissionState,
   requestPushPermission,
@@ -143,6 +144,7 @@ export function SettingsScreen() {
   const osEnabled = useNotificationStore((s) => s.prefs.osEnabled);
   const setOsEnabled = useNotificationStore((s) => s.setOsEnabled);
   const refreshPushToken = useNotificationStore((s) => s.refreshPushToken);
+  const osNotificationsReady = isOsNotificationsAvailable();
   const [pushPermission, setPushPermission] = useState<PushPermissionState>('undetermined');
   const driveLinked = user?.driveConnected === true && user.driveLink === 'google';
   const showBand = userHasUsage(user, 'band');
@@ -164,8 +166,11 @@ export function SettingsScreen() {
   });
 
   useEffect(() => {
+    if (!osNotificationsReady) {
+      return;
+    }
     void readPushPermissionState().then(setPushPermission);
-  }, [osEnabled]);
+  }, [osEnabled, osNotificationsReady]);
 
   const toggle = (id: SectionId) => {
     setOpen((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -346,11 +351,13 @@ export function SettingsScreen() {
         <SettingsSection
           title="Notifiche"
           summary={
-            !osEnabled
-              ? 'Disattivate'
-              : pushPermission === 'granted'
-                ? 'Attive sul telefono'
-                : 'Serve permesso iOS/Android'
+            !osNotificationsReady
+              ? 'Serve aggiornamento app'
+              : !osEnabled
+                ? 'Disattivate'
+                : pushPermission === 'granted'
+                  ? 'Attive sul telefono'
+                  : 'Serve permesso iOS/Android'
           }
           open={open.notifiche}
           onToggle={() => toggle('notifiche')}
@@ -359,41 +366,50 @@ export function SettingsScreen() {
             label="Tag con @"
             hint="Quando qualcuno ti tagga in un album condiviso, puoi ricevere un avviso sul telefono. Tocca l’avviso e parti da quel momento."
           />
-          <Pressable
-            onPress={() => {
-              const next = !osEnabled;
-              setOsEnabled(next);
-              if (next) {
-                void (async () => {
-                  const state = await requestPushPermission();
-                  setPushPermission(state);
-                  if (state === 'granted') {
-                    await refreshPushToken();
-                  }
-                })();
-              }
-            }}
-            style={({ pressed }) => [styles.block, styles.linkBlock, pressed && styles.pressed]}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: osEnabled }}
-            accessibilityLabel="Notifiche sul telefono"
-          >
-            <Text style={styles.rowLabel}>Notifiche sul telefono</Text>
-            <Text style={styles.rowValue}>{osEnabled ? 'Attive' : 'Disattivate'}</Text>
-            <Text style={styles.rowHint}>
-              {pushPermission === 'denied'
-                ? 'Il permesso è negato: apri le impostazioni del telefono e riattivalo.'
-                : 'Compare anche fuori dall’app, nel Centro notifiche.'}
-            </Text>
-          </Pressable>
-          {pushPermission === 'denied' ? (
-            <LinkRow
-              label="Impostazioni del telefono"
-              value="Apri notifiche per ReWavier"
-              onPress={openSystemNotificationSettings}
-              accessibilityLabel="Apri impostazioni notifiche del telefono"
+          {!osNotificationsReady ? (
+            <InfoBlock
+              label="Aggiorna l’app"
+              hint="Le notifiche sul telefono servono una versione nuova dallo store. L’inbox in-app resta disponibile."
             />
-          ) : null}
+          ) : (
+            <>
+              <Pressable
+                onPress={() => {
+                  const next = !osEnabled;
+                  setOsEnabled(next);
+                  if (next) {
+                    void (async () => {
+                      const state = await requestPushPermission();
+                      setPushPermission(state);
+                      if (state === 'granted') {
+                        await refreshPushToken();
+                      }
+                    })();
+                  }
+                }}
+                style={({ pressed }) => [styles.block, styles.linkBlock, pressed && styles.pressed]}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: osEnabled }}
+                accessibilityLabel="Notifiche sul telefono"
+              >
+                <Text style={styles.rowLabel}>Notifiche sul telefono</Text>
+                <Text style={styles.rowValue}>{osEnabled ? 'Attive' : 'Disattivate'}</Text>
+                <Text style={styles.rowHint}>
+                  {pushPermission === 'denied'
+                    ? 'Il permesso è negato: apri le impostazioni del telefono e riattivalo.'
+                    : 'Compare anche fuori dall’app, nel Centro notifiche.'}
+                </Text>
+              </Pressable>
+              {pushPermission === 'denied' ? (
+                <LinkRow
+                  label="Impostazioni del telefono"
+                  value="Apri notifiche per ReWavier"
+                  onPress={openSystemNotificationSettings}
+                  accessibilityLabel="Apri impostazioni notifiche del telefono"
+                />
+              ) : null}
+            </>
+          )}
         </SettingsSection>
 
         <SettingsSection

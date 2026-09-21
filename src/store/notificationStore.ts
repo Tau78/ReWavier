@@ -23,6 +23,7 @@ import {
 } from '../files/notificationPersist';
 import type { MentionNotificationPayload } from '../notifications/mentionPayload';
 import {
+  isOsNotificationsAvailable,
   presentMentionOsNotification,
   registerExpoPushToken,
   sendExpoPushMention,
@@ -94,7 +95,14 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
   async hydrate() {
     const snap = await hydrateNotificationPersist();
-    set({ items: snap.items, prefs: snap.prefs, hydrated: true });
+    const prefs =
+      snap.prefs.osEnabled && !isOsNotificationsAvailable()
+        ? { ...snap.prefs, osEnabled: false }
+        : snap.prefs;
+    if (prefs !== snap.prefs) {
+      persist({ items: snap.items, prefs });
+    }
+    set({ items: snap.items, prefs, hydrated: true });
   },
 
   reset() {
@@ -103,6 +111,9 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
   },
 
   setOsEnabled(enabled) {
+    if (enabled && !isOsNotificationsAvailable()) {
+      return;
+    }
     const prefs = { ...get().prefs, osEnabled: enabled };
     persist({ items: get().items, prefs });
     set({ prefs });

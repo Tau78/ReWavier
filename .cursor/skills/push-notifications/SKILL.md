@@ -97,9 +97,24 @@ Con backend: salvare token per user id, inviare push server-side (più affidabil
 - Spiegare: “sul telefono” = Centro notifiche, non solo campanella in app.
 - Non usare jargon: “push token”, “FCM”, “APNs” nelle UI.
 
+## OTA senza build nativa (crash all’avvio)
+
+Se spedisci JS con `expo-notifications` via OTA ma la build store **non** ha il plugin nativo, su Android/iOS l’app può **chiudersi all’apertura** (dopo login) quando chiama permessi o listener.
+
+**Obbligatorio:**
+
+1. `isOsNotificationsAvailable()` con `requireOptionalNativeModule('ExpoNotificationPermissionsModule')` + scheduler.
+2. **Mai** chiamare API notifiche se `false`; init in `AuthenticatedApp` dietro quel check.
+3. `try/catch` su ogni chiamata; prefs `osEnabled` → `false` se modulo assente.
+4. Impostazioni: messaggio “serve aggiornamento app” invece del toggle.
+5. Dopo plugin in `app.json`: **build store** Android + iOS, poi OTA.
+
+Pattern in `notifications/pushNotifications.ts` del repo di riferimento.
+
 ## Checklist nuovo repo
 
 - [ ] `expo-notifications` + plugin in app config
+- [ ] `isOsNotificationsAvailable()` + guard su init e prefs
 - [ ] Modulo push + payload + router
 - [ ] Store inbox + prefs + dedupe OS
 - [ ] Impostazioni permesso

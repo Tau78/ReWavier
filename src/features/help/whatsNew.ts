@@ -171,6 +171,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         body: 'Se ti taggano, puoi ricevere l’avviso anche fuori dall’app. Attivalo in Impostazioni → Notifiche. Tocca l’avviso e parti da quel momento.',
       },
       {
+        title: 'Apertura su Android',
+        body: 'Se l’app si chiudeva da sola all’avvio, riapri dopo l’aggiornamento: ora parte anche senza la versione store nuova. Le notifiche sul telefono restano nello store.',
+      },
+      {
         title: 'Membri dell’album',
         body: 'Tocca i accanto all’album: vedi chi c’è, con nome e email. Puoi scegliere un colore per ciascuno: vale in questo album per tutti.',
       },
