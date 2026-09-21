@@ -1,6 +1,6 @@
 title: ReWavier
 short_description: Apri un audio, tocca + e annota il momento esatto. Resta sul telefono.
-whatsnew: In album il player è più chiaro e riparte da dove ti eri fermato. Aggiorna da Drive allinea i brani. Tieni premuto un appunto per leggerlo tutto.
+whatsnew: Notifiche sul telefono quando ti taggano con @. L’app non si chiude più all’apertura. Tag @ con tutti i membri dell’album. Onda ingrandita scorri con un dito.
 
 description: |
   ReWavier è il quaderno di ascolto per chi lavora con l’audio: musica, lezioni, riunioni, corsi, formazione, colloqui e appunti vocali.

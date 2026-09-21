@@ -1,1 +1,1 @@
-On Android, Continue with Google brings you back into the app. Close and reopen twice if you are still on 1.0.4. In an album the player is clearer. Refresh from Drive lines up the tracks.
+Phone notifications when someone @ tags you. The app no longer closes on launch. @ mentions include every album member. Zoomed waveform: swipe with one finger.

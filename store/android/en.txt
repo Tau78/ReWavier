@@ -1,6 +1,6 @@
 title: ReWavier
 short_description: Open audio, tap +, note the exact moment. Files stay on the phone.
-whatsnew: In an album the player is clearer and resumes where you left off. Refresh from Drive lines up the tracks. Long-press a note to read it in full.
+whatsnew: Phone notifications when someone @ tags you. The app no longer closes on launch. @ mentions include every album member. Zoomed waveform swipe with one finger.
 
 description: |
   ReWavier is a listening notebook for anyone who works with audio: music, lessons, meetings, courses, training, interviews, and voice notes.
