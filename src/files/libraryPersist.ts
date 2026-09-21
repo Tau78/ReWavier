@@ -1,6 +1,7 @@
 import * as LegacyFS from 'expo-file-system/legacy';
 
 import { albumHasCustomOrder, orderedAlbumItemIds } from '../domain/albumOrder';
+import { dedupeAlbumsByDriveFolder } from '../domain/albumDriveUnique';
 import { healLibraryAuthorData } from '../domain/healAuthorNames';
 import {
   isSeparatorId,
@@ -79,6 +80,7 @@ function albumSurvivesTombstones(
  * Incoming would wipe albums that still live on disk without tombstones.
  * Used to block background/blur flushes from clobbering library.json after a bad
  * in-memory hydrate (Android often fires inactive/blur during startup and resume).
+ * Same Drive folder under a different album id (dedupe) is not weaker.
  */
 export function isWeakerLibrarySnapshot(
   incoming: LibrarySnapshot,
@@ -86,11 +88,26 @@ export function isWeakerLibrarySnapshot(
 ): boolean {
   const removedAlbums = new Set(uniquePersistIds(incoming.removedAlbumIds));
   const removedFolders = new Set(uniquePersistIds(incoming.removedDriveFolderIds));
-  const diskAlbums = onDisk.albums.filter((album) =>
-    albumSurvivesTombstones(album, removedAlbums, removedFolders),
-  );
   const incomingAlbumIds = new Set(incoming.albums.map((album) => album.id));
-  return diskAlbums.some((album) => !incomingAlbumIds.has(album.id));
+  const incomingFolders = new Set(
+    incoming.albums
+      .map((album) => album.driveFolderId?.trim())
+      .filter((id): id is string => Boolean(id)),
+  );
+  for (const album of onDisk.albums) {
+    if (!albumSurvivesTombstones(album, removedAlbums, removedFolders)) {
+      continue;
+    }
+    if (incomingAlbumIds.has(album.id)) {
+      continue;
+    }
+    const folderId = album.driveFolderId?.trim();
+    if (folderId && incomingFolders.has(folderId)) {
+      continue;
+    }
+    return true;
+  }
+  return false;
 }
 
 export function emptyLibrarySnapshot(): LibrarySnapshot {

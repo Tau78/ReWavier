@@ -588,9 +588,37 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   createAlbum(name, extras) {
-    const id = createId('album');
     const trimmed = name.trim() || 'Nuovo album';
     const driveFolderId = extras?.driveFolderId?.trim();
+    if (driveFolderId) {
+      const existing = get().albums.find(
+        (album) => album.driveFolderId?.trim() === driveFolderId,
+      );
+      if (existing) {
+        get().linkAlbumDrive(existing.id, driveFolderId, extras?.driveFolderName ?? trimmed, {
+          driveSharedDriveId: extras?.driveSharedDriveId,
+          driveRecursive: extras?.driveRecursive,
+          driveRole: extras?.driveRole,
+        });
+        if (trimmed && trimmed !== existing.name) {
+          set((state) => ({
+            albums: state.albums.map((album) =>
+              album.id === existing.id
+                ? {
+                    ...album,
+                    name: trimmed,
+                    artist: extras?.artist ?? album.artist,
+                    origin: extras?.origin ?? album.origin,
+                  }
+                : album,
+            ),
+          }));
+          void flushLibraryPersist();
+        }
+        return existing.id;
+      }
+    }
+    const id = createId('album');
     set((state) => ({
       albums: [
         ...state.albums,
@@ -619,6 +647,46 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   linkAlbumDrive(albumId, folderId, folderName, extras) {
     const driveFolderId = folderId.trim();
     set((state) => {
+      const owner = state.albums.find(
+        (album) => album.id !== albumId && album.driveFolderId?.trim() === driveFolderId,
+      );
+      if (owner) {
+        // Same Google folder must stay one album — merge into the existing owner.
+        const ownerTracks = new Set(owner.trackIds);
+        const mergedTracks = [...owner.trackIds];
+        const source = state.albums.find((album) => album.id === albumId);
+        for (const id of source?.trackIds ?? []) {
+          if (!ownerTracks.has(id)) {
+            mergedTracks.push(id);
+            ownerTracks.add(id);
+          }
+        }
+        return {
+          albums: state.albums
+            .filter((album) => album.id !== albumId)
+            .map((album) =>
+              album.id === owner.id
+                ? {
+                    ...album,
+                    origin: 'drive' as const,
+                    driveFolderId: folderId,
+                    driveFolderName: folderName,
+                    driveSharedDriveId: extras?.driveSharedDriveId ?? album.driveSharedDriveId,
+                    driveRecursive: extras?.driveRecursive ?? album.driveRecursive,
+                    driveRole: extras?.driveRole ?? album.driveRole,
+                    trackIds: mergedTracks,
+                  }
+                : album,
+            ),
+          removedAlbumIds: uniquePersistIds([
+            ...state.removedAlbumIds.filter((item) => item !== owner.id),
+            albumId,
+          ]),
+          removedDriveFolderIds: state.removedDriveFolderIds.filter(
+            (item) => item !== driveFolderId,
+          ),
+        };
+      }
       if (!state.albums.some((album) => album.id === albumId)) {
         return {};
       }

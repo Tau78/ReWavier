@@ -12,7 +12,8 @@ assert.match(persist, /SNAPSHOT_BAK_NAME/);
 assert.match(persist, /library\.json\.bak/);
 assert.match(persist, /shouldPersistAfterHydrate/);
 assert.match(persist, /isWeakerLibrarySnapshot/);
-assert.match(persist, /status: 'unreadable'/);
+assert.match(persist, /incomingFolders/);
+assert.match(persist, /dedupeAlbumsByDriveFolder/);
 assert.match(persist, /copyAsync\(\{ from: dest, to: bak \}\)/);
 assert.doesNotMatch(persist, /withTimeout\(/);
 

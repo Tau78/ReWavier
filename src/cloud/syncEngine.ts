@@ -2017,6 +2017,7 @@ export async function importDriveFolder(
 
   const albumId =
     options?.albumId ??
+    store.albums.find((album) => album.driveFolderId?.trim() === folderId.trim())?.id ??
     store.createAlbum(folderName, {
       origin: 'drive',
       artist: 'Drive',
@@ -2025,13 +2026,14 @@ export async function importDriveFolder(
       driveSharedDriveId: sharedDriveId,
       driveRecursive: recursive,
     });
-  if (options?.albumId) {
-    store.linkAlbumDrive(albumId, folderId, folderName, {
-      driveRecursive: recursive,
-      driveSharedDriveId: sharedDriveId,
-    });
-  }
-  await refreshAlbumDriveRole(albumId);
+  store.linkAlbumDrive(albumId, folderId, folderName, {
+    driveRecursive: recursive,
+    driveSharedDriveId: sharedDriveId,
+  });
+  const resolvedAlbumId =
+    useLibraryStore.getState().albums.find((album) => album.driveFolderId?.trim() === folderId.trim())
+      ?.id ?? albumId;
+  await refreshAlbumDriveRole(resolvedAlbumId);
 
   const progress = useDownloadProgressStore.getState();
   progress.begin(countDriveImportJobs(tree));
@@ -2053,13 +2055,13 @@ export async function importDriveFolder(
           );
         }
       }
-      await importAudiosInFolder(albumId, driveToApp.get(node.id) ?? null, node.children);
+      await importAudiosInFolder(resolvedAlbumId, driveToApp.get(node.id) ?? null, node.children);
     }
 
-    await applyDriveMediaTree(albumId, tree, { skipSurplusDeletes: treeTruncated });
+    await applyDriveMediaTree(resolvedAlbumId, tree, { skipSurplusDeletes: treeTruncated });
     // First import must inherit band folders/order — never start flat and overwrite Drive.
-    await pullAlbumLayout(albumId).catch(() => undefined);
-    return albumId;
+    await pullAlbumLayout(resolvedAlbumId).catch(() => undefined);
+    return resolvedAlbumId;
   } finally {
     progress.end();
   }

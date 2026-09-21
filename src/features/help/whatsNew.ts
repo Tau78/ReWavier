@@ -186,6 +186,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Album che restano',
         body: 'Su Android gli album restano dopo che chiudi l’app, la metti in sottofondo, la aggiorni o si chiude da sola. Non serve ricrearli.',
       },
+      {
+        title: 'Una cartella, un album',
+        body: 'La stessa cartella Google non crea più album doppi. Se ne vedi più di uno, all’apertura restano uniti in uno solo.',
+      },
     ],
   },
 ];

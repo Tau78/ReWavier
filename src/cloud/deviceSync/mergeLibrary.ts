@@ -1,5 +1,6 @@
 import type { Album, AlbumDocument, Folder, Playlist, SmartPlaylist } from '../../domain/library';
 import { isSeparatorId, isVersionFolderId } from '../../domain/library';
+import { dedupeAlbumsByDriveFolder } from '../../domain/albumDriveUnique';
 import { mergeLyricAnnotations } from '../../domain/lyrics';
 import { mergeMarkers } from '../mergeNotes';
 import { optionalTrackText, type Marker, type Track } from '../../domain/models';
@@ -287,23 +288,25 @@ export function mergeLibrarySnapshots(local: LibrarySnapshot, remote: LibrarySna
     ...(local.removedDriveFolderIds ?? []),
     ...(remote.removedDriveFolderIds ?? []),
   ]);
+  const mergedAlbums = mergeAlbums(
+    local.albums,
+    remote.albums,
+    idRemap,
+    new Set(removedAlbumIds),
+    new Set(removedDriveFolderIds),
+  );
+  const deduped = dedupeAlbumsByDriveFolder(mergedAlbums);
   return {
     version: Math.max(local.version, remote.version),
     ownerKey: local.ownerKey,
     tracks,
     folders: mergeFolders(local.folders, remote.folders, idRemap),
-    albums: mergeAlbums(
-      local.albums,
-      remote.albums,
-      idRemap,
-      new Set(removedAlbumIds),
-      new Set(removedDriveFolderIds),
-    ),
+    albums: deduped.albums,
     playlists: mergePlaylists(local.playlists, remote.playlists, idRemap),
     smartPlaylists: mergeSmart(local.smartPlaylists, remote.smartPlaylists),
     markersByTrackId: mergeAllMarkers(local.markersByTrackId, remote.markersByTrackId, idRemap),
     keptAudioNames: [...new Set([...(local.keptAudioNames ?? []), ...(remote.keptAudioNames ?? [])])],
-    removedAlbumIds,
+    removedAlbumIds: uniquePersistIds([...removedAlbumIds, ...deduped.removedDuplicateIds]),
     removedDriveFolderIds,
   };
 }
