@@ -194,6 +194,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Appunti riconoscibili',
         body: 'Nel dettaglio, ogni fumetto ha lo stesso colore della persona che lo ha scritto.',
       },
+      {
+        title: 'Ascolto lungo più stabile',
+        body: 'Puoi lasciare un brano in ascolto mentre scorri il dettaglio. La testina fuori schermo non appesantisce più l’app.',
+      },
     ],
   },
 ];

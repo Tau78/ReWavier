@@ -868,6 +868,8 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
     }),
     [detailViewStartMs, detailSpan, durationMs],
   );
+  const playheadVisibleInDetail =
+    positionMs >= window.startMs && positionMs <= window.endMs;
   const overviewView = useMemo(
     () => getTimeWindow(positionMs, durationMs, overviewSpan),
     [positionMs, durationMs, overviewSpan],
@@ -975,7 +977,14 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
     }
     // Viewport left edge maps to viewStart; playhead is absolute on that ruler.
     const tx = -(viewStart - nextTape) * scale;
-    const hx = (positionMs - viewStart) * scale - PLAYHEAD_HALF;
+    const rawHx = (positionMs - viewStart) * scale - PLAYHEAD_HALF;
+    // A manual scroll can leave playback outside this viewport for a long time.
+    // Keep the native transform bounded instead of moving it thousands of pixels
+    // farther off screen on every status update.
+    const hx = Math.max(
+      -PLAYHEAD_HALF,
+      Math.min(Math.max(zoomWidth - PLAYHEAD_HALF, -PLAYHEAD_HALF), rawHx),
+    );
     stopPlayheadAnim();
     if (isPlaying && followPlayheadRef.current && !tapeChanged && !spanChanged) {
       const anim = Animated.parallel([
@@ -1160,7 +1169,12 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
         </Animated.View>
         <Animated.View
           pointerEvents="none"
-          style={[styles.playhead, styles.playheadTall, { transform: [{ translateX: playheadX }] }]}
+          style={[
+            styles.playhead,
+            styles.playheadTall,
+            !playheadVisibleInDetail && styles.playheadOutsideDetail,
+            { transform: [{ translateX: playheadX }] },
+          ]}
         >
           <View style={styles.playheadNub} />
           <View style={styles.playheadLine} />
@@ -1858,6 +1872,9 @@ const styles = StyleSheet.create({
   playheadTall: {
     width: 14,
     marginLeft: 0,
+  },
+  playheadOutsideDetail: {
+    opacity: 0,
   },
   playheadNub: {
     width: 0,
