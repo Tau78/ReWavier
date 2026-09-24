@@ -13,6 +13,13 @@ import type { PlaybackListener } from './mockEngine';
 /** Native player teardown settle time before the next createAudioPlayer. */
 const RELEASE_SETTLE_MS = Platform.OS === 'android' ? 140 : 40;
 
+function finiteSecondsToMs(value: number | null | undefined, fallbackMs: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return fallbackMs;
+  }
+  return Math.round(value * 1000);
+}
+
 /** Thrown when a load is superseded by cancelLoad / a newer load / unload. */
 export class LoadAbortedError extends Error {
   constructor() {
@@ -49,7 +56,7 @@ export class FileAudioEngine {
 
   getPositionMs(): number {
     if (this.player) {
-      return Math.round(this.player.currentTime * 1000);
+      return finiteSecondsToMs(this.player.currentTime, this.positionMs);
     }
     return this.positionMs;
   }
@@ -120,7 +127,7 @@ export class FileAudioEngine {
         throw new LoadAbortedError();
       }
       this.durationMs = durationMs;
-      this.positionMs = Math.round(player.currentTime * 1000);
+      this.positionMs = finiteSecondsToMs(player.currentTime, this.positionMs);
       this.playing = player.playing;
       this.applyRate();
       this.publishLockScreen();
@@ -253,10 +260,10 @@ export class FileAudioEngine {
   }
 
   private onStatus(status: AudioStatus): void {
-    this.positionMs = Math.round((status.currentTime ?? 0) * 1000);
+    this.positionMs = finiteSecondsToMs(status.currentTime, this.positionMs);
     this.playing = status.playing;
-    if (status.duration) {
-      this.durationMs = Math.round(status.duration * 1000);
+    if (status.duration != null) {
+      this.durationMs = finiteSecondsToMs(status.duration, this.durationMs);
     }
     if (status.didJustFinish) {
       this.playing = false;

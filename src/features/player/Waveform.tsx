@@ -981,9 +981,10 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
     // A manual scroll can leave playback outside this viewport for a long time.
     // Keep the native transform bounded instead of moving it thousands of pixels
     // farther off screen on every status update.
+    const safeRawHx = Number.isFinite(rawHx) ? rawHx : -PLAYHEAD_HALF;
     const hx = Math.max(
       -PLAYHEAD_HALF,
-      Math.min(Math.max(zoomWidth - PLAYHEAD_HALF, -PLAYHEAD_HALF), rawHx),
+      Math.min(Math.max(zoomWidth - PLAYHEAD_HALF, -PLAYHEAD_HALF), safeRawHx),
     );
     stopPlayheadAnim();
     if (isPlaying && followPlayheadRef.current && !tapeChanged && !spanChanged) {
