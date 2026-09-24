@@ -23,6 +23,19 @@ export const colors = {
   glassHighlight: 'rgba(255, 255, 255, 0.14)',
 } as const;
 
+/** Readable app text over an author color, including light palette swatches. */
+export function textColorOn(backgroundColor: string): string {
+  const hex = /^#([0-9a-f]{6})$/i.exec(backgroundColor.trim())?.[1];
+  if (!hex) {
+    return colors.text;
+  }
+  const red = Number.parseInt(hex.slice(0, 2), 16);
+  const green = Number.parseInt(hex.slice(2, 4), 16);
+  const blue = Number.parseInt(hex.slice(4, 6), 16);
+  const brightness = (red * 299 + green * 587 + blue * 114) / 1000;
+  return brightness >= 160 ? colors.background : colors.text;
+}
+
 export const layout = {
   controlSize: 56,
   addButtonSize: 72,

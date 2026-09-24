@@ -34,7 +34,7 @@ import { shareMarkerClip } from '../../files/shareMarkerClip';
 import { useLibraryStore } from '../../store/libraryStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { useSessionStore } from '../../store/sessionStore';
-import { colors, layout } from '../../theme/colors';
+import { colors, layout, textColorOn } from '../../theme/colors';
 
 const THREAD_VISIBLE_ROWS = 4;
 
@@ -238,7 +238,8 @@ export function NoteBubble() {
                     {threadItems.map((marker) => {
                       const mine = isOwnMarker(marker, user);
                       const who = mine ? 'Tu' : markerAuthorLabel(marker);
-                      const pinColor = markerColor(marker);
+                      const pinColor = markerColor(marker, album?.memberColors);
+                      const messageTextColor = textColorOn(pinColor);
                       const selected = marker.id === bubble.markerId;
                       return (
                         <Pressable
@@ -261,12 +262,16 @@ export function NoteBubble() {
                             style={[
                               styles.chatBubble,
                               mine ? styles.chatBubbleMine : styles.chatBubbleOther,
-                              !mine && { borderLeftColor: pinColor, backgroundColor: `${pinColor}26` },
+                              { borderLeftColor: pinColor, backgroundColor: pinColor },
                               selected && styles.chatBubbleSelected,
+                              selected && { borderColor: messageTextColor },
                             ]}
                           >
                             {mine ? null : (
-                              <Text style={[styles.threadWho, { color: pinColor }]} numberOfLines={1}>
+                              <Text
+                                style={[styles.threadWho, { color: messageTextColor }]}
+                                numberOfLines={1}
+                              >
                                 {who}
                               </Text>
                             )}
@@ -275,6 +280,7 @@ export function NoteBubble() {
                                 styles.chatText,
                                 mine && styles.chatTextMine,
                                 isPlaceholderMarker(marker) && styles.stampText,
+                                { color: messageTextColor },
                               ]}
                             >
                               {marker.text.trim() || '—'}
@@ -595,7 +601,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   stampText: {
-    color: colors.textMuted,
+    opacity: 0.72,
   },
   chipRow: {
     marginTop: 14,

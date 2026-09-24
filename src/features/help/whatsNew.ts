@@ -192,7 +192,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Appunti riconoscibili',
-        body: 'Nel dettaglio, ogni fumetto ha lo stesso colore della persona che lo ha scritto.',
+        body: 'Nel dettaglio e nella conversazione, ogni fumetto ha lo stesso colore della persona che lo ha scritto.',
       },
       {
         title: 'Ascolto lungo più stabile',
