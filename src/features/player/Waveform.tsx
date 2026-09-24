@@ -346,16 +346,6 @@ function followViewStartMs(positionMs: number, durationMs: number, windowMs: num
   return getTimeWindow(positionMs, durationMs, windowMs).startMs;
 }
 
-/** Resume follow when the playhead leaves the visible band (with a little margin). */
-function playheadOutsideView(
-  positionMs: number,
-  viewStartMs: number,
-  viewSpanMs: number,
-): boolean {
-  const margin = Math.min(400, viewSpanMs * 0.08);
-  return positionMs < viewStartMs - margin || positionMs > viewStartMs + viewSpanMs + margin;
-}
-
 function samplePeaks(
   peaks: number[],
   startRatio: number,
@@ -940,24 +930,18 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
     resumeDetailFollow,
   );
 
-  // Follow playhead → keep the detail window glued to playback.
-  // After a manual scroll, stay put until the playhead leaves the band (or seek/tap).
+  // Follow playback until a manual scroll. A one-finger swipe only moves the
+  // visible window: playback keeps running independently, even off screen.
   useEffect(() => {
-    if (followPlayheadRef.current) {
-      const next = followViewStartMs(positionMs, durationMs, detailSpan);
-      if (next !== detailViewStartRef.current) {
-        detailViewStartRef.current = next;
-        setDetailViewStartMs(next);
-      }
+    if (!followPlayheadRef.current) {
       return;
     }
-    if (isPlaying && playheadOutsideView(positionMs, detailViewStartRef.current, detailSpan)) {
-      followPlayheadRef.current = true;
-      const next = followViewStartMs(positionMs, durationMs, detailSpan);
+    const next = followViewStartMs(positionMs, durationMs, detailSpan);
+    if (next !== detailViewStartRef.current) {
       detailViewStartRef.current = next;
       setDetailViewStartMs(next);
     }
-  }, [positionMs, isPlaying, durationMs, detailSpan]);
+  }, [positionMs, durationMs, detailSpan]);
 
   // Clamp view start when zoom span changes (pinch).
   useEffect(() => {

@@ -156,7 +156,7 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
       },
       {
         title: 'Scorri il dettaglio',
-        body: 'Sull’onda ingrandita: pizzica per zoom. Con un dito scorri a destra e sinistra per vedere il pezzo fuori schermo. Tocca per andare a quel punto.',
+        body: 'Sull’onda ingrandita, pizzica per zoom. Con un dito scorri a destra e sinistra: l’ascolto continua senza salti.',
       },
       {
         title: 'Fumetti più chiari',
