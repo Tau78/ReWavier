@@ -66,7 +66,9 @@ export function CollectionPlayer() {
     [setDockExpanded],
   );
 
-  if (!track.id) {
+  // Native-stack routes stay mounted under the full Player screen. Do not keep
+  // a second waveform subscribed and repainting while this route is invisible.
+  if (!track.id || !focused) {
     return null;
   }
 

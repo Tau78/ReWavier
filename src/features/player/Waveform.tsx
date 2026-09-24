@@ -991,13 +991,13 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
       const anim = Animated.parallel([
         Animated.timing(translateX, {
           toValue: tx,
-          duration: 52,
+          duration: 180,
           easing: Easing.linear,
           useNativeDriver: true,
         }),
         Animated.timing(playheadX, {
           toValue: hx,
-          duration: 52,
+          duration: 180,
           easing: Easing.linear,
           useNativeDriver: true,
         }),

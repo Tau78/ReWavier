@@ -109,7 +109,9 @@ export class FileAudioEngine {
       uri.startsWith('http://') || uri.startsWith('https://') ? uri : toFileUri(uri);
     const player = createAudioPlayer(
       { uri: playable },
-      { updateInterval: 120, keepAudioSessionActive: true },
+      // Four UI updates per second keep the timecode/playhead fluid without
+      // repainting hundreds of waveform bars thousands of times per track.
+      { updateInterval: 250, keepAudioSessionActive: true },
     );
 
     if (!alive()) {
