@@ -181,6 +181,18 @@ function markerPreview(text: string): string {
   return `${flat.slice(0, 55).trim()}…`;
 }
 
+function textColorOn(backgroundColor: string): string {
+  const hex = /^#([0-9a-f]{6})$/i.exec(backgroundColor.trim())?.[1];
+  if (!hex) {
+    return colors.text;
+  }
+  const red = Number.parseInt(hex.slice(0, 2), 16);
+  const green = Number.parseInt(hex.slice(2, 4), 16);
+  const blue = Number.parseInt(hex.slice(4, 6), 16);
+  const brightness = (red * 299 + green * 587 + blue * 114) / 1000;
+  return brightness >= 160 ? colors.background : colors.text;
+}
+
 function useWaveformGestures(
   width: number,
   viewStartMs: number,
@@ -599,6 +611,7 @@ function ZoomMarkerPin({
   const author = markerAuthorName(marker);
   const preview = markerPreview(marker.text);
   const says = author === 'Tu' ? 'Tu dici:' : `${author} dice:`;
+  const bubbleTextColor = textColorOn(pinColor);
   const flipLeft = tapeWidth > 0 && left > tapeWidth * 0.58;
   const bubbleExtra = PIN_BUBBLE_W + PIN_BUBBLE_GAP;
 
@@ -630,7 +643,11 @@ function ZoomMarkerPin({
           delayLongPress={LONG_PRESS_MS}
           style={[
             styles.pinBubble,
-            { borderColor: pinColor, top: -(lane * BUBBLE_LANE_STEP) },
+            {
+              backgroundColor: pinColor,
+              borderColor: pinColor,
+              top: -(lane * BUBBLE_LANE_STEP),
+            },
             flipLeft ? styles.pinBubbleLeft : styles.pinBubbleRight,
             marker.hidden && styles.pinHidden,
           ]}
@@ -638,14 +655,15 @@ function ZoomMarkerPin({
           accessibilityLabel={`${says} ${preview || formatTimecode(displayMs)}`}
           accessibilityHint="Tocca per aprire la nota e ascoltare da qui. Tieni premuto per leggere tutto."
         >
-          <Text style={[styles.pinBubbleWho, { color: pinColor }]} numberOfLines={1}>
+          <Text style={[styles.pinBubbleWho, { color: bubbleTextColor }]} numberOfLines={1}>
             {says}
           </Text>
           {preview ? (
             <Text
               style={[
                 styles.pinBubbleText,
-                isPlaceholderMarker(marker) && { color: colors.textMuted },
+                isPlaceholderMarker(marker) && styles.pinBubblePlaceholder,
+                { color: bubbleTextColor },
               ]}
               numberOfLines={2}
             >
@@ -1926,6 +1944,9 @@ const styles = StyleSheet.create({
     fontSize: 11,
     lineHeight: 14,
     color: colors.text,
+  },
+  pinBubblePlaceholder: {
+    opacity: 0.72,
   },
   zoomPinDragging: {
     zIndex: 8,

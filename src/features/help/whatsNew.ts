@@ -190,6 +190,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Una cartella, un album',
         body: 'La stessa cartella Google non crea più album doppi. Se ne vedi più di uno, all’apertura restano uniti in uno solo.',
       },
+      {
+        title: 'Appunti riconoscibili',
+        body: 'Nel dettaglio, ogni fumetto ha lo stesso colore della persona che lo ha scritto.',
+      },
     ],
   },
 ];
