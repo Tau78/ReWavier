@@ -324,8 +324,10 @@ function useWaveformGestures(
         }
       });
 
-    // Pinch first: zoom must not run together with scrub/scroll pan.
-    return Gesture.Exclusive(pinch, Gesture.Exclusive(pan, tap));
+    // Do not make one-finger pan wait for pinch to fail: pinch keeps waiting
+    // for a second finger and would otherwise block horizontal scrolling.
+    // maxPointers(1) + the guards above keep pan idle once pinch starts.
+    return Gesture.Simultaneous(pinch, Gesture.Exclusive(pan, tap));
   }, [mode, setSpanMs]);
 }
 
