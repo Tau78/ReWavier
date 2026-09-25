@@ -29,6 +29,7 @@ import {
   sortTracksAlphabetically,
   type AlbumOrderFile,
 } from '../domain/albumOrder';
+import { mergeMemberPushTokens } from '../domain/albumMembers';
 import {
   albumContainsTrackId,
   applyAlbumListReorder,
@@ -956,6 +957,7 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
   },
 
   applyCloudAlbumMembers(albumId, input) {
+    const selfUserId = useSessionStore.getState().user?.id;
     set((state) => ({
       albums: state.albums.map((album) =>
         album.id === albumId
@@ -964,10 +966,11 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
               memberColors: input.memberColors,
               memberEmails: { ...(album.memberEmails ?? {}), ...input.memberEmails },
               memberNames: { ...(album.memberNames ?? {}), ...input.memberNames },
-              memberPushTokens: {
-                ...(album.memberPushTokens ?? {}),
-                ...(input.memberPushTokens ?? {}),
-              },
+              memberPushTokens: mergeMemberPushTokens({
+                remote: input.memberPushTokens,
+                local: album.memberPushTokens,
+                selfUserId,
+              }),
               membersUpdatedAt: input.membersUpdatedAt,
             }
           : album,

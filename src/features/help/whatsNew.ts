@@ -198,6 +198,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Ascolto lungo più stabile',
         body: 'Puoi lasciare un brano in ascolto mentre scorri il dettaglio. La testina fuori schermo non appesantisce più l’app.',
       },
+      {
+        title: 'Avvisi su Android',
+        body: 'Se ti taggano, l’avviso fuori dall’app arriva anche su Android. In Impostazioni → Notifiche tieni attive le notifiche sul telefono; se manca il permesso, aprilo dalle impostazioni del telefono.',
+      },
     ],
   },
 ];

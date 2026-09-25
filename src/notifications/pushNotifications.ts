@@ -148,12 +148,14 @@ export async function registerExpoPushToken(): Promise<string | null> {
     return null;
   }
   try {
-    const permission = await requestPushPermission();
-    if (permission !== 'granted') {
-      return null;
-    }
     const Notifications = await loadNotifications();
     if (!Notifications) {
+      return null;
+    }
+    // Android 13+: channel must exist before the permission prompt / token fetch.
+    await ensureAndroidChannel(Notifications);
+    const permission = await requestPushPermission();
+    if (permission !== 'granted') {
       return null;
     }
     const projectId =
@@ -220,9 +222,6 @@ export async function sendExpoPushMention(input: {
   snippet: string;
   payload: MentionNotificationPayload;
 }): Promise<boolean> {
-  if (!isOsNotificationsAvailable()) {
-    return false;
-  }
   const token = input.to.trim();
   if (!token.startsWith('ExponentPushToken[')) {
     return false;
@@ -252,9 +251,11 @@ export async function sendExpoPushMention(input: {
     if (!response.ok) {
       return false;
     }
-    const json = (await response.json()) as { data?: { status?: string }[] };
-    const status = json.data?.[0]?.status;
-    return status === 'ok';
+    const json = (await response.json()) as {
+      data?: { status?: string; message?: string; details?: { error?: string } }[];
+    };
+    const row = json.data?.[0];
+    return row?.status === 'ok';
   } catch {
     return false;
   }
@@ -274,6 +275,7 @@ export async function installNotificationListeners(): Promise<() => void> {
   }
   listenersInstalled = true;
   await configureOsNotificationHandler();
+  await ensureAndroidChannel(Notifications);
 
   let onResponse: { remove: () => void } | undefined;
   try {

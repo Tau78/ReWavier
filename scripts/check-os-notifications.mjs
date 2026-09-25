@@ -24,11 +24,15 @@ assert.match(push, /presentMentionOsNotification/);
 assert.match(push, /sendExpoPushMention/);
 assert.match(push, /addNotificationResponseReceivedListener/);
 assert.match(push, /import\(['"]expo-notifications['"]\)/);
+assert.match(push, /channelId: ANDROID_CHANNEL_ID/);
 assert.doesNotMatch(
   push,
   /import\s+\*\s+as\s+Notifications\s+from\s+['"]expo-notifications['"]/,
 );
 assert.doesNotMatch(push, /from\s+['"]expo-notifications['"]/);
+// Remote push is HTTP — must not require the sender's native notification module.
+const sendBody = push.slice(push.indexOf('sendExpoPushMention'));
+assert.doesNotMatch(sendBody.slice(0, 400), /isOsNotificationsAvailable\(\)/);
 
 const router = load('src/notifications/notificationRouter.ts');
 assert.match(router, /openMentionNotification/);
@@ -45,8 +49,10 @@ assert.match(settings, /Notifiche sul telefono/);
 const members = load('src/domain/albumMembers.ts');
 assert.match(members, /pushToken/);
 assert.match(members, /memberPushTokenMapFromFile/);
+assert.match(members, /mergeMemberPushTokens/);
 
 const authApp = load('src/app/AuthenticatedApp.tsx');
 assert.match(authApp, /await installNotificationListeners/);
+assert.match(authApp, /refreshPushToken/);
 
 console.log('ok OS notifications + push token sync (lazy native import)');

@@ -75,6 +75,12 @@ export function AuthenticatedApp() {
         await recoverLibraryFromDiskIfWeaker();
         await hydratePlaybackPersist();
         await useNotificationStore.getState().hydrate();
+        if (
+          isOsNotificationsAvailable() &&
+          useNotificationStore.getState().prefs.osEnabled
+        ) {
+          await useNotificationStore.getState().refreshPushToken();
+        }
         void runCloudSync();
       })();
     });

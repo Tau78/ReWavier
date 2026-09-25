@@ -139,6 +139,38 @@ export function memberPushTokenMapFromFile(file: AlbumMembersFile): Record<strin
   return out;
 }
 
+function isExpoPushToken(value: string | undefined): value is string {
+  return typeof value === 'string' && value.trim().startsWith('ExponentPushToken[');
+}
+
+/**
+ * Merge Drive + local push tokens.
+ * Remote fills gaps; this device keeps its own token even if Drive is older.
+ * Prevents a client without tokens from wiping everyone else's on the next push.
+ */
+export function mergeMemberPushTokens(input: {
+  remote?: Record<string, string>;
+  local?: Record<string, string>;
+  selfUserId?: string;
+}): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, token] of Object.entries(input.remote ?? {})) {
+    if (isExpoPushToken(token)) {
+      out[key] = token.trim();
+    }
+  }
+  const selfId = input.selfUserId?.trim();
+  for (const [key, token] of Object.entries(input.local ?? {})) {
+    if (!isExpoPushToken(token)) {
+      continue;
+    }
+    if (!out[key] || (selfId != null && key === selfId)) {
+      out[key] = token.trim();
+    }
+  }
+  return out;
+}
+
 export function shouldApplyRemoteMembers(
   localUpdatedAt: number | undefined,
   remoteUpdatedAt: number,

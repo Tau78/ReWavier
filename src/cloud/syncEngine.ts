@@ -24,6 +24,7 @@ import {
   memberEmailMapFromFile,
   memberNameMapFromFile,
   memberPushTokenMapFromFile,
+  mergeMemberPushTokens,
   parseAlbumMembersFile,
   shouldApplyRemoteMembers,
 } from '../domain/albumMembers';
@@ -1280,6 +1281,36 @@ export async function pushAlbumNotes(albumId: string): Promise<void> {
   });
 }
 
+/**
+ * Read push tokens from Drive members file.
+ * `null` = file exists but download/parse failed — caller must not overwrite Drive.
+ * `{}` = no remote file (or empty tokens) — safe to push local.
+ */
+async function readRemoteMemberPushTokens(
+  folderId: string,
+  albumId: string,
+): Promise<Record<string, string> | null> {
+  const remote = await findChildByName(folderId, MEMBERS_FILE_NAME);
+  if (!remote) {
+    return {};
+  }
+  const dest = new File(inboxDirectory(), `merge-members-${albumId}.json`);
+  try {
+    await downloadDriveFile(remote.id, dest.uri);
+    const parsed = parseAlbumMembersFile(await dest.text());
+    if (!parsed) {
+      return null;
+    }
+    return memberPushTokenMapFromFile(parsed);
+  } catch {
+    return null;
+  } finally {
+    if (dest.exists) {
+      dest.delete();
+    }
+  }
+}
+
 export async function pushAlbumMembers(albumId: string): Promise<void> {
   const album = sharedDriveAlbum(albumId);
   if (!album?.driveFolderId || !canWriteWithRole(roleOfAlbum(album))) {
@@ -1288,31 +1319,57 @@ export async function pushAlbumMembers(albumId: string): Promise<void> {
   if (!(await hasDriveToken())) {
     return;
   }
+  const selfUserId = useSessionStore.getState().user?.id;
+  const remoteTokens = await readRemoteMemberPushTokens(album.driveFolderId, albumId);
+  if (remoteTokens == null) {
+    // Remote members file exists but could not be read — skip upload to avoid wiping tokens.
+    return;
+  }
+  const mergedTokens = mergeMemberPushTokens({
+    remote: remoteTokens,
+    local: album.memberPushTokens,
+    selfUserId,
+  });
+  if (
+    JSON.stringify(mergedTokens) !== JSON.stringify(album.memberPushTokens ?? {})
+  ) {
+    useLibraryStore.getState().applyCloudAlbumMembers(albumId, {
+      memberColors: album.memberColors ?? {},
+      memberEmails: album.memberEmails ?? {},
+      memberNames: album.memberNames ?? {},
+      memberPushTokens: mergedTokens,
+      membersUpdatedAt: album.membersUpdatedAt ?? Date.now(),
+    });
+  }
+  const live = useLibraryStore.getState().albums.find((item) => item.id === albumId) ?? album;
   const people = albumMentionCandidates(
-    album,
+    live,
     useLibraryStore.getState().markersByTrackId,
     useSessionStore.getState().user,
   );
   const fallback = people.map((person) => ({
     key: person.key,
     name: person.name,
-    email: album.memberEmails?.[person.key],
-    color: album.memberColors?.[person.key],
+    email: live.memberEmails?.[person.key],
+    color: live.memberColors?.[person.key],
   }));
-  const body = buildAlbumMembersFile(album, fallback);
+  const body = buildAlbumMembersFile(
+    { ...live, memberPushTokens: mergedTokens },
+    fallback,
+  );
   if (body.members.length === 0) {
     return;
   }
   const dest = new File(inboxDirectory(), `members-${albumId}.json`);
   dest.write(JSON.stringify(body, null, 2));
-  const existing = await findChildByName(album.driveFolderId, MEMBERS_FILE_NAME);
+  const existing = await findChildByName(live.driveFolderId!, MEMBERS_FILE_NAME);
   if (existing) {
     await updateDriveFileMedia(existing.id, dest.uri, 'application/json');
     return;
   }
   await uploadDriveFile({
     name: MEMBERS_FILE_NAME,
-    folderId: album.driveFolderId,
+    folderId: live.driveFolderId!,
     fileUri: dest.uri,
     mimeType: 'application/json',
   });

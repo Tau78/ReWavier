@@ -97,7 +97,21 @@ Con backend: salvare token per user id, inviare push server-side (più affidabil
 - Spiegare: “sul telefono” = Centro notifiche, non solo campanella in app.
 - Non usare jargon: “push token”, “FCM”, “APNs” nelle UI.
 
-## OTA senza build nativa (crash all’avvio)
+## Lesson: Android silent push (ReWavier 2026-09)
+
+Symptoms: Android user never gets @ mention alerts with app closed/background.
+
+Checklist before blaming JS:
+
+1. **EAS FCM V1** — `googleServiceAccountKeyForFcmV1` must be set on the Android app credentials (`app.rewavier`). Query Expo GraphQL `androidAppCredentials { googleServiceAccountKeyForFcmV1 { id } }`. If `null`, Expo Push API cannot deliver to Android.
+2. **`google-services.json`** — `expo.android.googleServicesFile` required so the binary registers with FCM. Same Firebase project as the FCM V1 key. Commit the json (public client ids); keep the private FCM key out of git (`~/.config/rewavier/`).
+3. **Native rebuild** after adding google-services / plugin — OTA alone is not enough for FCM registration.
+4. **Do not wipe Drive tokens** — when pushing `.rewavier.members.json`, merge remote push tokens first (`mergeMemberPushTokens`). A client without tokens must not overwrite others.
+5. **`sendExpoPush*`** is HTTP — never gate on the *sender’s* `isOsNotificationsAvailable()`.
+6. Android 13+: create notification channel **before** `requestPermissionsAsync` / `getExpoPushTokenAsync`.
+7. Setup helper: `scripts/setup-android-fcm.sh` (needs `gcloud auth login`).
+
+## Lesson: OTA senza build nativa (crash all’avvio)
 
 Se spedisci JS con `expo-notifications` via OTA ma la build store **non** ha il plugin nativo, su Android/iOS l’app può **chiudersi all’apertura** (dopo login) quando chiama permessi o listener.
 
@@ -113,6 +127,7 @@ Pattern in `notifications/pushNotifications.ts` del repo di riferimento.
 
 ## Checklist nuovo repo
 
+- [ ] **Android FCM**: `google-services.json` + `googleServicesFile` in app config + FCM V1 on EAS (see lesson above)
 - [ ] `expo-notifications` + plugin in app config
 - [ ] `isOsNotificationsAvailable()` + guard su init e prefs
 - [ ] Modulo push + payload + router

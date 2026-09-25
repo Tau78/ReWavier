@@ -142,6 +142,7 @@ export function SettingsScreen() {
   const build = Constants.expoConfig?.ios?.buildNumber;
   const googleDrive = useGoogleDriveConnect();
   const osEnabled = useNotificationStore((s) => s.prefs.osEnabled);
+  const expoPushToken = useNotificationStore((s) => s.prefs.expoPushToken);
   const setOsEnabled = useNotificationStore((s) => s.setOsEnabled);
   const refreshPushToken = useNotificationStore((s) => s.refreshPushToken);
   const osNotificationsReady = isOsNotificationsAvailable();
@@ -397,7 +398,9 @@ export function SettingsScreen() {
                 <Text style={styles.rowHint}>
                   {pushPermission === 'denied'
                     ? 'Il permesso è negato: apri le impostazioni del telefono e riattivalo.'
-                    : 'Compare anche fuori dall’app, nel Centro notifiche.'}
+                    : osEnabled && pushPermission === 'granted' && !expoPushToken
+                      ? 'Permesso ok, ma gli avvisi fuori dall’app non sono pronti. Aggiorna ReWavier dal Play Store, poi riapri l’app.'
+                      : 'Compare anche fuori dall’app, nel Centro notifiche.'}
                 </Text>
               </Pressable>
               {pushPermission === 'denied' ? (
