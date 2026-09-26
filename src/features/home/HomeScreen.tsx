@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { canWriteWithRole, FOLDER_READ_ONLY_MESSAGE } from '../../domain/folderRole';
@@ -25,7 +26,7 @@ import { albumRoleForAlbumId, useLibraryStore } from '../../store/libraryStore';
 import { useSessionStore } from '../../store/sessionStore';
 import { libraryNeedsBanner, useSyncStore } from '../../store/syncStore';
 import { colors, DeepBackdrop, GlassCard, layout } from '../../theme';
-import { AlbumMark, BrandMark, FolderMark } from '../../theme/graphics';
+import { AlbumMark, BrandMark, EmptyGraphic, FolderMark, ScreenAura } from '../../theme/graphics';
 import { CollectionPlayer } from '../library/CollectionPlayer';
 import { LibrarySearch, matchesLibrarySearch } from '../library/LibrarySearch';
 import {
@@ -41,21 +42,33 @@ import { useLibraryActions } from '../library/useLibraryActions';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Home'>;
 
+function greetingForHour(hour: number): string {
+  if (hour < 12) {
+    return 'Buongiorno';
+  }
+  if (hour < 18) {
+    return 'Buon pomeriggio';
+  }
+  return 'Buonasera';
+}
+
 function Section({
   title,
   icon,
   actionLabel,
   onAction,
   children,
+  flush,
 }: {
   title: string;
   icon?: ReactNode;
   actionLabel?: string;
   onAction?: () => void;
   children: ReactNode;
+  flush?: boolean;
 }) {
   return (
-    <GlassCard style={styles.card}>
+    <GlassCard style={[styles.card, flush && styles.cardFlush]}>
       <View style={styles.cardHeader}>
         <View style={styles.cardTitleHit}>
           {icon}
@@ -72,7 +85,38 @@ function Section({
   );
 }
 
-function CollectionRow({
+function StatPill({ label, value }: { label: string; value: number }) {
+  return (
+    <View style={styles.statPill}>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+function QuickAction({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: ReactNode;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <View style={styles.quickIcon}>{icon}</View>
+      <Text style={styles.quickLabel}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function AlbumTile({
   name,
   meta,
   imageUri,
@@ -91,19 +135,84 @@ function CollectionRow({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={280}
-      style={({ pressed }) => [styles.collectionRow, pressed && styles.pressed]}
+      style={({ pressed }) => [styles.albumTile, pressed && styles.pressed]}
+    >
+      {imageUri ? (
+        <Image source={{ uri: imageUri }} style={styles.albumArt} resizeMode="cover" />
+      ) : (
+        <LinearGradient
+          colors={['rgba(74, 158, 255, 0.28)', 'rgba(255, 107, 53, 0.22)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.albumArtFallback}
+        >
+          <Text style={styles.albumLetter}>{letter}</Text>
+        </LinearGradient>
+      )}
+      <Text style={styles.albumName} numberOfLines={2}>
+        {name}
+      </Text>
+      <Text style={styles.albumMeta} numberOfLines={1}>
+        {meta}
+      </Text>
+    </Pressable>
+  );
+}
+
+function CollectionRow({
+  name,
+  meta,
+  imageUri,
+  onPress,
+  onLongPress,
+  divider,
+}: {
+  name: string;
+  meta: string;
+  imageUri?: string;
+  onPress: () => void;
+  onLongPress?: () => void;
+  divider?: boolean;
+}) {
+  const letter = (name.trim()[0] || '?').toUpperCase();
+  return (
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={280}
+      style={({ pressed }) => [
+        styles.collectionRow,
+        divider && styles.collectionRowDivider,
+        pressed && styles.collectionRowPressed,
+      ]}
     >
       {imageUri !== undefined ? (
         imageUri ? (
           <Image source={{ uri: imageUri }} style={styles.thumb} resizeMode="cover" />
         ) : (
-          <View style={styles.thumbFallback}>
+          <LinearGradient
+            colors={['rgba(74, 158, 255, 0.24)', 'rgba(42, 16, 64, 0.55)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.thumbFallback}
+          >
             <Text style={styles.thumbLetter}>{letter}</Text>
-          </View>
+          </LinearGradient>
         )
-      ) : null}
-      <Text style={styles.collectionName}>{name}</Text>
-      <Text style={styles.collectionMeta}>{meta}</Text>
+      ) : (
+        <View style={styles.playlistIcon}>
+          <FolderMark size={20} />
+        </View>
+      )}
+      <View style={styles.collectionText}>
+        <Text style={styles.collectionName} numberOfLines={1}>
+          {name}
+        </Text>
+        <Text style={styles.collectionMeta} numberOfLines={1}>
+          {meta}
+        </Text>
+      </View>
+      <Text style={styles.chevron}>›</Text>
     </Pressable>
   );
 }
@@ -189,6 +298,11 @@ export function HomeScreen() {
     return tracks.filter((track) => matchesLibrarySearch(q, track.title, track.artist));
   }, [q, tracks]);
 
+  const playlistCount = rootFolders.length + playlists.length;
+  const greeting = greetingForHour(new Date().getHours());
+  const firstName = user?.displayName?.trim().split(/\s+/)[0] ?? '';
+  const headline = firstName ? `${greeting}, ${firstName}` : greeting;
+
   const searchEmpty =
     q.length > 0 &&
     visibleFolders.length === 0 &&
@@ -239,7 +353,6 @@ export function HomeScreen() {
       if (dragIdRef.current !== trackId) {
         dragIdRef.current = trackId;
         setDragId(trackId);
-        // Fresh rects when a drag starts.
         lastRemesureAt.current = 0;
       }
 
@@ -258,7 +371,6 @@ export function HomeScreen() {
 
       autoScroll(pageY);
 
-      // Scroll already remesures; during move reuse cached rects mostly.
       if (now - lastRemesureAt.current >= 100) {
         lastRemesureAt.current = now;
         remesureDropTargets(dropNodes, dropRects);
@@ -324,44 +436,102 @@ export function HomeScreen() {
     });
   };
 
+  const playlistRows = useMemo(() => {
+    const rows: Array<{
+      key: string;
+      kind: 'folder' | 'playlist';
+      id: string;
+      name: string;
+      meta: string;
+    }> = [];
+    for (const folder of visibleFolders) {
+      const childCount = foldersIn(folder.id).length;
+      rows.push({
+        key: `folder:${folder.id}`,
+        kind: 'folder',
+        id: folder.id,
+        name: folder.name,
+        meta:
+          childCount > 0
+            ? `${childCount} playlist · ${folder.trackIds.length} tracce`
+            : `${folder.trackIds.length} tracce`,
+      });
+    }
+    for (const playlist of visiblePlaylists) {
+      rows.push({
+        key: `playlist:${playlist.id}`,
+        kind: 'playlist',
+        id: playlist.id,
+        name: playlist.name,
+        meta: `${playlist.trackIds.length} tracce`,
+      });
+    }
+    return rows;
+  }, [foldersIn, visibleFolders, visiblePlaylists]);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <DeepBackdrop />
+      <ScreenAura />
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <BrandMark size="sm" />
-          <View>
-            <Text style={styles.title}>Home</Text>
-            <Text style={styles.subtitle}>Playlist e album</Text>
+          <View style={styles.titleText}>
+            <Text style={styles.title}>{headline}</Text>
+            <Text style={styles.subtitle}>
+              {q
+                ? 'Risultati di ricerca'
+                : `${albums.length} album · ${playlistCount} playlist · ${tracks.length} brani`}
+            </Text>
           </View>
         </View>
         <View style={styles.headerActions}>
           <Pressable
             onPress={() => navigation.navigate('Help')}
-            style={({ pressed }) => [styles.gear, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.headerBtn, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel="Guida"
           >
-            <Text style={styles.gearGlyph}>?</Text>
+            <Text style={styles.headerBtnGlyph}>?</Text>
           </Pressable>
           <Pressable
             onPress={() => actions.openCreateMenu()}
-            style={({ pressed }) => [styles.gear, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.headerBtn, styles.headerBtnAccent, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel="Nuovo"
           >
-            <Text style={styles.importGlyph}>＋</Text>
+            <Text style={styles.headerBtnAccentGlyph}>＋</Text>
           </Pressable>
           <Pressable
             onPress={() => navigation.navigate('Settings')}
-            style={({ pressed }) => [styles.gear, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.headerBtn, pressed && styles.pressed]}
             accessibilityRole="button"
             accessibilityLabel="Impostazioni"
           >
-            <Text style={styles.gearGlyph}>⚙</Text>
+            <Text style={styles.headerBtnGlyph}>⚙</Text>
           </Pressable>
         </View>
       </View>
+
+      {!q ? (
+        <View style={styles.statsRow}>
+          <StatPill label="Album" value={albums.length} />
+          <StatPill label="Playlist" value={playlistCount} />
+          <StatPill label="Brani" value={tracks.length} />
+        </View>
+      ) : null}
+
+      {!q ? (
+        <View style={styles.quickRow}>
+          <QuickAction icon={<FolderMark size={18} />} label="Playlist" onPress={() => actions.newFolder(null)} />
+          <QuickAction icon={<AlbumMark size={18} />} label="Album" onPress={() => actions.openAlbumCreateMenu()} />
+          <QuickAction
+            icon={<BrandMark size="xs" />}
+            label="Libreria"
+            onPress={() => navigation.navigate('Library')}
+          />
+        </View>
+      ) : null}
 
       {!demoAccount &&
       libraryNeedsBanner({
@@ -398,7 +568,12 @@ export function HomeScreen() {
         </Pressable>
       ) : null}
 
-      <LibrarySearch value={query} onChangeText={setQuery} />
+      <View style={styles.searchWrap}>
+        <Text style={styles.searchIcon} accessibilityElementsHidden>
+          ⌕
+        </Text>
+        <LibrarySearch value={query} onChangeText={setQuery} style={styles.searchInput} />
+      </View>
 
       <View
         ref={scrollHost}
@@ -418,150 +593,187 @@ export function HomeScreen() {
           scrollEventThrottle={16}
         >
           {searchEmpty ? (
-            <Text style={styles.emptyHint}>Nessun risultato. Prova un altro nome.</Text>
+            <GlassCard style={styles.emptyCard}>
+              <EmptyGraphic />
+              <Text style={styles.emptyTitle}>Nessun risultato</Text>
+              <Text style={styles.emptyHint}>Prova un altro nome di playlist, album o brano.</Text>
+            </GlassCard>
           ) : (
             <>
-          {!q || visibleFolders.length > 0 || visiblePlaylists.length > 0 ? (
-          <Section
-            title="Playlist"
-            icon={<FolderMark />}
-            actionLabel="Nuova"
-            onAction={() => actions.newFolder(null)}
-          >
-            {visibleFolders.length === 0 && visiblePlaylists.length === 0 ? (
-              <Text style={styles.emptyHint}>Nessuna playlist. Tocca Nuova per crearne una.</Text>
-            ) : (
-              <>
-                {visibleFolders.map((folder) => {
-                  const childCount = foldersIn(folder.id).length;
-                  return (
-                    <HomeDropTargetBox
-                      key={folder.id}
-                      dropKey={`folder:${folder.id}`}
-                      highlighted={hoverKey === `folder:${folder.id}`}
-                      rects={dropRects}
-                      nodes={dropNodes}
+              {!q || visibleAlbums.length > 0 ? (
+                <Section
+                  title="Album"
+                  icon={<AlbumMark />}
+                  actionLabel="Nuova"
+                  onAction={() => actions.openAlbumCreateMenu()}
+                  flush={visibleAlbums.length > 0}
+                >
+                  {visibleAlbums.length === 0 ? (
+                    <Pressable
+                      onPress={() => actions.openAlbumCreateMenu()}
+                      style={({ pressed }) => [styles.emptyCreate, pressed && styles.pressed]}
                     >
-                      <CollectionRow
-                        name={folder.name}
-                        meta={
-                          childCount > 0
-                            ? `${childCount} playlist · ${folder.trackIds.length} tracce`
-                            : `${folder.trackIds.length} tracce`
-                        }
-                        onPress={() => openCollection('folder', folder.id)}
-                        onLongPress={() => actions.openFolderMenu(folder)}
-                      />
-                    </HomeDropTargetBox>
-                  );
-                })}
-                {visiblePlaylists.map((playlist) => (
-                  <CollectionRow
-                    key={playlist.id}
-                    name={playlist.name}
-                    meta={`${playlist.trackIds.length} tracce`}
-                    onPress={() => openCollection('playlist', playlist.id)}
-                    onLongPress={() => actions.openPlaylistMenu(playlist.id)}
-                  />
-                ))}
-              </>
-            )}
-          </Section>
-          ) : null}
-
-          {!q || visibleAlbums.length > 0 ? (
-          <Section
-            title="Album"
-            icon={<AlbumMark />}
-            actionLabel="Nuova"
-            onAction={() => actions.openAlbumCreateMenu()}
-          >
-            {visibleAlbums.length === 0 ? (
-              <Text style={styles.emptyHint}>
-                Tocca Nuova: album sul telefono, oppure da una cartella Cloud.
-              </Text>
-            ) : (
-              visibleAlbums.map((album) => (
-                <HomeDropTargetBox
-                  key={album.id}
-                  dropKey={`album:${album.id}`}
-                  highlighted={hoverKey === `album:${album.id}`}
-                  rects={dropRects}
-                  nodes={dropNodes}
-                >
-                  <CollectionRow
-                    name={album.name}
-                    imageUri={resolveLibraryUri(album.artworkUri) ?? ''}
-                    meta={
-                      album.origin === 'drive'
-                        ? `Drive · ${albumTrackCount(album.trackIds, album.versionFolders)} tracce`
-                        : album.artist || `${albumTrackCount(album.trackIds, album.versionFolders)} tracce`
-                    }
-                    onPress={() => openCollection('album', album.id)}
-                    onLongPress={() => actions.openAlbumMenu(album.id)}
-                  />
-                </HomeDropTargetBox>
-              ))
-            )}
-          </Section>
-          ) : null}
-
-          {!q ? (
-            <GlassCard style={styles.card}>
-              <Pressable
-                onPress={() => navigation.navigate('Library')}
-                style={({ pressed }) => [styles.libraryHit, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel="Apri la libreria"
-              >
-                <BrandMark size="xs" />
-                <View style={styles.libraryText}>
-                  <Text style={styles.cardLabel}>Libreria</Text>
-                  <Text style={styles.libraryTitle}>Tutti i file</Text>
-                </View>
-                <Text style={styles.collectionMeta}>
-                  {tracks.length === 1 ? '1 file' : `${tracks.length} file`}
-                </Text>
-                <Text style={styles.chevron}>›</Text>
-              </Pressable>
-            </GlassCard>
-          ) : matchingTracks.length > 0 ? (
-            <Section title="Brani">
-              {matchingTracks.length > 0 && dropTargets.length > 0 ? (
-                <Text style={styles.dragHint}>
-                  Tieni premuto una traccia e trascinala in una playlist o in un album.
-                </Text>
+                      <EmptyGraphic />
+                      <Text style={styles.emptyTitle}>Crea il tuo primo album</Text>
+                      <Text style={styles.emptyHint}>
+                        Sul telefono o da una cartella Cloud. Tocca qui per iniziare.
+                      </Text>
+                    </Pressable>
+                  ) : (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.albumScroll}
+                      keyboardShouldPersistTaps="handled"
+                    >
+                      {visibleAlbums.map((album) => (
+                        <HomeDropTargetBox
+                          key={album.id}
+                          dropKey={`album:${album.id}`}
+                          highlighted={hoverKey === `album:${album.id}`}
+                          rects={dropRects}
+                          nodes={dropNodes}
+                        >
+                          <AlbumTile
+                            name={album.name}
+                            imageUri={resolveLibraryUri(album.artworkUri) ?? ''}
+                            meta={
+                              album.origin === 'drive'
+                                ? `Drive · ${albumTrackCount(album.trackIds, album.versionFolders)} tracce`
+                                : album.artist ||
+                                  `${albumTrackCount(album.trackIds, album.versionFolders)} tracce`
+                            }
+                            onPress={() => openCollection('album', album.id)}
+                            onLongPress={() => actions.openAlbumMenu(album.id)}
+                          />
+                        </HomeDropTargetBox>
+                      ))}
+                    </ScrollView>
+                  )}
+                </Section>
               ) : null}
-              {matchingTracks.map((track) => (
-                <HomeDraggableTrack
-                  key={track.id}
-                  trackId={track.id}
-                  onMove={onTrackDragMove}
-                  onEnd={onTrackDragEnd}
+
+              {!q || visibleFolders.length > 0 || visiblePlaylists.length > 0 ? (
+                <Section
+                  title="Playlist"
+                  icon={<FolderMark />}
+                  actionLabel="Nuova"
+                  onAction={() => actions.newFolder(null)}
                 >
-                  <TrackRow
-                    track={track}
-                    active={dragId === track.id}
-                    noteAuthors={noteAuthorDots(markersByTrackId[track.id] ?? [])}
-                    downloading={downloadingIds[track.id] != null}
-                    swipeEnabled={dragId == null}
-                    onPress={() => play(track.id)}
-                    onArtwork={() => actions.pickTrackArtwork(track)}
-                    onMenu={() => actions.openTrackMenu(track)}
-                    onSwipeDelete={() => actions.confirmDeleteTrack(track)}
-                    onDownload={() => {
-                      void useLibraryStore.getState().downloadTrack(track.id).catch((error) => {
-                        Alert.alert(
-                          'Download',
-                          error instanceof Error ? error.message : 'Download non riuscito',
+                  {playlistRows.length === 0 ? (
+                    <Pressable
+                      onPress={() => actions.newFolder(null)}
+                      style={({ pressed }) => [styles.emptyCreate, pressed && styles.pressed]}
+                    >
+                      <EmptyGraphic />
+                      <Text style={styles.emptyTitle}>Organizza con le playlist</Text>
+                      <Text style={styles.emptyHint}>Raggruppa i brani per prova, lezione o setlist.</Text>
+                    </Pressable>
+                  ) : (
+                    playlistRows.map((row, index) => {
+                      const content = (
+                        <CollectionRow
+                          name={row.name}
+                          meta={row.meta}
+                          divider={index < playlistRows.length - 1}
+                          onPress={() => openCollection(row.kind, row.id)}
+                          onLongPress={() => {
+                            if (row.kind === 'folder') {
+                              const folder = rootFolders.find((item) => item.id === row.id);
+                              if (folder) {
+                                actions.openFolderMenu(folder);
+                              }
+                              return;
+                            }
+                            actions.openPlaylistMenu(row.id);
+                          }}
+                        />
+                      );
+                      if (row.kind === 'folder') {
+                        return (
+                          <HomeDropTargetBox
+                            key={row.key}
+                            dropKey={row.key}
+                            highlighted={hoverKey === row.key}
+                            rects={dropRects}
+                            nodes={dropNodes}
+                          >
+                            {content}
+                          </HomeDropTargetBox>
                         );
-                      });
-                    }}
-                  />
-                </HomeDraggableTrack>
-              ))}
-            </Section>
-          ) : null}
+                      }
+                      return <View key={row.key}>{content}</View>;
+                    })
+                  )}
+                </Section>
+              ) : null}
+
+              {!q ? (
+                <GlassCard style={styles.libraryCard}>
+                  <Pressable
+                    onPress={() => navigation.navigate('Library')}
+                    style={({ pressed }) => [styles.libraryHit, pressed && styles.pressed]}
+                    accessibilityRole="button"
+                    accessibilityLabel="Apri la libreria"
+                  >
+                    <LinearGradient
+                      colors={[colors.waveform, colors.accent]}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                      style={styles.libraryAccent}
+                    />
+                    <View style={styles.libraryIconWrap}>
+                      <BrandMark size="sm" />
+                    </View>
+                    <View style={styles.libraryText}>
+                      <Text style={styles.cardLabel}>Libreria</Text>
+                      <Text style={styles.libraryTitle}>Tutti i file</Text>
+                      <Text style={styles.libraryMeta}>
+                        {tracks.length === 1 ? '1 file sul telefono' : `${tracks.length} file sul telefono`}
+                      </Text>
+                    </View>
+                    <View style={styles.libraryChevron}>
+                      <Text style={styles.libraryChevronGlyph}>›</Text>
+                    </View>
+                  </Pressable>
+                </GlassCard>
+              ) : matchingTracks.length > 0 ? (
+                <Section title="Brani">
+                  {matchingTracks.length > 0 && dropTargets.length > 0 ? (
+                    <Text style={styles.dragHint}>
+                      Tieni premuto una traccia e trascinala in una playlist o in un album.
+                    </Text>
+                  ) : null}
+                  {matchingTracks.map((track) => (
+                    <HomeDraggableTrack
+                      key={track.id}
+                      trackId={track.id}
+                      onMove={onTrackDragMove}
+                      onEnd={onTrackDragEnd}
+                    >
+                      <TrackRow
+                        track={track}
+                        active={dragId === track.id}
+                        noteAuthors={noteAuthorDots(markersByTrackId[track.id] ?? [])}
+                        downloading={downloadingIds[track.id] != null}
+                        swipeEnabled={dragId == null}
+                        onPress={() => play(track.id)}
+                        onArtwork={() => actions.pickTrackArtwork(track)}
+                        onMenu={() => actions.openTrackMenu(track)}
+                        onSwipeDelete={() => actions.confirmDeleteTrack(track)}
+                        onDownload={() => {
+                          void useLibraryStore.getState().downloadTrack(track.id).catch((error) => {
+                            Alert.alert(
+                              'Download',
+                              error instanceof Error ? error.message : 'Download non riuscito',
+                            );
+                          });
+                        }}
+                      />
+                    </HomeDraggableTrack>
+                  ))}
+                </Section>
+              ) : null}
             </>
           )}
         </ScrollView>
@@ -592,7 +804,7 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 20,
     paddingTop: 8,
-    paddingBottom: 8,
+    paddingBottom: 4,
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
@@ -605,19 +817,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 8,
+  },
+  titleText: {
+    flex: 1,
+    minWidth: 0,
   },
   title: {
     color: colors.text,
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '700',
-    letterSpacing: -0.6,
+    letterSpacing: -0.5,
   },
   subtitle: {
     marginTop: 3,
     color: colors.textMuted,
-    fontSize: 14,
+    fontSize: 13,
+    lineHeight: 18,
   },
-  gear: {
+  headerBtn: {
     width: 44,
     height: 44,
     borderRadius: 22,
@@ -627,15 +847,81 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  gearGlyph: {
+  headerBtnAccent: {
+    backgroundColor: 'rgba(255, 107, 53, 0.14)',
+    borderColor: 'rgba(255, 107, 53, 0.35)',
+  },
+  headerBtnGlyph: {
     color: colors.text,
     fontSize: 20,
   },
-  importGlyph: {
+  headerBtnAccentGlyph: {
     color: colors.accent,
     fontSize: 22,
     fontWeight: '600',
     marginTop: -2,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 2,
+  },
+  statPill: {
+    flex: 1,
+    borderRadius: 14,
+    backgroundColor: 'rgba(26, 26, 30, 0.72)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+    gap: 2,
+  },
+  statValue: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  statLabel: {
+    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  quickRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  quickAction: {
+    flex: 1,
+    borderRadius: 14,
+    backgroundColor: 'rgba(26, 26, 30, 0.72)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    gap: 6,
+  },
+  quickIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.surfaceRaised,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickLabel: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '600',
   },
   banner: {
     marginHorizontal: 16,
@@ -653,17 +939,36 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontWeight: '600',
   },
+  searchWrap: {
+    position: 'relative',
+    marginTop: 8,
+  },
+  searchIcon: {
+    position: 'absolute',
+    left: 28,
+    top: 22,
+    zIndex: 1,
+    color: colors.textMuted,
+    fontSize: 18,
+    lineHeight: 18,
+  },
+  searchInput: {
+    paddingLeft: 38,
+  },
   scrollHost: {
     flex: 1,
   },
   scroll: {
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 8,
     paddingBottom: 24,
-    gap: 12,
+    gap: 14,
   },
   card: {
     paddingBottom: 4,
+  },
+  cardFlush: {
+    paddingBottom: 12,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -671,7 +976,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingTop: 12,
-    paddingBottom: 6,
+    paddingBottom: 8,
     gap: 10,
   },
   cardTitleHit: {
@@ -693,12 +998,73 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
+  albumScroll: {
+    paddingHorizontal: 14,
+    paddingBottom: 2,
+    gap: 12,
+  },
+  albumTile: {
+    width: 118,
+  },
+  albumArt: {
+    width: 118,
+    height: 118,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceRaised,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+  },
+  albumArtFallback: {
+    width: 118,
+    height: 118,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+  },
+  albumLetter: {
+    color: colors.text,
+    fontSize: 34,
+    fontWeight: '700',
+  },
+  albumName: {
+    marginTop: 8,
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  albumMeta: {
+    marginTop: 2,
+    color: colors.textMuted,
+    fontSize: 12,
+  },
+  libraryCard: {
+    overflow: 'hidden',
+  },
   libraryHit: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
     paddingHorizontal: 14,
-    paddingVertical: 14,
+    paddingVertical: 16,
+    position: 'relative',
+  },
+  libraryAccent: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+  },
+  libraryIconWrap: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: colors.surfaceRaised,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   libraryText: {
     flex: 1,
@@ -707,28 +1073,51 @@ const styles = StyleSheet.create({
   },
   libraryTitle: {
     color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  libraryMeta: {
+    color: colors.textMuted,
+    fontSize: 13,
+  },
+  libraryChevron: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.surfaceRaised,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  libraryChevronGlyph: {
+    color: colors.textMuted,
+    fontSize: 18,
+    lineHeight: 20,
+    marginTop: -1,
   },
   collectionRow: {
     paddingHorizontal: 14,
-    paddingVertical: 11,
+    paddingVertical: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: 12,
   },
+  collectionRowDivider: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.glassBorder,
+  },
+  collectionRowPressed: {
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+  },
   thumb: {
-    width: 44,
-    height: 44,
-    borderRadius: 6,
+    width: 46,
+    height: 46,
+    borderRadius: 10,
     backgroundColor: colors.surfaceRaised,
   },
   thumbFallback: {
-    width: 44,
-    height: 44,
-    borderRadius: 6,
-    backgroundColor: colors.surfaceRaised,
+    width: 46,
+    height: 46,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -737,11 +1126,23 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
   },
+  playlistIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceRaised,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  collectionText: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
   collectionName: {
     color: colors.text,
     fontSize: 16,
     fontWeight: '600',
-    flex: 1,
   },
   collectionMeta: {
     color: colors.textMuted,
@@ -760,12 +1161,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  emptyCard: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 28,
+    gap: 6,
+  },
+  emptyCreate: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 22,
+    gap: 6,
+  },
+  emptyTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
   emptyHint: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 8,
     color: colors.textMuted,
     fontSize: 14,
     lineHeight: 20,
+    textAlign: 'center',
   },
   ghostLayer: {
     ...StyleSheet.absoluteFillObject,

@@ -19,14 +19,16 @@ export function LibrarySearch({
   value,
   onChangeText,
   placeholder = LIBRARY_SEARCH_PLACEHOLDER,
+  style,
 }: {
   value: string;
   onChangeText: (text: string) => void;
   placeholder?: string;
+  style?: object;
 }) {
   return (
     <TextInput
-      style={styles.search}
+      style={[styles.search, style]}
       value={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
