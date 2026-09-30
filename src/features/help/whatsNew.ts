@@ -202,6 +202,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Avvisi su Android',
         body: 'Se ti taggano, l’avviso fuori dall’app arriva anche su Android. In Impostazioni → Notifiche tieni attive le notifiche sul telefono; se manca il permesso, aprilo dalle impostazioni del telefono.',
       },
+      {
+        title: 'Saluto in Home',
+        body: 'Su schermi stretti il “Buonasera” resta su una riga e il tuo nome sotto, senza spezzarsi a metà.',
+      },
     ],
   },
 ];

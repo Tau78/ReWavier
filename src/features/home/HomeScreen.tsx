@@ -301,7 +301,6 @@ export function HomeScreen() {
   const playlistCount = rootFolders.length + playlists.length;
   const greeting = greetingForHour(new Date().getHours());
   const firstName = user?.displayName?.trim().split(/\s+/)[0] ?? '';
-  const headline = firstName ? `${greeting}, ${firstName}` : greeting;
 
   const searchEmpty =
     q.length > 0 &&
@@ -477,12 +476,31 @@ export function HomeScreen() {
         <View style={styles.titleRow}>
           <BrandMark size="sm" />
           <View style={styles.titleText}>
-            <Text style={styles.title}>{headline}</Text>
-            <Text style={styles.subtitle}>
-              {q
-                ? 'Risultati di ricerca'
-                : `${albums.length} album · ${playlistCount} playlist · ${tracks.length} brani`}
-            </Text>
+            {firstName ? (
+              <>
+                <Text style={styles.greeting} numberOfLines={1}>
+                  {greeting}
+                </Text>
+                <Text
+                  style={styles.title}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.78}
+                >
+                  {firstName}
+                </Text>
+              </>
+            ) : (
+              <Text
+                style={styles.title}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.78}
+              >
+                {greeting}
+              </Text>
+            )}
+            {q ? <Text style={styles.subtitle}>Risultati di ricerca</Text> : null}
           </View>
         </View>
         <View style={styles.headerActions}>
@@ -825,11 +843,19 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  greeting: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    marginBottom: 1,
+  },
   title: {
     color: colors.text,
     fontSize: 26,
     fontWeight: '700',
     letterSpacing: -0.5,
+    lineHeight: 30,
   },
   subtitle: {
     marginTop: 3,

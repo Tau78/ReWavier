@@ -555,25 +555,47 @@ export function useLibraryActions(
     },
   ];
 
-  const createInFolderActions = (): ActionItem[] => [
-    {
-      label: 'Carica audio',
-      onPress: () => {
-        void importAudio(currentFolderId);
+  const createInFolderActions = (): ActionItem[] => {
+    const items: ActionItem[] = [
+      {
+        label: 'Carica audio',
+        onPress: () => {
+          void importAudio(currentFolderId);
+        },
       },
-    },
-    {
-      label: 'Registra bozza',
-      onPress: () =>
-        navigation.navigate('RecordSketch', {
-          folderId: currentFolderId ?? undefined,
-        }),
-    },
-    {
-      label: 'Crea playlist',
-      onPress: () => setPrompt({ type: 'new-folder', parentId: currentFolderId }),
-    },
-  ];
+      {
+        label: 'Registra bozza',
+        onPress: () =>
+          navigation.navigate('RecordSketch', {
+            folderId: currentFolderId ?? undefined,
+          }),
+      },
+      {
+        label: 'Crea playlist',
+        onPress: () => setPrompt({ type: 'new-folder', parentId: currentFolderId }),
+      },
+    ];
+    if (currentFolderId) {
+      items.push({
+        label: 'Elimina playlist',
+        danger: true,
+        onPress: () => {
+          Alert.alert('Eliminare la playlist?', 'Le tracce restano in libreria.', [
+            { text: 'Annulla', style: 'cancel' },
+            {
+              text: 'Elimina',
+              style: 'destructive',
+              onPress: () => {
+                leaveIfViewing('folder', currentFolderId);
+                useLibraryStore.getState().deleteFolder(currentFolderId);
+              },
+            },
+          ]);
+        },
+      });
+    }
+    return items;
+  };
 
   const folderActions = (folder: Folder): ActionItem[] => [
     {
@@ -635,10 +657,12 @@ export function useLibraryActions(
             ? menu.track.title
             : menu?.type === 'folder'
               ? menu.folder.name
-              : menu?.type === 'create' ||
-                  menu?.type === 'create-in-folder' ||
-                  menu?.type === 'create-album'
-                ? 'Nuovo'
+              : menu?.type === 'create-in-folder'
+                ? (currentFolderId
+                    ? folders.find((item) => item.id === currentFolderId)?.name ?? 'Playlist'
+                    : 'Nuovo')
+                : menu?.type === 'create' || menu?.type === 'create-album'
+                  ? 'Nuovo'
                 : menu?.type === 'album'
                   ? albums.find((item) => item.id === menu.albumId)?.name ?? 'Album'
                   : menu?.type === 'playlist'
