@@ -85,32 +85,31 @@ function Section({
   );
 }
 
-function StatPill({ label, value }: { label: string; value: number }) {
-  return (
-    <View style={styles.statPill}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
 function QuickAction({
   icon,
   label,
+  count,
   onPress,
 }: {
   icon: ReactNode;
   label: string;
+  count: number;
   onPress: () => void;
 }) {
+  const badge = count > 99 ? '99+' : String(count);
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.quickAction, pressed && styles.pressed]}
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={`${label}, ${count}`}
     >
-      <View style={styles.quickIcon}>{icon}</View>
+      <View style={styles.quickIconWrap}>
+        <View style={styles.quickIcon}>{icon}</View>
+        <View style={[styles.quickBadge, count === 0 && styles.quickBadgeEmpty]} accessibilityElementsHidden>
+          <Text style={[styles.quickBadgeText, count === 0 && styles.quickBadgeTextEmpty]}>{badge}</Text>
+        </View>
+      </View>
       <Text style={styles.quickLabel}>{label}</Text>
     </Pressable>
   );
@@ -543,21 +542,31 @@ export function HomeScreen() {
         </View>
       </View>
 
-      {!q ? (
-        <View style={styles.statsRow}>
-          <StatPill label="Album" value={albums.length} />
-          <StatPill label="Playlist" value={playlistCount} />
-          <StatPill label="Brani" value={tracks.length} />
-        </View>
-      ) : null}
+      <View style={styles.searchWrap}>
+        <Text style={styles.searchIcon} accessibilityElementsHidden>
+          ⌕
+        </Text>
+        <LibrarySearch value={query} onChangeText={setQuery} style={styles.searchInput} />
+      </View>
 
       {!q ? (
         <View style={styles.quickRow}>
-          <QuickAction icon={<FolderMark size={18} />} label="Playlist" onPress={() => actions.newFolder(null)} />
-          <QuickAction icon={<AlbumMark size={18} />} label="Album" onPress={() => actions.openAlbumCreateMenu()} />
+          <QuickAction
+            icon={<FolderMark size={18} />}
+            label="Playlist"
+            count={playlistCount}
+            onPress={() => actions.newFolder(null)}
+          />
+          <QuickAction
+            icon={<AlbumMark size={18} />}
+            label="Album"
+            count={albums.length}
+            onPress={() => actions.openAlbumCreateMenu()}
+          />
           <QuickAction
             icon={<BrandMark size="xs" />}
             label="Libreria"
+            count={tracks.length}
             onPress={() => navigation.navigate('Library')}
           />
         </View>
@@ -597,13 +606,6 @@ export function HomeScreen() {
           </Text>
         </Pressable>
       ) : null}
-
-      <View style={styles.searchWrap}>
-        <Text style={styles.searchIcon} accessibilityElementsHidden>
-          ⌕
-        </Text>
-        <LibrarySearch value={query} onChangeText={setQuery} style={styles.searchInput} />
-      </View>
 
       <View
         ref={scrollHost}
@@ -900,37 +902,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: -2,
   },
-  statsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 2,
-  },
-  statPill: {
-    flex: 1,
-    borderRadius: 14,
-    backgroundColor: 'rgba(26, 26, 30, 0.72)',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.glassBorder,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    gap: 2,
-  },
-  statValue: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-  },
-  statLabel: {
-    color: colors.textMuted,
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.4,
-    textTransform: 'uppercase',
-  },
   quickRow: {
     flexDirection: 'row',
     gap: 8,
@@ -949,6 +920,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
+  quickIconWrap: {
+    position: 'relative',
+    width: 34,
+    height: 34,
+  },
   quickIcon: {
     width: 34,
     height: 34,
@@ -956,6 +932,34 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceRaised,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  quickBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -8,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 5,
+    borderRadius: 9,
+    backgroundColor: colors.accent,
+    borderWidth: 1.5,
+    borderColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickBadgeEmpty: {
+    backgroundColor: colors.surfaceRaised,
+    borderColor: colors.border,
+  },
+  quickBadgeText: {
+    color: colors.text,
+    fontSize: 10,
+    fontWeight: '700',
+    fontVariant: ['tabular-nums'],
+    lineHeight: 12,
+  },
+  quickBadgeTextEmpty: {
+    color: colors.textMuted,
   },
   quickLabel: {
     color: colors.text,
@@ -980,7 +984,7 @@ const styles = StyleSheet.create({
   },
   searchWrap: {
     position: 'relative',
-    marginTop: 8,
+    marginTop: 4,
   },
   searchIcon: {
     position: 'absolute',

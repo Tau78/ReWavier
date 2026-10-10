@@ -218,6 +218,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Appunti nell’album',
         body: 'Sotto la copertina dell’album vedi gli appunti come sulla panoramica: tocca uno e parti da quel momento.',
       },
+      {
+        title: 'Home più chiara',
+        body: 'La ricerca sta subito sotto il saluto. Playlist, Album e Libreria sono su una riga sola, con il numero in piccolo su ogni tasto.',
+      },
     ],
   },
 ];
