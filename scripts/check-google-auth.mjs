@@ -369,4 +369,4 @@ assert.match(
   /com\.googleusercontent\.apps\.1049963169218-k8i1dmlbsn1nqrv393u8pp111v7v2efc/,
 );
 
-console.log('ok google auth snapshots the code; identity login skips Drive consent');
+console.log('ok google auth snapshots the code; login uses Drive scopes in one prompt');

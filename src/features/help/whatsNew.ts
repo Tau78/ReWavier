@@ -207,6 +207,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         body: 'Su schermi stretti il “Buonasera” resta su una riga e il tuo nome sotto, senza spezzarsi a metà.',
       },
       {
+        title: 'Login Google più corto',
+        body: 'Con Continua con Google autorizzi account e Drive in un solo passaggio. Nel primo avvio non chiediamo di nuovo Drive né un popup di conferma.',
+      },
+      {
         title: 'Aggiorna e appunti',
         body: 'Tocchi Aggiorna e gli appunti dei compagni arrivano prima del messaggio. Se c’è qualcosa di nuovo, te lo dice; se è già tutto sul telefono, te lo dice dopo aver controllato.',
       },

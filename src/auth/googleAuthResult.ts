@@ -17,7 +17,7 @@ export type GoogleExchangeExtras = {
   codeVerifier?: string;
 };
 
-/** Login only: no Drive scopes, so Google does not show “app not verified / unsafe”. */
+/** Incremental Drive connect after email/Apple login (no Drive yet). */
 export const GOOGLE_IDENTITY_EXTRA_PARAMS = {
   prompt: 'select_account',
 } as const;

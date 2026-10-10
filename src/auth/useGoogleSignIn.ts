@@ -316,7 +316,7 @@ export async function completeGoogleSignIn(
     clientId,
     extras,
     'Login Google non riuscito. Riprova con Apple o email.',
-    IDENTITY_SCOPES,
+    DRIVE_SCOPES,
   );
   const profile = await profileFromGoogle(tokens.idToken, tokens.accessToken);
   if (!profile.email && profile.sub.startsWith('google-')) {
@@ -573,7 +573,7 @@ function useGoogleAuthRequest(kind: GoogleAuthKind) {
 }
 
 export function useGoogleSignIn() {
-  const auth = useGoogleAuthRequest('identity');
+  const auth = useGoogleAuthRequest('drive');
   return {
     ready: auth.ready,
     completeGoogleSignIn: async (result: AuthSession.AuthSessionResult) => {

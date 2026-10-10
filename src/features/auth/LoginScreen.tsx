@@ -99,7 +99,7 @@ function GoogleContinueButtonConfigured({
       style={({ pressed }) => [styles.google, pressed && styles.pressed]}
     >
       <Text style={styles.googleLabel}>Continua con Google</Text>
-      <Text style={styles.googleHint}>Il tuo account Google</Text>
+      <Text style={styles.googleHint}>Account e Drive in un solo passaggio</Text>
     </Pressable>
   );
 }
@@ -183,7 +183,8 @@ export function LoginScreen() {
           </View>
           <Text style={styles.title}>Accedi</Text>
           <Text style={styles.sub}>
-            Entra con Google. Oppure Apple o email, su questo telefono.
+            Con Google entri e, nella stessa schermata, autorizzi l’accesso a Drive se ti serve
+            per gli album condivisi. Oppure Apple o email, su questo telefono.
           </Text>
 
           <GoogleContinueButton

@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { runGoogleDriveConnect, useGoogleDriveConnect } from '../../auth/useGoogleSignIn';
 import { BAND_COLORS } from '../../domain/bandColors';
 import { createId } from '../../domain/library';
 import type { UsageType, UserBand } from '../../domain/session';
@@ -25,8 +24,6 @@ const USAGES: { id: UsageType; title: string; body: string }[] = [
 export function OnboardingScreen() {
   const user = useSessionStore((s) => s.user);
   const completeOnboarding = useSessionStore((s) => s.completeOnboarding);
-  const connectDrive = useSessionStore((s) => s.connectDrive);
-
   const [step, setStep] = useState<'roles' | 'band'>('roles');
   const [usageTypes, setUsageTypes] = useState<UsageType[]>([]);
   const [bands, setBands] = useState<UserBand[]>([]);
@@ -34,8 +31,7 @@ export function OnboardingScreen() {
   const [draftColor, setDraftColor] = useState<string>(BAND_COLORS[0]);
   const [editable, setEditable] = useState(false);
 
-  const googleDrive = useGoogleDriveConnect();
-  const driveOk = user?.driveConnected === true && user.driveLink != null;
+  const driveOk = user?.driveConnected === true && user.driveLink === 'google';
   const wantsBand = usageTypes.includes('band');
   const canAdvance = usageTypes.length > 0;
   const draftReady = draftName.trim().length > 0 && draftColor != null;
@@ -68,32 +64,6 @@ export function OnboardingScreen() {
     setBands(next);
     setDraftName('');
     setDraftColor(draftColor);
-  };
-
-  const onFilesDrive = () => {
-    connectDrive('files');
-    Alert.alert(
-      'Drive collegato da File',
-      'In Libreria, apri un album e collega la cartella Drive. I brani arrivano da lì; sul telefono restano anche nella cartella ReWavier.',
-    );
-  };
-
-  const onGoogleDrive = () => {
-    void (async () => {
-      try {
-        const linked = await runGoogleDriveConnect(googleDrive);
-        if (linked) {
-          Alert.alert('Drive', 'Google Drive è collegato. In Libreria scegli la cartella.');
-        }
-      } catch (error) {
-        Alert.alert(
-          'Drive',
-          error instanceof Error
-            ? `${error.message}\n\nIn alternativa tocca «Collega da File».`
-            : 'Google non ha collegato Drive. Tocca «Collega da File», oppure riprova più tardi.',
-        );
-      }
-    })();
   };
 
   const finish = (includeBand: boolean) => {
@@ -191,28 +161,14 @@ export function OnboardingScreen() {
               <Text style={styles.add}>＋ Aggiungi un’altra band</Text>
             </Pressable>
 
-            <View style={styles.block}>
-              <Text style={styles.blockTitle}>Drive</Text>
-              {driveOk && user?.driveLink === 'google' ? (
-                <Text style={styles.ok}>Google Drive è collegato</Text>
-              ) : driveOk ? (
-                <Text style={styles.ok}>Collegato · File</Text>
-              ) : (
-                <>
-                  <Text style={styles.blockBody}>
-                    Entri con Google per l’account. Per i brani su Drive serve un secondo
-                    permesso. Se Google lo blocca, usa «Collega da File» oppure fallo dopo
-                    dalla libreria.
-                  </Text>
-                  <Pressable onPress={onGoogleDrive} style={styles.google}>
-                    <Text style={styles.googleLabel}>Collega Google Drive</Text>
-                  </Pressable>
-                  <Pressable onPress={onFilesDrive} style={styles.googleLater}>
-                    <Text style={styles.googleLabel}>Collega da File</Text>
-                  </Pressable>
-                </>
-              )}
-            </View>
+            {driveOk ? (
+              <Text style={styles.ok}>Google Drive è già collegato dal login.</Text>
+            ) : (
+              <Text style={styles.blockBody}>
+                Drive non è ancora collegato. Dopo l’ingresso puoi farlo in Impostazioni o
+                quando apri un album.
+              </Text>
+            )}
 
             <View style={styles.block}>
               <Text style={styles.blockTitle}>I tuoi marker condivisi</Text>

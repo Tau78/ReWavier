@@ -280,10 +280,7 @@ export function SettingsScreen() {
   const connectDrive = () => {
     void (async () => {
       try {
-        const linked = await runGoogleDriveConnect(googleDrive);
-        if (linked) {
-          Alert.alert('Drive', 'Google Drive è collegato.');
-        }
+        await runGoogleDriveConnect(googleDrive);
       } catch (error) {
         Alert.alert('Drive', error instanceof Error ? error.message : 'Riprova');
       }
