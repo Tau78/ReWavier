@@ -10,7 +10,7 @@ Progetto Google Cloud **1049963169218** (client ID in `app.json`).
 
 1. Apri [Schermata consenso OAuth](https://console.cloud.google.com/apis/credentials/consent?project=1049963169218).
 2. **Informativa sulla privacy:** `https://eventi.musicproeventi.it/ReWavier/Privacy.html`
-3. **Termini di servizio:** stessa cartella sito (es. pagina Supporto o Terms se esiste; altrimenti crea `Terms.html` breve e incolla l’URL).
+3. **Termini di servizio:** `https://eventi.musicproeventi.it/ReWavier/Terms.html`
 4. **Email assistenza utenti:** `mauro@www.musicproeventi.it` (o quella dello Store).
 5. **Logo app** e **dominio autorizzato:** `eventi.musicproeventi.it`.
 6. Salva e ripubblica la schermata consenso.
