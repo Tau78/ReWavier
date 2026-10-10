@@ -11,7 +11,7 @@ import { colors, DeepBackdrop, GlassCard, layout } from '../../theme';
 import { EmptyGraphic } from '../../theme/graphics';
 import { CollectionPlayer } from './CollectionPlayer';
 import { LibrarySearch, matchesLibrarySearch } from './LibrarySearch';
-import { ensurePlayableAndOpen } from './openTrack';
+import { ensurePlayableAndOpen, fromStartOptions } from './openTrack';
 import { TrackRow } from './TrackRow';
 import { useLibraryActions } from './useLibraryActions';
 
@@ -32,9 +32,18 @@ export function LibraryScreen() {
     [query, tracks],
   );
   const searching = query.trim().length > 0;
+  const queueIds = () => visibleTracks.map((track) => track.id);
 
   const play = (trackId: string) => {
-    void ensurePlayableAndOpen(trackId, visibleTracks.map((track) => track.id)).then((opened) => {
+    void ensurePlayableAndOpen(trackId, queueIds()).then((opened) => {
+      if (!opened) {
+        Alert.alert('Ascolto', 'Questo brano non è ancora arrivato. Riprova tra un attimo.');
+      }
+    });
+  };
+
+  const playFromStart = (trackId: string) => {
+    void ensurePlayableAndOpen(trackId, queueIds(), fromStartOptions()).then((opened) => {
       if (!opened) {
         Alert.alert('Ascolto', 'Questo brano non è ancora arrivato. Riprova tra un attimo.');
       }
@@ -90,6 +99,7 @@ export function LibraryScreen() {
                   noteAuthors={noteAuthorDots(markersByTrackId[track.id] ?? [])}
                   downloading={downloadingIds[track.id] != null}
                   onPress={() => play(track.id)}
+                  onDoublePress={() => playFromStart(track.id)}
                   onArtwork={() => actions.pickTrackArtwork(track)}
                   onMenu={() => actions.openTrackMenu(track)}
                   onSwipeDelete={() => actions.confirmDeleteTrack(track)}

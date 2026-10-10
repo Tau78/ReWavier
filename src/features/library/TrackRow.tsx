@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { isDownloaded } from '../../domain/audioFormats';
@@ -15,6 +15,8 @@ type MetaMode = 'duration' | 'created';
 const MAX_AUTHOR_DOTS = 4;
 const DOT_SIZE = 16;
 const DOT_OVERLAP = 6;
+/** Window to treat two taps as “restart from the beginning”. */
+const DOUBLE_PRESS_MS = 280;
 
 function authorDotsLabel(authors: NoteAuthorDot[]): string {
   if (authors.length === 0) {
@@ -40,6 +42,7 @@ export function TrackRow({
   blocked,
   active,
   onPress,
+  onDoublePress,
   onLongPress,
   onDownload,
   onMenu,
@@ -54,6 +57,8 @@ export function TrackRow({
   blocked?: boolean;
   active?: boolean;
   onPress: () => void;
+  /** Second tap soon after the first → restart from the beginning (caller wires seek). */
+  onDoublePress?: () => void;
   onLongPress?: () => void;
   onDownload?: () => void;
   onMenu?: () => void;
@@ -73,6 +78,8 @@ export function TrackRow({
   const letter = (track.title.trim()[0] || '?').toUpperCase();
   const artworkUri = resolveLibraryUri(track.artworkUri);
   const [metaMode, setMetaMode] = useState<MetaMode>('duration');
+  const lastPressAtRef = useRef(0);
+  const singlePressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const createdLabel = useMemo(() => {
     const ms = fileCreatedAtMs(track);
     return ms != null ? formatFileCreatedAt(ms) : null;
@@ -85,9 +92,42 @@ export function TrackRow({
     setMetaMode('duration');
   }, [track.id, track.fileUri, track.inboxUri, track.downloadedAt]);
 
+  useEffect(() => {
+    return () => {
+      if (singlePressTimerRef.current) {
+        clearTimeout(singlePressTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleRowPress = () => {
+    if (!onDoublePress) {
+      onPress();
+      return;
+    }
+    const now = Date.now();
+    if (now - lastPressAtRef.current <= DOUBLE_PRESS_MS) {
+      if (singlePressTimerRef.current) {
+        clearTimeout(singlePressTimerRef.current);
+        singlePressTimerRef.current = null;
+      }
+      lastPressAtRef.current = 0;
+      onDoublePress();
+      return;
+    }
+    lastPressAtRef.current = now;
+    if (singlePressTimerRef.current) {
+      clearTimeout(singlePressTimerRef.current);
+    }
+    singlePressTimerRef.current = setTimeout(() => {
+      singlePressTimerRef.current = null;
+      onPress();
+    }, DOUBLE_PRESS_MS);
+  };
+
   const row = (
     <Pressable
-      onPress={onPress}
+      onPress={handleRowPress}
       onLongPress={onLongPress}
       delayLongPress={280}
       disabled={blocked}
@@ -104,6 +144,9 @@ export function TrackRow({
           : hideArtist
             ? track.title
             : `${track.title}, ${track.artist}`
+      }
+      accessibilityHint={
+        blocked || !onDoublePress ? undefined : 'Tocca due volte per ripartire dall’inizio'
       }
       accessibilityState={{ disabled: blocked }}
     >

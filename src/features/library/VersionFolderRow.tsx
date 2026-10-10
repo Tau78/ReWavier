@@ -19,6 +19,7 @@ export function VersionFolderRow({
   onToggle,
   onPlayChosen,
   onPlayVersion,
+  onPlayVersionFromStart,
   onMenu,
   onVersionMenu,
   onSwipeDelete,
@@ -37,6 +38,7 @@ export function VersionFolderRow({
   onToggle: () => void;
   onPlayChosen: () => void;
   onPlayVersion: (track: Track) => void;
+  onPlayVersionFromStart?: (track: Track) => void;
   onMenu: () => void;
   onVersionMenu: (track: Track) => void;
   onSwipeDelete?: (track: Track) => void;
@@ -101,6 +103,9 @@ export function VersionFolderRow({
                 blocked={blockedOf?.(track.id) === true}
                 swipeEnabled={swipeEnabled}
                 onPress={() => onPlayVersion(track)}
+                onDoublePress={
+                  onPlayVersionFromStart ? () => onPlayVersionFromStart(track) : undefined
+                }
                 onMenu={() => onVersionMenu(track)}
                 onSwipeDelete={
                   onSwipeDelete ? () => onSwipeDelete(track) : undefined

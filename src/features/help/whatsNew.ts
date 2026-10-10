@@ -210,6 +210,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Aggiorna e appunti',
         body: 'Tocchi Aggiorna e gli appunti dei compagni arrivano prima del messaggio. Se c’è qualcosa di nuovo, te lo dice; se è già tutto sul telefono, te lo dice dopo aver controllato.',
       },
+      {
+        title: 'Doppio tocco: dall’inizio',
+        body: 'Su un brano, tocca due volte: riparte dall’inizio. Un tocco solo riprende da dove ti eri fermato.',
+      },
     ],
   },
 ];

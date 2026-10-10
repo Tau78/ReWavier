@@ -56,7 +56,12 @@ import { AlbumDocuments } from './AlbumDocuments';
 import { AlbumNotes } from './AlbumNotes';
 import { AlbumSeparatorRow, SEPARATOR_ROW_HEIGHT } from './AlbumSeparatorRow';
 import { CollectionPlayer } from './CollectionPlayer';
-import { ensurePlayableAndOpen, playQueue, restoreCollectionPlayback } from './openTrack';
+import {
+  ensurePlayableAndOpen,
+  fromStartOptions,
+  playQueue,
+  restoreCollectionPlayback,
+} from './openTrack';
 import { type DropRole, ReorderableTrackList } from './ReorderableTrackList';
 import { TrackRow } from './TrackRow';
 import { VersionFolderRow } from './VersionFolderRow';
@@ -920,6 +925,25 @@ export function CollectionScreen() {
                           },
                         );
                       }}
+                      onDoublePress={() => {
+                        if (blockedIds.has(item.track.id)) {
+                          warnBlocked();
+                          return;
+                        }
+                        useLibraryStore.getState().chooseAlbumVersion(id, item.folderId, item.track.id);
+                        void ensurePlayableAndOpen(
+                          item.track.id,
+                          trackIds,
+                          fromStartOptions({ resumeKey: collectionKey }),
+                        ).then((opened) => {
+                          if (!opened) {
+                            Alert.alert(
+                              'Ascolto',
+                              'Questo brano non è ancora arrivato. Riprova tra un attimo.',
+                            );
+                          }
+                        });
+                      }}
                       onArtwork={() => actions.pickTrackArtwork(item.track)}
                       onMenu={() => actions.openTrackMenu(item.track)}
                       onSwipeDelete={() => actions.confirmDeleteTrack(item.track)}
@@ -951,6 +975,26 @@ export function CollectionScreen() {
                         autoPlay: kind === 'album' || kind === 'folder',
                         resumeKey: collectionKey,
                       }).then((opened) => {
+                        if (opened) {
+                          usePlayerStore.getState().setDockExpanded(true);
+                          return;
+                        }
+                        Alert.alert(
+                          'Ascolto',
+                          'Questo brano non è ancora arrivato. Riprova tra un attimo.',
+                        );
+                      });
+                    }}
+                    onDoublePress={() => {
+                      if (blockedIds.has(item.track.id)) {
+                        warnBlocked();
+                        return;
+                      }
+                      void ensurePlayableAndOpen(
+                        item.track.id,
+                        trackIds,
+                        fromStartOptions({ resumeKey: collectionKey }),
+                      ).then((opened) => {
                         if (opened) {
                           usePlayerStore.getState().setDockExpanded(true);
                           return;

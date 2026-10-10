@@ -18,6 +18,16 @@ export type OpenTrackOptions = {
   resume?: boolean;
 };
 
+/** Double-tap on a row: play from the start (ignore saved resume). */
+export function fromStartOptions(base?: OpenTrackOptions): OpenTrackOptions {
+  return {
+    ...base,
+    autoPlay: true,
+    resume: false,
+    startAtMs: 0,
+  };
+}
+
 function playableQueueIds(trackIds: string[]): string[] {
   return trackIds.filter((id) => {
     const track = useLibraryStore.getState().getTrack(id);
@@ -64,8 +74,14 @@ export function openTrack(
     if (Object.keys(patch).length > 0) {
       usePlayerStore.setState(patch);
     }
-    if (options?.startAtMs != null) {
-      usePlayerStore.getState().seekTo(options.startAtMs);
+    const seekMs =
+      options?.startAtMs != null
+        ? options.startAtMs
+        : options?.resume === false
+          ? (track.startMs ?? 0)
+          : undefined;
+    if (seekMs != null) {
+      usePlayerStore.getState().seekTo(seekMs);
     }
     if (options?.autoPlay) {
       usePlayerStore.getState().play();

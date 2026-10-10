@@ -36,7 +36,7 @@ import {
   targetAtPoint,
   type HomeDropTarget,
 } from '../library/homeDrop';
-import { ensurePlayableAndOpen } from '../library/openTrack';
+import { ensurePlayableAndOpen, fromStartOptions } from '../library/openTrack';
 import { TrackRow } from '../library/TrackRow';
 import { useLibraryActions } from '../library/useLibraryActions';
 
@@ -435,6 +435,18 @@ export function HomeScreen() {
     });
   };
 
+  const playFromStart = (trackId: string) => {
+    void ensurePlayableAndOpen(
+      trackId,
+      matchingTracks.map((track) => track.id),
+      fromStartOptions(),
+    ).then((opened) => {
+      if (!opened) {
+        Alert.alert('Ascolto', 'Questo brano non è ancora arrivato. Riprova tra un attimo.');
+      }
+    });
+  };
+
   const playlistRows = useMemo(() => {
     const rows: Array<{
       key: string;
@@ -776,6 +788,7 @@ export function HomeScreen() {
                         downloading={downloadingIds[track.id] != null}
                         swipeEnabled={dragId == null}
                         onPress={() => play(track.id)}
+                        onDoublePress={() => playFromStart(track.id)}
                         onArtwork={() => actions.pickTrackArtwork(track)}
                         onMenu={() => actions.openTrackMenu(track)}
                         onSwipeDelete={() => actions.confirmDeleteTrack(track)}
