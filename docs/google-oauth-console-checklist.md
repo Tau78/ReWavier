@@ -1,5 +1,7 @@
 # Accorciare il login Google su Android (Console)
 
+**Sul sito (browser):** [GoogleOAuthChecklist.html](https://eventi.musicproeventi.it/ReWavier/GoogleOAuthChecklist.html) — i file `.md` non vanno in FTP, solo HTML.
+
 Obiettivo: meno schermate «non verificata», «non sicuro» e avvisi sulla privacy mancante.
 
 ## 1. Schermata consenso OAuth

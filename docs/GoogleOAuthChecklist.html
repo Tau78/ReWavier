@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login Google Android — checklist Console</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1.25rem 3rem; line-height: 1.5; color: #111; }
+    h1 { font-size: 1.35rem; }
+    h2 { font-size: 1.05rem; margin-top: 1.6rem; }
+    a { color: #c44d1f; }
+    p, li { font-size: 1rem; }
+    code { font-size: 0.92rem; background: #f4f4f4; padding: 0.1rem 0.35rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <p><a href="index.html">ReWavier</a></p>
+  <h1>Accorciare il login Google su Android</h1>
+  <p>Checklist per la Console Google: meno schermate «non verificata», «non sicuro» e avvisi sulla privacy mancante.</p>
+
+  <h2>1. Schermata consenso</h2>
+  <p>Progetto Google Cloud <strong>1049963169218</strong>.</p>
+  <ol>
+    <li>Apri la <a href="https://console.cloud.google.com/apis/credentials/consent?project=1049963169218">schermata consenso OAuth</a>.</li>
+    <li><strong>Privacy:</strong> <a href="Privacy.html">Privacy.html</a> (URL completo: <code>https://eventi.musicproeventi.it/ReWavier/Privacy.html</code>)</li>
+    <li><strong>Termini:</strong> stessa cartella sul sito (Supporto o una pagina Terms breve).</li>
+    <li><strong>Email assistenza:</strong> quella dello Store o <code>mauro@www.musicproeventi.it</code>.</li>
+    <li><strong>Logo</strong> e dominio autorizzato <code>eventi.musicproeventi.it</code>.</li>
+    <li>Salva e ripubblica.</li>
+  </ol>
+  <p>Così spesso sparisce «Assicurati che ReWavier sia attendibile».</p>
+
+  <h2>2. Verifica app (Drive)</h2>
+  <p>Accesso a Drive è un permesso sensibile. Senza verifica Google mostra «non verificata», Avanzate e «Apri ReWavier (non sicuro)».</p>
+  <ol>
+    <li>Schermata consenso → <strong>Verifica app</strong>.</li>
+    <li>Spiega l’uso: album condivisi su Drive, appunti sulla musica, solo cartelle scelte dall’utente.</li>
+    <li>Video breve: login → Continua con Google → spunta Drive → libreria.</li>
+    <li>Account di test se Google lo chiede.</li>
+  </ol>
+  <p>Fino al via libera, si passa ancora da <strong>Avanzate</strong>.</p>
+
+  <h2>3. Dopo la verifica</h2>
+  <ul>
+    <li>Login: un solo giro Google (account + Drive) — già nell’app via aggiornamento OTA.</li>
+    <li>Primo avvio: niente secondo «Collega Drive» nel wizard.</li>
+  </ul>
+
+  <h2>4. Controllo</h2>
+  <ul>
+    <li>Secondo login con lo stesso account: meno passaggi.</li>
+    <li>Se compare ancora «non verificata»: verifica in corso o permessi cambiati di recente.</li>
+  </ul>
+  <p><small>Copia sorgente nel repo: <code>docs/google-oauth-console-checklist.md</code> (i file .md non vengono caricati sul sito).</small></p>
+</body>
+</html>
