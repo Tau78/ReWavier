@@ -789,12 +789,15 @@ async function syncOneDriveAlbum(
     }
 
     if (markersChanged) {
-      notesPulled += addedMarkers;
+      // Count updates too: same id with a newer stamp still means "something arrived".
+      notesPulled += Math.max(1, addedMarkers);
       store.setTrackMarkers(track.id, merged);
       refreshMarkersIfPlaying(track.id, merged);
       void import('../store/notificationStore').then(({ ingestMentionsForSavedTrack }) => {
         ingestMentionsForSavedTrack(track.id, merged);
       });
+    } else if (scoreChanged || annotationsChanged) {
+      notesPulled += 1;
     }
 
     if (boundsChanged) {
@@ -868,7 +871,8 @@ export type SyncDriveAlbumResult = {
 };
 
 /**
- * Align one Drive album: import new remotes (as rows), mark changed files.
+ * Align one Drive album: import new remotes (as rows), mark changed files,
+ * then await sidecars/notes so Aggiorna can report the real result.
  * Does not wait for a full-library pass. Same album is serialized.
  */
 export async function syncDriveAlbum(albumId: string): Promise<SyncDriveAlbumResult> {
@@ -877,30 +881,37 @@ export async function syncDriveAlbum(albumId: string): Promise<SyncDriveAlbumRes
     return empty;
   }
   const outcome = await runExclusiveAlbumWork(albumId, () => runSyncDriveAlbumBody(albumId));
-  void runExclusiveAlbumWork(albumId, () => runSyncDriveAlbumExtras(albumId)).catch(() => {
-    // extras (notes, PDF) can arrive on the next Aggiorna
-  });
-  return outcome;
+  if (outcome.skipped) {
+    return outcome;
+  }
+  let notesFromExtras = 0;
+  try {
+    notesFromExtras = await runExclusiveAlbumWork(albumId, () => runSyncDriveAlbumExtras(albumId));
+  } catch {
+    // Listing already applied; notes may still arrive on the next Aggiorna.
+  }
+  return { ...outcome, notesPulled: outcome.notesPulled + notesFromExtras };
 }
 
-async function runSyncDriveAlbumExtras(albumId: string): Promise<void> {
+async function runSyncDriveAlbumExtras(albumId: string): Promise<number> {
   if (useDownloadProgressStore.getState().pauseRequested) {
-    return;
+    return 0;
   }
   const user = useSessionStore.getState().user;
   if (!user?.onboarded || shouldSkipCloudSync(user)) {
-    return;
+    return 0;
   }
   if (!(await hasDriveToken())) {
-    return;
+    return 0;
   }
   const album = useLibraryStore
     .getState()
     .albums.find((item) => item.id === albumId && item.origin === 'drive');
   if (!album) {
-    return;
+    return 0;
   }
-  await syncOneDriveAlbum(album, user.id, user.authorSlug, { extras: true });
+  const result = await syncOneDriveAlbum(album, user.id, user.authorSlug, { extras: true });
+  return result.aborted ? 0 : result.notesPulled;
 }
 
 async function runSyncDriveAlbumBody(albumId: string): Promise<SyncDriveAlbumResult> {

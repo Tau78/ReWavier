@@ -501,8 +501,8 @@ export function CollectionScreen() {
           Alert.alert(
             'Drive',
             syncResult.notesPulled === 1
-              ? 'Ho portato 1 appunto nuovo dai compagni.'
-              : `Ho portato ${syncResult.notesPulled} appunti nuovi dai compagni.`,
+              ? 'Ho portato 1 appunto dai compagni.'
+              : `Ho portato ${syncResult.notesPulled} appunti dai compagni.`,
           );
           return;
         }

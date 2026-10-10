@@ -32,6 +32,13 @@ assert.match(collection, /syncResult = await syncDriveAlbum\(id\)/);
 const engine = readFileSync(join(root, 'src/cloud/syncEngine.ts'), 'utf8');
 assert.match(engine, /runExclusiveAlbumWork/);
 assert.match(engine, /extras: false/);
+// Listing stays fast; Aggiorna then awaits extras so the alert can report notes.
+assert.match(engine, /runSyncDriveAlbumExtras/);
+assert.match(engine, /notesFromExtras = await runExclusiveAlbumWork/);
+assert.doesNotMatch(
+  engine,
+  /void runExclusiveAlbumWork\(albumId, \(\) => runSyncDriveAlbumExtras/,
+);
 assert.doesNotMatch(engine, /const prev = cloudSyncJob;\s*\n\s*let outcome/);
 
 function isAbortError(error) {

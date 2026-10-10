@@ -206,6 +206,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Saluto in Home',
         body: 'Su schermi stretti il “Buonasera” resta su una riga e il tuo nome sotto, senza spezzarsi a metà.',
       },
+      {
+        title: 'Aggiorna e appunti',
+        body: 'Tocchi Aggiorna e gli appunti dei compagni arrivano prima del messaggio. Se c’è qualcosa di nuovo, te lo dice; se è già tutto sul telefono, te lo dice dopo aver controllato.',
+      },
     ],
   },
 ];
