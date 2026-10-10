@@ -4,16 +4,33 @@
 
 Obiettivo: meno schermate «non verificata», «non sicuro» e avvisi sulla privacy mancante.
 
+## 0. Errore «home page non registrata a tuo nome»
+
+Google controlla che **tu** controlli il sito dell’**Application home page**, con lo **stesso account Google** del progetto Cloud (es. `andreoni.mauro@gmail.com`).
+
+1. Apri [Google Search Console](https://search.google.com/search-console).
+2. **Aggiungi proprietà** → preferisci **Dominio** `eventi.musicproeventi.it` (record TXT DNS sul hosting) **oppure** prefisso URL esatto della home page.
+3. **Home page consigliata in Console OAuth** (la pubblichiamo noi via FTP):
+   - `https://eventi.musicproeventi.it/ReWavier/`
+   - oppure `https://eventi.musicproeventi.it/ReWavier/index.html`
+4. Evita `https://eventi.musicproeventi.it/rewavier.html` se non l’hai verificata in Search Console: è un file alla **radice** del sito Eventi, separato dalla cartella `ReWavier/`.
+5. In **Branding** / **Dominio applicazione** → **Application home page**, incolla l’URL verificato (punto 3).
+6. **Authorized domains:** `eventi.musicproeventi.it` (senza `https://`).
+7. Riprova **Verifica** / **Submit for verification**.
+
+Verifica HTML alternativa: Search Console ti dà un tag `google-site-verification` o un file `.html` da mettere nella home — per `ReWavier/` possiamo aggiungerlo in `docs/index.html` e ridistribuire via FTP.
+
 ## 1. Schermata consenso OAuth
 
 Progetto Google Cloud **1049963169218** (client ID in `app.json`).
 
 1. Apri [Schermata consenso OAuth](https://console.cloud.google.com/apis/credentials/consent?project=1049963169218).
-2. **Informativa sulla privacy:** `https://eventi.musicproeventi.it/ReWavier/Privacy.html`
-3. **Termini di servizio:** `https://eventi.musicproeventi.it/ReWavier/Terms.html`
-4. **Email assistenza utenti:** `mauro@www.musicproeventi.it` (o quella dello Store).
-5. **Logo app** e **dominio autorizzato:** `eventi.musicproeventi.it`.
-6. Salva e ripubblica la schermata consenso.
+2. **Application home page:** `https://eventi.musicproeventi.it/ReWavier/`
+3. **Informativa sulla privacy:** `https://eventi.musicproeventi.it/ReWavier/Privacy.html`
+4. **Termini di servizio:** `https://eventi.musicproeventi.it/ReWavier/Terms.html`
+5. **Email assistenza utenti:** `mauro@www.musicproeventi.it` (o quella dello Store).
+6. **Logo app** e **dominio autorizzato:** `eventi.musicproeventi.it`.
+7. Salva e ripubblica la schermata consenso.
 
 Così sparisce spesso «Assicurati che ReWavier sia attendibile» (link privacy/termini mancanti).
 

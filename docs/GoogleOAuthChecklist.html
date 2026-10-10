@@ -18,10 +18,21 @@
   <h1>Accorciare il login Google su Android</h1>
   <p>Checklist per la Console Google: meno schermate «non verificata», «non sicuro» e avvisi sulla privacy mancante.</p>
 
+  <h2>0. «Home page non registrata a tuo nome»</h2>
+  <p>Google vuole che il sito della <strong>Application home page</strong> sia verificato in
+    <a href="https://search.google.com/search-console">Search Console</a>, con lo <strong>stesso account</strong> del progetto Cloud.</p>
+  <ol>
+    <li>Search Console → aggiungi proprietà → dominio <code>eventi.musicproeventi.it</code> (TXT DNS) oppure prefisso URL.</li>
+    <li>In OAuth usa come home page: <a href="index.html">https://eventi.musicproeventi.it/ReWavier/</a> (non <code>/rewavier.html</code> alla radice, se non l’hai verificata).</li>
+    <li>Authorized domains: <code>eventi.musicproeventi.it</code></li>
+    <li>Riprova la verifica del branding.</li>
+  </ol>
+
   <h2>1. Schermata consenso</h2>
   <p>Progetto Google Cloud <strong>1049963169218</strong>.</p>
   <ol>
     <li>Apri la <a href="https://console.cloud.google.com/apis/credentials/consent?project=1049963169218">schermata consenso OAuth</a>.</li>
+    <li><strong>Home page app:</strong> <code>https://eventi.musicproeventi.it/ReWavier/</code></li>
     <li><strong>Privacy:</strong> <a href="Privacy.html">Privacy.html</a> (URL completo: <code>https://eventi.musicproeventi.it/ReWavier/Privacy.html</code>)</li>
     <li><strong>Termini:</strong> <a href="Terms.html">Terms.html</a> (<code>https://eventi.musicproeventi.it/ReWavier/Terms.html</code>)</li>
     <li><strong>Email assistenza:</strong> quella dello Store o <code>mauro@www.musicproeventi.it</code>.</li>
