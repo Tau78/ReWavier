@@ -41,6 +41,7 @@ import {
 import { useLibraryStore } from '../../store/libraryStore';
 import { colors, textColorOn } from '../../theme/colors';
 import { ActionMenu } from '../library/ActionMenu';
+import { MarkerCueStrip } from '../library/MarkerCueStrip';
 import { DetailLyricsPanel } from './DetailLyricsPanel';
 
 const OVERVIEW_HEIGHT = 48;
@@ -1357,51 +1358,15 @@ export function Waveform({ compact = false }: { compact?: boolean } = {}) {
           </View>
         ) : null}
         {cuePoints.length > 0 ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.cueRow}
-            accessibilityLabel="Punti dell’audio"
-          >
-            {cuePoints.map((marker) => {
-              const preview = markerPreview(marker.text);
-              const active = Math.abs(positionMs - marker.timestampMs) < 280;
-              const pinColor = markerColor(marker, memberColors);
-              return (
-                <Pressable
-                  key={marker.id}
-                  onPress={() => playFrom(marker.timestampMs)}
-                  onLongPress={() => setMenuMarkerId(marker.id)}
-                  delayLongPress={LONG_PRESS_MS}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Parti da ${formatTimecode(marker.timestampMs)}${preview ? `. ${preview}` : ''}`}
-                  accessibilityHint="Parte da questo punto. Tieni premuto per leggere tutto."
-                  style={({ pressed }) => [
-                    styles.cueChip,
-                    { borderColor: pinColor },
-                    active && styles.cueChipActive,
-                    pressed && styles.cueChipPressed,
-                  ]}
-                >
-                  <View style={[styles.cueDot, { backgroundColor: pinColor }]} />
-                  <View style={styles.cueCopy}>
-                    <Text style={styles.cueTime}>{formatTimecode(marker.timestampMs)}</Text>
-                    {preview ? (
-                      <Text
-                        style={[
-                          styles.cuePreview,
-                          isPlaceholderMarker(marker) && { color: colors.textMuted },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {preview}
-                      </Text>
-                    ) : null}
-                  </View>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
+          <MarkerCueStrip
+            items={cuePoints.map((marker) => ({ key: marker.id, marker }))}
+            memberColors={memberColors}
+            activeMarkerId={
+              cuePoints.find((marker) => Math.abs(positionMs - marker.timestampMs) < 280)?.id
+            }
+            onPress={(marker) => playFrom(marker.timestampMs)}
+            onLongPress={(marker) => setMenuMarkerId(marker.id)}
+          />
         ) : null}
       </View>
       )}
@@ -1590,52 +1555,6 @@ const styles = StyleSheet.create({
   overviewWrap: {
     height: OVERVIEW_HEIGHT + 8,
     justifyContent: 'center',
-  },
-  cueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingTop: 10,
-    paddingHorizontal: 2,
-  },
-  cueChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    maxWidth: 168,
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    backgroundColor: colors.surfaceRaised,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  cueChipActive: {
-    backgroundColor: colors.surface,
-  },
-  cueChipPressed: {
-    opacity: 0.75,
-  },
-  cueDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  cueCopy: {
-    flexShrink: 1,
-    minWidth: 0,
-  },
-  cueTime: {
-    color: colors.text,
-    fontSize: 11,
-    fontWeight: '600',
-    fontVariant: ['tabular-nums'],
-    fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
-  },
-  cuePreview: {
-    marginTop: 1,
-    color: colors.textMuted,
-    fontSize: 11,
   },
   practiceBlock: {
     paddingTop: 10,

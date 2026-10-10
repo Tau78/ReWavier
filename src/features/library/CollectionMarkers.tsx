@@ -1,16 +1,11 @@
-import { useMemo, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useMemo } from 'react';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 
-import {
-  isMarkerHidden,
-  isPlaceholderMarker,
-  markerAuthorLabel,
-  markerColor,
-  markerPreviewText,
-} from '../../domain/markers';
-import { formatTimecode, type Marker, type Track } from '../../domain/models';
+import { isMarkerHidden } from '../../domain/markers';
+import type { Marker, Track } from '../../domain/models';
 import { usePlayerStore } from '../../store/playerStore';
 import { colors } from '../../theme/colors';
+import { MarkerCueStrip, type MarkerCueItem } from './MarkerCueStrip';
 import { ensurePlayableAndOpen } from './openTrack';
 
 type CueRow = {
@@ -22,11 +17,14 @@ type CueRow = {
 export function CollectionMarkers({
   tracks,
   markersByTrackId,
+  memberColors,
 }: {
   tracks: Track[];
   markersByTrackId: Record<string, Marker[]>;
+  memberColors?: Record<string, string> | null;
 }) {
-  const [open, setOpen] = useState(false);
+  const playerTrackId = usePlayerStore((s) => s.track.id);
+  const positionMs = usePlayerStore((s) => s.positionMs);
 
   const rows = useMemo<CueRow[]>(() => {
     const next: CueRow[] = [];
@@ -42,14 +40,46 @@ export function CollectionMarkers({
     return next;
   }, [tracks, markersByTrackId]);
 
+  const items = useMemo<MarkerCueItem[]>(
+    () =>
+      rows.map((row) => ({
+        key: row.key,
+        marker: row.marker,
+        accessibilityExtra: row.track.title,
+      })),
+    [rows],
+  );
+
   if (rows.length === 0) {
     return null;
   }
 
-  const playCue = (row: CueRow) => {
+  const activeMarkerId = (() => {
+    const onTrack = rows.filter((row) => row.track.id === playerTrackId);
+    if (onTrack.length === 0) {
+      return null;
+    }
+    let best: CueRow | null = null;
+    let bestDelta = Number.POSITIVE_INFINITY;
+    for (const row of onTrack) {
+      const delta = Math.abs(positionMs - row.marker.timestampMs);
+      if (delta < 280 && delta < bestDelta) {
+        best = row;
+        bestDelta = delta;
+      }
+    }
+    return best?.marker.id ?? null;
+  })();
+
+  const playCue = (marker: Marker) => {
+    const row = rows.find((item) => item.marker.id === marker.id);
+    if (!row) {
+      return;
+    }
     void ensurePlayableAndOpen(row.track.id, tracks.map((track) => track.id), {
       autoPlay: true,
       startAtMs: row.marker.timestampMs,
+      resume: false,
     }).then((opened) => {
       if (opened) {
         usePlayerStore.getState().setDockExpanded(true);
@@ -60,59 +90,16 @@ export function CollectionMarkers({
   };
 
   return (
-    <View style={styles.card}>
-      <Pressable
-        onPress={() => setOpen((value) => !value)}
-        style={styles.header}
-        accessibilityRole="button"
-        accessibilityLabel={open ? 'Nascondi appunti' : 'Mostra appunti'}
-        accessibilityState={{ expanded: open }}
-      >
-        <Text style={styles.title}>Appunti</Text>
-        <Text style={styles.count}>
-          {rows.length === 1 ? '1 appunto' : `${rows.length} appunti`}
-        </Text>
-        <Text style={styles.chevron}>{open ? '˄' : '˅'}</Text>
-      </Pressable>
-      {open
-        ? rows.map((row) => {
-            const pinColor = markerColor(row.marker);
-            const author = markerAuthorLabel(row.marker);
-            const preview = markerPreviewText(row.marker.text);
-            const says = author === 'Tu' ? 'Tu dici:' : `${author} dice:`;
-            return (
-              <Pressable
-                key={row.key}
-                onPress={() => playCue(row)}
-                style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-                accessibilityRole="button"
-                accessibilityLabel={`Parti da ${formatTimecode(row.marker.timestampMs)} in ${row.track.title}`}
-              >
-                <View style={[styles.swatch, { backgroundColor: pinColor }]} />
-                <View style={styles.copy}>
-                  <Text style={styles.time}>{formatTimecode(row.marker.timestampMs)}</Text>
-                  <Text style={styles.track} numberOfLines={1}>
-                    {row.track.title}
-                  </Text>
-                  <Text style={[styles.who, { color: pinColor }]} numberOfLines={1}>
-                    {says}
-                  </Text>
-                  {preview ? (
-                    <Text
-                      style={[
-                        styles.preview,
-                        isPlaceholderMarker(row.marker) && { color: colors.textMuted },
-                      ]}
-                      numberOfLines={2}
-                    >
-                      {preview}
-                    </Text>
-                  ) : null}
-                </View>
-              </Pressable>
-            );
-          })
-        : null}
+    <View style={styles.card} accessibilityLabel="Appunti dell’album">
+      <Text style={styles.label}>Appunti</Text>
+      <MarkerCueStrip
+        items={items}
+        memberColors={memberColors}
+        activeMarkerId={activeMarkerId}
+        onPress={playCue}
+        onLongPress={playCue}
+        accessibilityLabel="Appunti nell’album"
+      />
     </View>
   );
 }
@@ -123,76 +110,16 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    overflow: 'hidden',
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 12,
     marginBottom: 12,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    gap: 10,
-  },
-  title: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '700',
-    flex: 1,
-  },
-  count: {
+  label: {
     color: colors.textMuted,
-    fontSize: 13,
-  },
-  chevron: {
-    color: colors.textMuted,
-    fontSize: 16,
+    fontSize: 11,
     fontWeight: '700',
-    width: 18,
-    textAlign: 'center',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-  },
-  pressed: {
-    opacity: 0.7,
-    backgroundColor: colors.surfaceRaised,
-  },
-  swatch: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginTop: 5,
-  },
-  copy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  time: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-  },
-  track: {
-    marginTop: 2,
-    color: colors.textMuted,
-    fontSize: 13,
-  },
-  who: {
-    marginTop: 4,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  preview: {
-    marginTop: 2,
-    color: colors.text,
-    fontSize: 14,
-    lineHeight: 20,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
   },
 });

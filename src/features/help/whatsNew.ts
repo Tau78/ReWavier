@@ -214,6 +214,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Doppio tocco: dall’inizio',
         body: 'Su un brano, tocca due volte: riparte dall’inizio. Un tocco solo riprende da dove ti eri fermato.',
       },
+      {
+        title: 'Appunti nell’album',
+        body: 'Sotto la copertina dell’album vedi gli appunti come sulla panoramica: tocca uno e parti da quel momento.',
+      },
     ],
   },
 ];

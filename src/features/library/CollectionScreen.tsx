@@ -765,6 +765,13 @@ export function CollectionScreen() {
             <AlbumMembersSection album={album} markersByTrackId={markersByTrackId} />
           </View>
         ) : null}
+        {album ? (
+          <CollectionMarkers
+            tracks={tracks}
+            markersByTrackId={markersByTrackId}
+            memberColors={album.memberColors}
+          />
+        ) : null}
         {!album && canReorder && listItems.length > 1 ? (
           <Text style={styles.hint}>Tieni premuto una traccia e trascinala per riordinare.</Text>
         ) : null}
@@ -1028,7 +1035,7 @@ export function CollectionScreen() {
             <AlbumDocuments documents={album.documents ?? []} />
           </>
         ) : null}
-        {kind === 'album' || kind === 'folder' ? (
+        {kind === 'folder' ? (
           <CollectionMarkers tracks={tracks} markersByTrackId={markersByTrackId} />
         ) : null}
       </ScrollView>
