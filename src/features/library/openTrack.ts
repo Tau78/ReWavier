@@ -63,7 +63,18 @@ export function openTrack(
   }
   const nextQueue = queueIds ?? [trackId];
   const player = usePlayerStore.getState();
-  if (player.track.id === trackId && playableUri(player.track) && player.loadState !== 'error') {
+  const libraryUri = playableUri(track);
+  const playerUri = playableUri(player.track);
+  const sameIdLoaded =
+    player.track.id === trackId && Boolean(playerUri) && player.loadState !== 'error';
+  const needsReload =
+    sameIdLoaded &&
+    (track.pendingRemoteUpdate === true ||
+      (libraryUri != null && playerUri != null && libraryUri !== playerUri) ||
+      (track.downloadedAt != null &&
+        player.track.downloadedAt != null &&
+        track.downloadedAt !== player.track.downloadedAt));
+  if (sameIdLoaded && !needsReload) {
     const patch: { resumeKey?: string; queueIds?: string[] } = {};
     if (options?.resumeKey && options.resumeKey !== player.resumeKey) {
       patch.resumeKey = options.resumeKey;
@@ -127,6 +138,14 @@ export async function ensurePlayableAndOpen(
   options?: OpenTrackOptions,
 ): Promise<boolean> {
   await hydratePlaybackPersist();
+  const before = useLibraryStore.getState().getTrack(trackId);
+  if (before?.pendingRemoteUpdate === true && trackCanFetchRemote(before)) {
+    try {
+      await useLibraryStore.getState().downloadTrack(trackId, { replace: true });
+    } catch {
+      // Fall through — openTrack may still play whatever is local.
+    }
+  }
   if (openTrack(trackId, queueIds, options)) {
     return true;
   }

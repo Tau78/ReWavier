@@ -147,14 +147,36 @@ function surplusLocalTracks(tracks, remotes) {
 }
 
 function remoteAudioChanged(track, remote) {
+  const remoteMs = remote.modifiedTime ? Date.parse(remote.modifiedTime) : Number.NaN;
+  const localBytesStale =
+    track.downloadedAt != null &&
+    Number.isFinite(remoteMs) &&
+    remoteMs > track.downloadedAt;
+
   if (remote.md5Checksum && track.remoteHash) {
-    return remote.md5Checksum !== track.remoteHash;
+    if (remote.md5Checksum !== track.remoteHash) {
+      return true;
+    }
+    return localBytesStale;
+  }
+  // Remote has a checksum we never recorded → treat as changed until we download.
+  if (remote.md5Checksum && !track.remoteHash) {
+    return true;
   }
   if (remote.size != null && remote.size !== '' && track.remoteSize != null) {
-    return Number(remote.size) !== track.remoteSize;
+    if (Number(remote.size) !== track.remoteSize) {
+      return true;
+    }
+    // Same size, no hashes: fall through to mtime (do not assume identical).
   }
   if (remote.modifiedTime && track.remoteModifiedAt) {
-    return Date.parse(remote.modifiedTime) > Date.parse(track.remoteModifiedAt);
+    if (Date.parse(remote.modifiedTime) > Date.parse(track.remoteModifiedAt)) {
+      return true;
+    }
+    return localBytesStale;
+  }
+  if (localBytesStale) {
+    return true;
   }
   return Boolean(remote.modifiedTime && !track.remoteModifiedAt);
 }
@@ -209,6 +231,64 @@ assert.equal(
     { id: '1', name: 'a.m4a', size: '2000' },
   ),
   true,
+);
+
+// Same size + Drive md5 we never stored → must re-download (do not stamp hash alone)
+assert.equal(
+  remoteAudioChanged(
+    { remoteSize: 1000 },
+    { id: '1', name: 'a.m4a', size: '1000', md5Checksum: 'newhash' },
+  ),
+  true,
+);
+assert.equal(
+  remoteAudioChanged(
+    {},
+    { id: '1', name: 'a.m4a', md5Checksum: 'only-remote' },
+  ),
+  true,
+);
+// Same size, no hashes: newer mtime still wins
+assert.equal(
+  remoteAudioChanged(
+    { remoteSize: 1000, remoteModifiedAt: '2020-01-01T00:00:00.000Z' },
+    { id: '1', name: 'a.m4a', size: '1000', modifiedTime: '2026-01-01T00:00:00.000Z' },
+  ),
+  true,
+);
+// Poisoned meta: hash/mtime stamped without download → local bytes older than Drive
+assert.equal(
+  remoteAudioChanged(
+    {
+      remoteHash: 'same',
+      remoteModifiedAt: '2026-06-01T12:00:00.000Z',
+      downloadedAt: Date.parse('2025-01-01T00:00:00.000Z'),
+    },
+    {
+      id: '1',
+      name: 'a.m4a',
+      md5Checksum: 'same',
+      modifiedTime: '2026-06-01T12:00:00.000Z',
+    },
+  ),
+  true,
+);
+// Fresh download after Drive upload: hash matches and downloadedAt is newer
+assert.equal(
+  remoteAudioChanged(
+    {
+      remoteHash: 'same',
+      remoteModifiedAt: '2026-06-01T12:00:00.000Z',
+      downloadedAt: Date.parse('2026-06-01T12:05:00.000Z'),
+    },
+    {
+      id: '1',
+      name: 'a.m4a',
+      md5Checksum: 'same',
+      modifiedTime: '2026-06-01T12:00:00.000Z',
+    },
+  ),
+  false,
 );
 
 // Match by Drive id or basename
@@ -371,4 +451,4 @@ assert.deepEqual(
 assert.deepEqual(keepMarkerIdsAfterRemoteReplace([{ id: 'old' }], undefined), []);
 assert.deepEqual(keepMarkerIdsAfterRemoteReplace([{ id: 'fresh' }], []), ['fresh']);
 
-console.log('ok remote audio change prefers hash/size; missing remotes are pruned; names match across encoding');
+console.log('ok remote audio change prefers hash; missing local hash + remote md5 forces refresh; names match across encoding');

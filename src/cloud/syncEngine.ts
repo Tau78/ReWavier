@@ -664,7 +664,14 @@ async function syncOneDriveAlbum(
     claimRemote(importedRemotes, remote);
 
     if (!remoteAudioChanged(existing, remote)) {
-      store.updateTrackRemote(existing.id, metaFrom(remote));
+      // Keep Drive id/name in sync only — never stamp a newer hash/size/mtime
+      // without a download (that used to leave old local audio looking "current").
+      if (existing.driveFileId !== remote.id || existing.sourceFileName !== remote.name) {
+        store.updateTrackRemote(existing.id, {
+          driveFileId: remote.id,
+          ...(existing.sourceFileName !== remote.name ? { sourceFileName: remote.name } : {}),
+        });
+      }
       continue;
     }
     // Mark, then download in background. Do not swap while this track is playing.

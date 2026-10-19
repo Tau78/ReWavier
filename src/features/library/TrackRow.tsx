@@ -71,6 +71,7 @@ export function TrackRow({
   hideArtist?: boolean;
 }) {
   const downloaded = isDownloaded(track);
+  const needsUpdate = track.pendingRemoteUpdate === true;
   const playerDurationMs = usePlayerStore((state) =>
     state.track.id === track.id ? state.track.durationMs : 0,
   );
@@ -255,11 +256,23 @@ export function TrackRow({
           style={styles.download}
           accessibilityRole="button"
           accessibilityLabel={
-            downloading ? 'Download in corso' : downloaded ? 'Scaricata' : 'Scarica offline'
+            downloading
+              ? 'Download in corso'
+              : needsUpdate
+                ? 'C’è una versione nuova: tocca per scaricarla'
+                : downloaded
+                  ? 'Scaricata'
+                  : 'Scarica offline'
           }
         >
-          <Text style={[styles.downloadGlyph, downloaded && styles.downloadDone]}>
-            {downloading ? '…' : downloaded ? '✓' : '↓'}
+          <Text
+            style={[
+              styles.downloadGlyph,
+              downloaded && !needsUpdate && styles.downloadDone,
+              needsUpdate && styles.downloadUpdate,
+            ]}
+          >
+            {downloading ? '…' : needsUpdate ? '↻' : downloaded ? '✓' : '↓'}
           </Text>
         </Pressable>
       ) : null}
@@ -413,5 +426,8 @@ const styles = StyleSheet.create({
   },
   downloadDone: {
     color: '#34C759',
+  },
+  downloadUpdate: {
+    color: colors.accent,
   },
 });

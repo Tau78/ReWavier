@@ -17,6 +17,8 @@ export type LocalRemoteTrack = {
   title?: string;
   fileUri?: string;
   downloaded?: boolean;
+  /** Epoch ms when local bytes were last written (download / replace). */
+  downloadedAt?: number;
   durationMs?: number;
   remoteHash?: string;
   remoteSize?: number;
@@ -153,18 +155,45 @@ export function surplusLocalTracks<T extends LocalRemoteTrack & { id: string }>(
 }
 
 /**
- * Prefer content hash, then size. Mtime only when hash/size are unavailable.
- * Same bytes with a newer mtime must not count as a new version.
+ * Prefer content hash. Size alone must not hide a same-length replace when Drive
+ * has an md5 we have never stored locally (that used to stamp the new hash without
+ * re-downloading). Mtime only when hash cannot decide.
+ *
+ * Also: if meta was stamped without a download, hash/mtime can match Drive while
+ * local bytes are older — then downloadedAt vs remote modifiedTime still catches it.
  */
 export function remoteAudioChanged(track: LocalRemoteTrack, remote: RemoteAudioMeta): boolean {
+  const remoteMs = remote.modifiedTime ? Date.parse(remote.modifiedTime) : Number.NaN;
+  const localBytesStale =
+    track.downloadedAt != null &&
+    Number.isFinite(remoteMs) &&
+    remoteMs > track.downloadedAt;
+
   if (remote.md5Checksum && track.remoteHash) {
-    return remote.md5Checksum !== track.remoteHash;
+    if (remote.md5Checksum !== track.remoteHash) {
+      return true;
+    }
+    // Hash looks current but file on phone is older than Drive → re-fetch.
+    return localBytesStale;
+  }
+  // Remote has a checksum we never recorded → treat as changed until we download.
+  if (remote.md5Checksum && !track.remoteHash) {
+    return true;
   }
   if (remote.size != null && remote.size !== '' && track.remoteSize != null) {
-    return Number(remote.size) !== track.remoteSize;
+    if (Number(remote.size) !== track.remoteSize) {
+      return true;
+    }
+    // Same size, no hashes: fall through to mtime (do not assume identical).
   }
   if (remote.modifiedTime && track.remoteModifiedAt) {
-    return Date.parse(remote.modifiedTime) > Date.parse(track.remoteModifiedAt);
+    if (Date.parse(remote.modifiedTime) > Date.parse(track.remoteModifiedAt)) {
+      return true;
+    }
+    return localBytesStale;
+  }
+  if (localBytesStale) {
+    return true;
   }
   return Boolean(remote.modifiedTime && !track.remoteModifiedAt);
 }

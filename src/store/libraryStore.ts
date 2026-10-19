@@ -1584,11 +1584,8 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
     }
     // Only unload when swapping the file. Background / first-time cache must not
     // kill playback started by openTrack (streaming continues until next load).
+    // If this track is current, release it so the new bytes can load (do not keep old audio).
     if (replace) {
-      const { usePlayerStore } = await import('./playerStore');
-      if (usePlayerStore.getState().track.id === trackId) {
-        return;
-      }
       const { releaseTrackFromPlayer } = await import('./playerStore');
       await releaseTrackFromPlayer(trackId);
     }

@@ -226,6 +226,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Home più chiara',
         body: 'La ricerca sta subito sotto il saluto. Playlist, Album e Libreria sono su una riga sola, con il numero in piccolo su ogni tasto.',
       },
+      {
+        title: 'Mix nuovo sul telefono',
+        body: 'Se carichi un file nuovo su Drive al posto di uno vecchio, sulla riga vedi ↻ al posto del ✓. Al play arriva l’audio nuovo, non quello già in cache.',
+      },
     ],
   },
 ];
