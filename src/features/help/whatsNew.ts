@@ -230,6 +230,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Mix nuovo sul telefono',
         body: 'Se carichi un file nuovo su Drive al posto di uno vecchio, sulla riga vedi ↻ al posto del ✓. Al play arriva l’audio nuovo, non quello già in cache.',
       },
+      {
+        title: 'Sostituzioni da Drive',
+        body: 'Se metti una 01 o una 06 nuova nella cartella Drive, il telefono se ne accorge da solo: scarica, toglie la vecchia e lascia la nuova. Anche toccando Aggiorna.',
+      },
     ],
   },
 ];

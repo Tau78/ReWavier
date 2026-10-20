@@ -92,7 +92,6 @@ import {
   remoteIsClaimed,
   remoteReplacesLocalTrack,
   surplusLocalTracks,
-  trackNameMatchesRemote,
   uniqueRemotes,
 } from './remoteAudioChange';
 
@@ -175,12 +174,15 @@ function syncAlbumMessage(input: {
   return input.deviceMessage || null;
 }
 
-function metaFrom(remote: DriveFile): Pick<Track, 'driveFileId' | 'remoteModifiedAt' | 'remoteSize' | 'remoteHash'> {
+function metaFrom(
+  remote: DriveFile,
+): Pick<Track, 'driveFileId' | 'remoteModifiedAt' | 'remoteSize' | 'remoteHash' | 'sourceFileName'> {
   return {
     driveFileId: remote.id,
     remoteModifiedAt: remote.modifiedTime,
     remoteSize: remote.size ? Number(remote.size) : undefined,
     remoteHash: remote.md5Checksum,
+    sourceFileName: remote.name,
   };
 }
 
@@ -331,21 +333,17 @@ export async function peekDriveAlbum(albumId: string): Promise<DriveAlbumPeek> {
     if (remoteIsClaimed(claimed, remote)) {
       continue;
     }
-    const existing = findBestLocalForRemote(locals, remote);
+    const existing = findBestLocalForRemote(locals, remote, audios);
     if (!existing) {
       newRemoteCount += 1;
       continue;
     }
     claimRemote(claimed, remote);
-    if (existing.driveFileId && existing.driveFileId !== remote.id) {
-      // Same name, new Drive id, old id gone → delete+reupload. Keep twins in version folders.
-      if (remoteReplacesLocalTrack(existing, remote, audios)) {
-        useLibraryStore.getState().markTrackNeedsUpdate(existing.id, metaFrom(remote));
-        changedTrackIds.push(existing.id);
-      }
-      continue;
-    }
-    if (remoteAudioChanged(existing, remote)) {
+    // Same name + new Drive id (old id gone) or same id with newer bytes.
+    if (
+      remoteReplacesLocalTrack(existing, remote, audios) ||
+      remoteAudioChanged(existing, remote)
+    ) {
       useLibraryStore.getState().markTrackNeedsUpdate(existing.id, metaFrom(remote));
       changedTrackIds.push(existing.id);
     }
@@ -612,22 +610,10 @@ async function syncOneDriveAlbum(
     if (remoteIsClaimed(importedRemotes, remote)) {
       continue;
     }
-    const existing = findBestLocalForRemote(locals, remote);
+    const existing = findBestLocalForRemote(locals, remote, audios);
     const onAlbum = albumTrackIdSet(album.id);
 
     if (!existing) {
-      const namedTwin = locals.find(
-        (track) =>
-          Boolean(track.driveFileId) &&
-          track.driveFileId !== remote.id &&
-          trackNameMatchesRemote(track, remote),
-      );
-      if (namedTwin && remoteReplacesLocalTrack(namedTwin, remote, audios)) {
-        store.markTrackNeedsUpdate(namedTwin.id, metaFrom(remote));
-        versioned += 1;
-        claimRemote(importedRemotes, remote);
-        continue;
-      }
       // New song or another version (01 / 02 / 03): own row, download after listing.
       const idsBefore = albumTrackIdSet(album.id);
       const id = createId('track');
@@ -663,7 +649,9 @@ async function syncOneDriveAlbum(
     }
     claimRemote(importedRemotes, remote);
 
-    if (!remoteAudioChanged(existing, remote)) {
+    const isReplace =
+      remoteReplacesLocalTrack(existing, remote, audios) || remoteAudioChanged(existing, remote);
+    if (!isReplace) {
       // Keep Drive id/name in sync only — never stamp a newer hash/size/mtime
       // without a download (that used to leave old local audio looking "current").
       if (existing.driveFileId !== remote.id || existing.sourceFileName !== remote.name) {
@@ -1937,7 +1925,7 @@ async function importAudiosInFolder(
       continue;
     }
     const store = useLibraryStore.getState();
-    const existing = findBestLocalForRemote(store.tracks, remote);
+    const existing = findBestLocalForRemote(store.tracks, remote, audios);
     if (existing) {
       if (appFolderId) {
         store.addTrackToFolder(existing.id, appFolderId);
@@ -1966,6 +1954,9 @@ async function importAudiosInFolder(
                   downloaded: true,
                   downloadedAt: Date.now(),
                   pendingRemoteUpdate: undefined,
+                  pendingRemoteHash: undefined,
+                  pendingRemoteSize: undefined,
+                  pendingRemoteModifiedAt: undefined,
                   pendingHideMarkerIds: undefined,
                   ...metaFrom(remote),
                 },
@@ -1999,7 +1990,7 @@ async function importAudiosInFolder(
     }
     finishDriveItem();
     const afterDownload = useLibraryStore.getState();
-    const appeared = findBestLocalForRemote(afterDownload.tracks, remote);
+    const appeared = findBestLocalForRemote(afterDownload.tracks, remote, audios);
     if (appeared) {
       if (appFolderId) {
         afterDownload.addTrackToFolder(appeared.id, appFolderId);

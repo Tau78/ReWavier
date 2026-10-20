@@ -129,11 +129,11 @@ export type LibraryActions = {
   touchAlbumSync: (albumId: string) => void;
   updateTrackRemote: (
     trackId: string,
-    meta: Pick<Track, 'driveFileId' | 'remoteModifiedAt' | 'remoteSize' | 'remoteHash'>,
+    meta: Pick<Track, 'driveFileId' | 'remoteModifiedAt' | 'remoteSize' | 'remoteHash' | 'sourceFileName'>,
   ) => void;
   markTrackNeedsUpdate: (
     trackId: string,
-    meta: Pick<Track, 'driveFileId' | 'remoteModifiedAt' | 'remoteSize' | 'remoteHash'>,
+    meta: Pick<Track, 'driveFileId' | 'remoteModifiedAt' | 'remoteSize' | 'remoteHash' | 'sourceFileName'>,
   ) => void;
   setTrackInbox: (trackId: string, inboxUri: string) => void;
   createPlaylist: (name: string) => string;
@@ -763,8 +763,17 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
         }
         return {
           ...track,
-          ...meta,
+          // Adopt the new Drive id (and name) immediately so download hits the right file.
+          // Keep applied remoteHash/size/mtime until bytes land — otherwise a failed
+          // replace looks "current" forever on the next Aggiorna.
+          driveFileId: meta.driveFileId ?? track.driveFileId,
+          ...(meta.sourceFileName && meta.sourceFileName !== track.sourceFileName
+            ? { sourceFileName: meta.sourceFileName }
+            : {}),
           pendingRemoteUpdate: true,
+          pendingRemoteHash: meta.remoteHash ?? track.pendingRemoteHash,
+          pendingRemoteSize: meta.remoteSize ?? track.pendingRemoteSize,
+          pendingRemoteModifiedAt: meta.remoteModifiedAt ?? track.pendingRemoteModifiedAt,
           pendingHideMarkerIds:
             track.pendingHideMarkerIds ?? (state.markersByTrackId[trackId] ?? []).map((marker) => marker.id),
         };
@@ -1634,11 +1643,22 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           const { [trackId]: _, ...rest } = state.downloadingIds;
           return {
             downloadingIds: rest,
-            tracks: state.tracks.map((item) =>
-              item.id === trackId
-                ? { ...item, pendingRemoteUpdate: undefined, pendingHideMarkerIds: undefined }
-                : item,
-            ),
+            tracks: state.tracks.map((item) => {
+              if (item.id !== trackId) {
+                return item;
+              }
+              return {
+                ...item,
+                remoteHash: item.pendingRemoteHash ?? item.remoteHash,
+                remoteSize: item.pendingRemoteSize ?? item.remoteSize,
+                remoteModifiedAt: item.pendingRemoteModifiedAt ?? item.remoteModifiedAt,
+                pendingRemoteUpdate: undefined,
+                pendingRemoteHash: undefined,
+                pendingRemoteSize: undefined,
+                pendingRemoteModifiedAt: undefined,
+                pendingHideMarkerIds: undefined,
+              };
+            }),
           };
         });
         if (previousUri && previousUri !== fileUri) {
@@ -1668,7 +1688,13 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
                     fileUri,
                     downloaded: true,
                     downloadedAt: Date.now(),
+                    remoteHash: item.pendingRemoteHash ?? item.remoteHash,
+                    remoteSize: item.pendingRemoteSize ?? item.remoteSize,
+                    remoteModifiedAt: item.pendingRemoteModifiedAt ?? item.remoteModifiedAt,
                     pendingRemoteUpdate: undefined,
+                    pendingRemoteHash: undefined,
+                    pendingRemoteSize: undefined,
+                    pendingRemoteModifiedAt: undefined,
                     pendingHideMarkerIds: undefined,
                   }
                 : item,

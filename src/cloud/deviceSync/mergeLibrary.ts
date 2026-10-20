@@ -75,6 +75,9 @@ function mergeTracks(local: Track[], remote: Track[]): { tracks: Track[]; idRema
       downloaded: Boolean(existing.fileUri || existing.inboxUri || existing.downloaded),
       downloadedAt: existing.downloadedAt || incoming.downloadedAt,
       pendingRemoteUpdate: existing.pendingRemoteUpdate || incoming.pendingRemoteUpdate,
+      pendingRemoteHash: existing.pendingRemoteHash ?? incoming.pendingRemoteHash,
+      pendingRemoteSize: existing.pendingRemoteSize ?? incoming.pendingRemoteSize,
+      pendingRemoteModifiedAt: existing.pendingRemoteModifiedAt ?? incoming.pendingRemoteModifiedAt,
       pendingHideMarkerIds: existing.pendingHideMarkerIds ?? incoming.pendingHideMarkerIds,
     });
   }

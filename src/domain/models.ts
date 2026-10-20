@@ -19,6 +19,14 @@ export type Track = {
   remoteHash?: string;
   /** Drive has a newer file; download in background, swap when not playing. */
   pendingRemoteUpdate?: boolean;
+  /**
+   * Target Drive meta while bytes are still downloading.
+   * Applied remoteHash/size/mtime stay on the old values until replace succeeds,
+   * so a failed download can still be detected on the next Aggiorna.
+   */
+  pendingRemoteHash?: string;
+  pendingRemoteSize?: number;
+  pendingRemoteModifiedAt?: string;
   /** Marker ids to hide when that newer file lands (notes from the old mix). */
   pendingHideMarkerIds?: string[];
   startMs?: number;
