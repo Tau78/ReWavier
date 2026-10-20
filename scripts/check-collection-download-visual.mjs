@@ -31,10 +31,12 @@ assert.equal(collectionDownloadGlyph('done'), '✓');
 assert.equal(collectionDownloadGlyph('download'), '↓');
 
 function drivePeekNewsCount(peek) {
-  return Math.max(0, peek.newRemoteCount) + new Set(peek.changedTrackIds).size;
+  // Only brand-new remotes pulse Aggiorna; replaces download in the background.
+  return Math.max(0, peek.newRemoteCount);
 }
 
-assert.equal(drivePeekNewsCount({ newRemoteCount: 2, changedTrackIds: ['a', 'a'] }), 3);
+assert.equal(drivePeekNewsCount({ newRemoteCount: 2, changedTrackIds: ['a', 'a'] }), 2);
+assert.equal(drivePeekNewsCount({ newRemoteCount: 0, changedTrackIds: ['a'] }), 0);
 assert.equal(drivePeekNewsCount({ newRemoteCount: 0, changedTrackIds: [] }), 0);
 
 console.log('ok collection download visual');

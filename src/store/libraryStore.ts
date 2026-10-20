@@ -135,6 +135,8 @@ export type LibraryActions = {
     trackId: string,
     meta: Pick<Track, 'driveFileId' | 'remoteModifiedAt' | 'remoteSize' | 'remoteHash' | 'sourceFileName'>,
   ) => void;
+  /** Hash matches Drive: record downloadedAt / clear a stale ↻ without re-fetching. */
+  confirmLocalTrackBytes: (trackId: string, downloadedAt: number) => void;
   setTrackInbox: (trackId: string, inboxUri: string) => void;
   createPlaylist: (name: string) => string;
   renameFolder: (id: string, name: string) => void;
@@ -776,6 +778,25 @@ export const useLibraryStore = create<LibraryStore>((set, get) => ({
           pendingRemoteModifiedAt: meta.remoteModifiedAt ?? track.pendingRemoteModifiedAt,
           pendingHideMarkerIds:
             track.pendingHideMarkerIds ?? (state.markersByTrackId[trackId] ?? []).map((marker) => marker.id),
+        };
+      }),
+    }));
+  },
+
+  confirmLocalTrackBytes(trackId, downloadedAt) {
+    set((state) => ({
+      tracks: state.tracks.map((track) => {
+        if (track.id !== trackId) {
+          return track;
+        }
+        return {
+          ...track,
+          downloadedAt: track.downloadedAt ?? downloadedAt,
+          pendingRemoteUpdate: undefined,
+          pendingRemoteHash: undefined,
+          pendingRemoteSize: undefined,
+          pendingRemoteModifiedAt: undefined,
+          pendingHideMarkerIds: undefined,
         };
       }),
     }));

@@ -33,11 +33,16 @@ export function collectionDownloadGlyph(visual: CollectionDownloadVisual): strin
   return '↓';
 }
 
+/**
+ * Only brand-new Drive files need the Aggiorna button.
+ * Byte replacements (`changedTrackIds`) download in the background — do not ask
+ * the user to press anything.
+ */
 export function drivePeekNewsCount(peek: {
   newRemoteCount: number;
-  changedTrackIds: readonly string[];
+  changedTrackIds?: readonly string[];
 }): number {
-  return Math.max(0, peek.newRemoteCount) + new Set(peek.changedTrackIds).size;
+  return Math.max(0, peek.newRemoteCount);
 }
 
 export function collectionDownloadLabel(

@@ -188,7 +188,9 @@ export function surplusLocalTracks<T extends LocalRemoteTrack & { id: string }>(
  *
  * Also: if meta was stamped without a download, hash/mtime can match Drive while
  * local bytes are older — then downloadedAt vs remote modifiedTime still catches it.
- * Rows with matching hash but no downloadedAt are treated as unverified once.
+ *
+ * Missing downloadedAt alone is NOT a content change (would mark a whole album ↻
+ * and ask for Aggiorna). Soft-confirm that timestamp elsewhere when the hash matches.
  */
 export function remoteAudioChanged(track: LocalRemoteTrack, remote: RemoteAudioMeta): boolean {
   const remoteMs = remote.modifiedTime ? Date.parse(remote.modifiedTime) : Number.NaN;
@@ -201,14 +203,7 @@ export function remoteAudioChanged(track: LocalRemoteTrack, remote: RemoteAudioM
     if (remote.md5Checksum !== track.remoteHash) {
       return true;
     }
-    if (localBytesStale) {
-      return true;
-    }
-    // Hash looks current but we never recorded a successful byte write → verify once.
-    if (track.downloadedAt == null && (track.downloaded === true || Boolean(track.fileUri))) {
-      return true;
-    }
-    return false;
+    return localBytesStale;
   }
   // Remote has a checksum we never recorded → treat as changed until we download.
   if (remote.md5Checksum && !track.remoteHash) {

@@ -189,13 +189,7 @@ function remoteAudioChanged(track, remote) {
     if (remote.md5Checksum !== track.remoteHash) {
       return true;
     }
-    if (localBytesStale) {
-      return true;
-    }
-    if (track.downloadedAt == null && (track.downloaded === true || Boolean(track.fileUri))) {
-      return true;
-    }
-    return false;
+    return localBytesStale;
   }
   // Remote has a checksum we never recorded → treat as changed until we download.
   if (remote.md5Checksum && !track.remoteHash) {
@@ -318,7 +312,7 @@ assert.equal(
   ),
   false,
 );
-// Poisoned hash + no downloadedAt: must re-verify local bytes once
+// Matching hash + no downloadedAt is NOT a content change (would mark a whole album ↻)
 assert.equal(
   remoteAudioChanged(
     {
@@ -334,7 +328,7 @@ assert.equal(
       modifiedTime: '2026-06-01T12:00:00.000Z',
     },
   ),
-  true,
+  false,
 );
 
 // Match by Drive id or basename
