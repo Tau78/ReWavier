@@ -1,6 +1,6 @@
 /** Pure helpers: detect Drive audio version changes and match local ↔ remote. */
 
-import { audioMatchKey } from '../domain/sidecar';
+import { audioMatchKey, audioMatchKeyLoose } from '../domain/sidecar';
 
 export type RemoteAudioMeta = {
   id: string;
@@ -40,14 +40,20 @@ export function uniqueRemotes<T extends { id: string }>(remotes: T[]): T[] {
 
 export function trackNameMatchesRemote(track: LocalRemoteTrack, remote: RemoteAudioMeta): boolean {
   const remoteKey = audioMatchKey(remote.name);
-  if (!remoteKey) {
+  const remoteLoose = audioMatchKeyLoose(remote.name);
+  if (!remoteKey && !remoteLoose) {
     return false;
   }
-  if (track.sourceFileName && audioMatchKey(track.sourceFileName) === remoteKey) {
-    return true;
-  }
-  if (track.title && audioMatchKey(track.title) === remoteKey) {
-    return true;
+  for (const raw of [track.sourceFileName, track.title]) {
+    if (!raw) {
+      continue;
+    }
+    if (remoteKey && audioMatchKey(raw) === remoteKey) {
+      return true;
+    }
+    if (remoteLoose && audioMatchKeyLoose(raw) === remoteLoose) {
+      return true;
+    }
   }
   return false;
 }
@@ -80,14 +86,32 @@ export function preferDownloadedTrack<T extends LocalRemoteTrack>(tracks: T[]): 
   );
 }
 
+/**
+ * Locals that belong to this remote:
+ * 1) same Drive id
+ * 2) delete+reupload (same basename, new id, old id gone) when `remotes` is provided
+ * 3) nameless locals matched by basename (not another live Drive file)
+ *
+ * Never merges two live Drive ids (01 / 02 / 03 stay distinct).
+ */
 export function findLocalsMatchingRemote<T extends LocalRemoteTrack>(
   tracks: T[],
   remote: RemoteAudioMeta,
+  remotes?: readonly RemoteAudioMeta[],
 ): T[] {
   const byId = tracks.filter((track) => track.driveFileId === remote.id);
   if (byId.length > 0) {
     return byId;
   }
+
+  const replaced =
+    remotes != null
+      ? tracks.filter((track) => remoteReplacesLocalTrack(track, remote, remotes))
+      : [];
+  if (replaced.length > 0) {
+    return replaced;
+  }
+
   // Name match only when the row is not already another Drive file (01 / 02 / 03).
   return tracks.filter((track) => !track.driveFileId && trackNameMatchesRemote(track, remote));
 }
@@ -95,8 +119,9 @@ export function findLocalsMatchingRemote<T extends LocalRemoteTrack>(
 export function findBestLocalForRemote<T extends LocalRemoteTrack>(
   tracks: T[],
   remote: RemoteAudioMeta,
+  remotes?: readonly RemoteAudioMeta[],
 ): T | undefined {
-  return preferDownloadedTrack(findLocalsMatchingRemote(tracks, remote));
+  return preferDownloadedTrack(findLocalsMatchingRemote(tracks, remote, remotes));
 }
 
 export type RemoteClaimSet = {
@@ -127,13 +152,15 @@ export function surplusLocalTracks<T extends LocalRemoteTrack & { id: string }>(
 ): T[] {
   const claimedTrackIds = new Set<string>();
   const claimed = createRemoteClaimSet();
-  const remoteIds = new Set(uniqueRemotes(remotes).map((remote) => remote.id));
-  for (const remote of uniqueRemotes(remotes)) {
+  const unique = uniqueRemotes(remotes);
+  const remoteIds = new Set(unique.map((remote) => remote.id));
+  for (const remote of unique) {
     if (remoteIsClaimed(claimed, remote)) {
       continue;
     }
     const candidates = tracks.filter(
-      (track) => !claimedTrackIds.has(track.id) && findLocalsMatchingRemote([track], remote).length > 0,
+      (track) =>
+        !claimedTrackIds.has(track.id) && findLocalsMatchingRemote([track], remote, unique).length > 0,
     );
     const best = preferDownloadedTrack(candidates);
     if (!best) {
@@ -161,6 +188,7 @@ export function surplusLocalTracks<T extends LocalRemoteTrack & { id: string }>(
  *
  * Also: if meta was stamped without a download, hash/mtime can match Drive while
  * local bytes are older — then downloadedAt vs remote modifiedTime still catches it.
+ * Rows with matching hash but no downloadedAt are treated as unverified once.
  */
 export function remoteAudioChanged(track: LocalRemoteTrack, remote: RemoteAudioMeta): boolean {
   const remoteMs = remote.modifiedTime ? Date.parse(remote.modifiedTime) : Number.NaN;
@@ -173,8 +201,14 @@ export function remoteAudioChanged(track: LocalRemoteTrack, remote: RemoteAudioM
     if (remote.md5Checksum !== track.remoteHash) {
       return true;
     }
-    // Hash looks current but file on phone is older than Drive → re-fetch.
-    return localBytesStale;
+    if (localBytesStale) {
+      return true;
+    }
+    // Hash looks current but we never recorded a successful byte write → verify once.
+    if (track.downloadedAt == null && (track.downloaded === true || Boolean(track.fileUri))) {
+      return true;
+    }
+    return false;
   }
   // Remote has a checksum we never recorded → treat as changed until we download.
   if (remote.md5Checksum && !track.remoteHash) {

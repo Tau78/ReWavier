@@ -42,6 +42,13 @@ function audioMatchKey(fileName) {
   return (hasAudioExt ? audioBasename(decoded) : decoded).toLowerCase();
 }
 
+function audioMatchKeyLoose(fileName) {
+  return audioMatchKey(fileName)
+    .replace(/[_.-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function uniqueRemotes(remotes) {
   const seen = new Set();
   const out = [];
@@ -57,14 +64,20 @@ function uniqueRemotes(remotes) {
 
 function trackNameMatchesRemote(track, remote) {
   const remoteKey = audioMatchKey(remote.name);
-  if (!remoteKey) {
+  const remoteLoose = audioMatchKeyLoose(remote.name);
+  if (!remoteKey && !remoteLoose) {
     return false;
   }
-  if (track.sourceFileName && audioMatchKey(track.sourceFileName) === remoteKey) {
-    return true;
-  }
-  if (track.title && audioMatchKey(track.title) === remoteKey) {
-    return true;
+  for (const raw of [track.sourceFileName, track.title]) {
+    if (!raw) {
+      continue;
+    }
+    if (remoteKey && audioMatchKey(raw) === remoteKey) {
+      return true;
+    }
+    if (remoteLoose && audioMatchKeyLoose(raw) === remoteLoose) {
+      return true;
+    }
   }
   return false;
 }
@@ -76,16 +89,33 @@ function trackMatchesRemote(track, remote) {
   return trackNameMatchesRemote(track, remote);
 }
 
-function findLocalsMatchingRemote(tracks, remote) {
+function remoteReplacesLocalTrack(track, remote, remotes) {
+  if (!track.driveFileId || track.driveFileId === remote.id) {
+    return false;
+  }
+  if (!trackNameMatchesRemote(track, remote)) {
+    return false;
+  }
+  return !remotes.some((item) => item.id === track.driveFileId);
+}
+
+function findLocalsMatchingRemote(tracks, remote, remotes) {
   const byId = tracks.filter((track) => track.driveFileId === remote.id);
   if (byId.length > 0) {
     return byId;
   }
+  const replaced =
+    remotes != null
+      ? tracks.filter((track) => remoteReplacesLocalTrack(track, remote, remotes))
+      : [];
+  if (replaced.length > 0) {
+    return replaced;
+  }
   return tracks.filter((track) => !track.driveFileId && trackNameMatchesRemote(track, remote));
 }
 
-function findBestLocalForRemote(tracks, remote) {
-  return preferDownloadedTrack(findLocalsMatchingRemote(tracks, remote));
+function findBestLocalForRemote(tracks, remote, remotes) {
+  return preferDownloadedTrack(findLocalsMatchingRemote(tracks, remote, remotes));
 }
 
 function trackPresentRemotely(track, remotes) {
@@ -120,13 +150,15 @@ function claimRemote(claimed, remote) {
 function surplusLocalTracks(tracks, remotes) {
   const claimedTrackIds = new Set();
   const claimed = createRemoteClaimSet();
-  const remoteIds = new Set(uniqueRemotes(remotes).map((remote) => remote.id));
-  for (const remote of uniqueRemotes(remotes)) {
+  const unique = uniqueRemotes(remotes);
+  const remoteIds = new Set(unique.map((remote) => remote.id));
+  for (const remote of unique) {
     if (remoteIsClaimed(claimed, remote)) {
       continue;
     }
     const candidates = tracks.filter(
-      (track) => !claimedTrackIds.has(track.id) && findLocalsMatchingRemote([track], remote).length > 0,
+      (track) =>
+        !claimedTrackIds.has(track.id) && findLocalsMatchingRemote([track], remote, unique).length > 0,
     );
     const best = preferDownloadedTrack(candidates);
     if (!best) {
@@ -157,7 +189,13 @@ function remoteAudioChanged(track, remote) {
     if (remote.md5Checksum !== track.remoteHash) {
       return true;
     }
-    return localBytesStale;
+    if (localBytesStale) {
+      return true;
+    }
+    if (track.downloadedAt == null && (track.downloaded === true || Boolean(track.fileUri))) {
+      return true;
+    }
+    return false;
   }
   // Remote has a checksum we never recorded → treat as changed until we download.
   if (remote.md5Checksum && !track.remoteHash) {
@@ -188,16 +226,6 @@ function keepMarkerIdsAfterRemoteReplace(markers, pendingHideMarkerIds) {
   }
   const hide = new Set(pendingHideMarkerIds);
   return markers.filter((marker) => !hide.has(marker.id)).map((marker) => marker.id);
-}
-
-function remoteReplacesLocalTrack(track, remote, remotes) {
-  if (!track.driveFileId || track.driveFileId === remote.id) {
-    return false;
-  }
-  if (!trackNameMatchesRemote(track, remote)) {
-    return false;
-  }
-  return !remotes.some((item) => item.id === track.driveFileId);
 }
 
 
@@ -289,6 +317,24 @@ assert.equal(
     },
   ),
   false,
+);
+// Poisoned hash + no downloadedAt: must re-verify local bytes once
+assert.equal(
+  remoteAudioChanged(
+    {
+      remoteHash: 'same',
+      remoteModifiedAt: '2026-06-01T12:00:00.000Z',
+      fileUri: 'file://old.m4a',
+      downloaded: true,
+    },
+    {
+      id: '1',
+      name: 'a.m4a',
+      md5Checksum: 'same',
+      modifiedTime: '2026-06-01T12:00:00.000Z',
+    },
+  ),
+  true,
 );
 
 // Match by Drive id or basename
@@ -417,6 +463,47 @@ assert.equal(
   ),
   true,
 );
+// findBestLocalForRemote must see delete+reupload when remotes are passed (peek/sync)
+assert.equal(
+  findBestLocalForRemote(
+    [
+      {
+        id: 'local-06',
+        driveFileId: 'old-06',
+        sourceFileName: '06. [5125] Then Go.m4a',
+        fileUri: 'file://old',
+        downloaded: true,
+      },
+    ],
+    { id: 'new-06', name: '06. [5125] Then Go.m4a' },
+    [{ id: 'new-06', name: '06. [5125] Then Go.m4a' }],
+  )?.id,
+  'local-06',
+);
+// Without remotes, a row that already has another Drive id stays unmatched (01/02/03)
+assert.equal(
+  findBestLocalForRemote(
+    [
+      {
+        id: 'local-06',
+        driveFileId: 'old-06',
+        sourceFileName: '06. [5125] Then Go.m4a',
+        fileUri: 'file://old',
+        downloaded: true,
+      },
+    ],
+    { id: 'new-06', name: '06. [5125] Then Go.m4a' },
+  ),
+  undefined,
+);
+// Loose punctuation: Drive underscores vs local spaces
+assert.equal(
+  trackNameMatchesRemote(
+    { sourceFileName: '03. Room Pt.1.mp3' },
+    { id: 'x', name: '03._Room_Pt.1.mp3' },
+  ),
+  true,
+);
 // Version folder twin: both ids still present
 assert.equal(
   remoteReplacesLocalTrack(
@@ -451,4 +538,6 @@ assert.deepEqual(
 assert.deepEqual(keepMarkerIdsAfterRemoteReplace([{ id: 'old' }], undefined), []);
 assert.deepEqual(keepMarkerIdsAfterRemoteReplace([{ id: 'fresh' }], []), ['fresh']);
 
-console.log('ok remote audio change prefers hash; missing local hash + remote md5 forces refresh; names match across encoding');
+console.log(
+  'ok remote audio change prefers hash; missing local hash + remote md5 forces refresh; delete+reupload matches via remotes; names match across encoding',
+);
