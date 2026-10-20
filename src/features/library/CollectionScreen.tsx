@@ -13,6 +13,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
+  applyPendingRemoteAudioUpdates,
   peekDriveAlbum,
   refreshAlbumDriveRole,
   syncDriveAlbum,
@@ -270,6 +271,15 @@ export function CollectionScreen() {
       if (isDriveAlbum) {
         void refreshAlbumDriveRole(id);
         void refreshFromDrive();
+        // Resume any replace left pending (e.g. after pause or a previous build).
+        const pendingIds = useLibraryStore
+          .getState()
+          .tracksIn('album', id)
+          .filter((track) => track.pendingRemoteUpdate === true)
+          .map((track) => track.id);
+        if (pendingIds.length > 0) {
+          void applyPendingRemoteAudioUpdates(pendingIds);
+        }
       }
       return () => {
         if (mountedRef.current) {
@@ -362,7 +372,8 @@ export function CollectionScreen() {
   const downloadVisual = collectionDownloadVisual({
     active: collectionBusy,
     missingLocal: displayTracks.some((track) => !isDownloaded(track)),
-    driveHasNews: driveNews > 0 || displayTracks.some((track) => track.pendingRemoteUpdate === true),
+    // Only brand-new Drive files. Byte replaces download in the background (no Aggiorna).
+    driveHasNews: driveNews > 0,
   });
   const downloadButtonBusy = albumRefreshBusy || collectionBusy;
   const alreadyHereMessage =

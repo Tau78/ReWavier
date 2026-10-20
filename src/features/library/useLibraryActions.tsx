@@ -10,7 +10,7 @@ import { userHasUsage } from '../../domain/session';
 import { ensurePeaks } from '../../audio/extractPeaks';
 import { runGoogleDriveConnect, useGoogleDriveConnect } from '../../auth/useGoogleSignIn';
 import { hasDriveToken } from '../../cloud/driveApi';
-import { peekDriveAlbum } from '../../cloud/syncEngine';
+import { applyPendingRemoteAudioUpdates, peekDriveAlbum } from '../../cloud/syncEngine';
 import { pickAndSaveAlbumArtwork, pickAndSaveArtwork } from '../../files/albumArtwork';
 import { pickAndImportAudio, shareSidecar } from '../../files/libraryFiles';
 import type { RootStackParamList } from '../../navigation/types';
@@ -367,16 +367,16 @@ export function useLibraryActions(
             onPress: () => {
               void peekDriveAlbum(albumId)
                 .then((peek) => {
-                  const tracks = useLibraryStore.getState().tracksIn('album', albumId);
-                  const news =
-                    peek.newRemoteCount > 0 ||
-                    peek.changedTrackIds.length > 0 ||
-                    tracks.some((track) => track.pendingRemoteUpdate === true);
+                  if (peek.changedTrackIds.length > 0) {
+                    void applyPendingRemoteAudioUpdates(peek.changedTrackIds);
+                  }
                   Alert.alert(
                     'Drive',
-                    news
+                    peek.newRemoteCount > 0
                       ? 'C’è qualcosa di nuovo su Drive. Tocca Aggiorna in alto a destra.'
-                      : 'Nessun brano nuovo. I file in cartella sono già in questo album.',
+                      : peek.changedTrackIds.length > 0
+                        ? 'Sto aggiornando i brani modificati in background.'
+                        : 'Nessun brano nuovo. I file in cartella sono già in questo album.',
                   );
                 })
                 .catch((error: unknown) => {

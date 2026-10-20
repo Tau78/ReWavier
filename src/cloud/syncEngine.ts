@@ -250,6 +250,8 @@ export type DriveAlbumPeek = {
 
 /** Newer Drive bytes: download in background. Skip the track currently playing. */
 export async function applyPendingRemoteAudioUpdates(trackIds?: string[]): Promise<number> {
+  // A cancelled Aggiorna can leave pauseRequested stuck; background replace must not stall.
+  useDownloadProgressStore.getState().clearPauseRequested();
   const store = useLibraryStore.getState();
   const playingId = usePlayerStore.getState().track.id;
   const wanted = trackIds ? new Set(trackIds) : null;
@@ -271,6 +273,7 @@ export async function applyPendingRemoteAudioUpdates(trackIds?: string[]): Promi
   let applied = 0;
   for (const track of candidates) {
     try {
+      useDownloadProgressStore.getState().clearPauseRequested();
       await useLibraryStore.getState().downloadTrack(track.id, { replace: true, quiet: true });
       if (useLibraryStore.getState().getTrack(track.id)?.pendingRemoteUpdate !== true) {
         applied += 1;
@@ -280,6 +283,21 @@ export async function applyPendingRemoteAudioUpdates(trackIds?: string[]): Promi
     }
   }
   return applied;
+}
+
+function softConfirmMatchingLocalBytes(
+  track: { id: string; downloadedAt?: number; downloaded?: boolean; fileUri?: string; remoteHash?: string },
+  remote: DriveFile,
+): void {
+  const onPhone = track.downloaded === true || Boolean(track.fileUri);
+  if (!onPhone) {
+    return;
+  }
+  if (remote.md5Checksum && track.remoteHash && remote.md5Checksum !== track.remoteHash) {
+    return;
+  }
+  const at = remote.modifiedTime ? Date.parse(remote.modifiedTime) || Date.now() : Date.now();
+  useLibraryStore.getState().confirmLocalTrackBytes(track.id, at);
 }
 
 /** Elenca Drive: brani nuovi restano da Aggiorna; i byte cambiati si scaricano in background. */
@@ -346,28 +364,28 @@ export async function peekDriveAlbum(albumId: string): Promise<DriveAlbumPeek> {
     ) {
       useLibraryStore.getState().markTrackNeedsUpdate(existing.id, metaFrom(remote));
       changedTrackIds.push(existing.id);
+    } else if (existing.pendingRemoteUpdate === true || existing.downloadedAt == null) {
+      // Stale ↻ from an older build, or missing downloadedAt with matching hash — no re-fetch.
+      softConfirmMatchingLocalBytes(existing, remote);
     }
   }
 
-  useDownloadProgressStore.getState().setDriveNews(albumId, drivePeekNewsCount({
-    newRemoteCount,
-    changedTrackIds,
-  }));
+  // Aggiorna button pulses only for brand-new remotes, never for background replaces.
+  useDownloadProgressStore.getState().setDriveNews(albumId, drivePeekNewsCount({ newRemoteCount }));
   await flushLibraryPersist();
+  const liveLocals = albumLocalTracks(album.id, treeFolderIds);
   const pendingIds = [
     ...new Set([
       ...changedTrackIds,
-      ...locals.filter((track) => track.pendingRemoteUpdate === true).map((track) => track.id),
+      ...liveLocals.filter((track) => track.pendingRemoteUpdate === true).map((track) => track.id),
     ]),
   ];
   if (pendingIds.length > 0) {
+    // Replacements download quietly; do not wait for the user to press Aggiorna.
     void applyPendingRemoteAudioUpdates(pendingIds).then(() => {
-      const stillPending = pendingIds.filter(
-        (trackId) => useLibraryStore.getState().getTrack(trackId)?.pendingRemoteUpdate === true,
-      );
       useDownloadProgressStore.getState().setDriveNews(
         albumId,
-        drivePeekNewsCount({ newRemoteCount, changedTrackIds: stillPending }),
+        drivePeekNewsCount({ newRemoteCount }),
       );
     });
   }
@@ -659,6 +677,9 @@ async function syncOneDriveAlbum(
           driveFileId: remote.id,
           ...(existing.sourceFileName !== remote.name ? { sourceFileName: remote.name } : {}),
         });
+      }
+      if (existing.pendingRemoteUpdate === true || existing.downloadedAt == null) {
+        softConfirmMatchingLocalBytes(existing, remote);
       }
       continue;
     }
