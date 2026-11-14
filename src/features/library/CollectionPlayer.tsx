@@ -12,9 +12,7 @@ import { useLibraryStore } from '../../store/libraryStore';
 import { usePlayerStore } from '../../store/playerStore';
 import { colors, layout } from '../../theme/colors';
 import { NoteBubble } from '../notes/NoteBubble';
-import { AddNoteButton } from '../player/AddNoteButton';
-import { PlaybackControls } from '../player/PlaybackControls';
-import { Waveform } from '../player/Waveform';
+import { CassetteDeck } from '../player/CassetteDeck';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 type MetaMode = 'duration' | 'created';
@@ -157,10 +155,7 @@ export function CollectionPlayer() {
 
       {dockExpanded ? (
         <>
-          <View style={styles.wave}>
-            <Waveform compact />
-          </View>
-          <PlaybackControls center={<AddNoteButton inline />} />
+          <CassetteDeck />
           {focused ? <NoteBubble /> : null}
         </>
       ) : null}
@@ -243,9 +238,5 @@ const styles = StyleSheet.create({
   },
   timecodeSep: {
     color: colors.textMuted,
-  },
-  wave: {
-    height: 164,
-    paddingHorizontal: 16,
   },
 });

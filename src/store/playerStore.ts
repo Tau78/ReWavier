@@ -74,6 +74,10 @@ export type PlayerState = {
   dockExpanded: boolean;
   /** album:id / playlist:id — last collection this track was opened from. */
   resumeKey: string | null;
+  /** Session only. Not written to disk; loadTrack does not clear it. */
+  repeatSong: boolean;
+  /** Session only. Not written to disk; loadTrack does not clear it. */
+  repeatAlbum: boolean;
 };
 
 export type PlayerActions = {
@@ -100,7 +104,9 @@ export type PlayerActions = {
     queueIds?: string[],
     options?: { autoPlay?: boolean; startAtMs?: number; resumeKey?: string },
   ) => void;
-  skipBy: (step: number, options?: { autoPlay?: boolean }) => boolean;
+  toggleRepeatSong: () => void;
+  toggleRepeatAlbum: () => void;
+  skipBy: (step: number, options?: { autoPlay?: boolean; wrap?: boolean }) => boolean;
   setStartMs: (ms: number, options?: { persist?: boolean; seek?: boolean }) => void;
   setEndMs: (ms: number, options?: { persist?: boolean; seek?: boolean }) => void;
   setRate: (rate: number) => void;
@@ -169,6 +175,8 @@ let suppressPausePromptUntil = 0;
 /** One-shot A–B / exercise wrap: avoid native seek spam while still near end. */
 let loopWrapPending = false;
 let lastWrapAt = 0;
+/** Last time a stopped track was sent back to the start for repeat-song. */
+let repeatSongRestartAt = 0;
 /** Waveform pan scrub: keep UI positionMs while throttling native seeks. */
 let waveformScrubDepth = 0;
 let lastPlaybackRememberAt = 0;
@@ -470,6 +478,8 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
   loadState: 'idle',
   dockExpanded: true,
   resumeKey: null,
+  repeatSong: false,
+  repeatAlbum: false,
 
   play() {
     const state = get();
@@ -998,8 +1008,19 @@ export const usePlayerStore = create<PlayerStore>((set, get) => ({
     });
   },
 
+  toggleRepeatSong() {
+    set((state) => ({ repeatSong: !state.repeatSong }));
+  },
+
+  toggleRepeatAlbum() {
+    set((state) => ({ repeatAlbum: !state.repeatAlbum }));
+  },
+
   skipBy(step, options) {
     const { queueIds, track } = get();
+    if (options?.wrap) {
+      return skipByWrapped(queueIds, track.id, step, options.autoPlay);
+    }
     if (queueIds.length < 2) {
       return false;
     }
@@ -1254,6 +1275,72 @@ function persistKnownDuration(trackId: string, durationMs: number) {
   }
 }
 
+/** Restart the loaded track at the active range. Does not call loadTrack. */
+function replayCurrentTrack(autoPlay: boolean | undefined): void {
+  const state = usePlayerStore.getState();
+  const range = activePlayRange(state.track, state.markers);
+  state.seekTo(range.startMs);
+  if (autoPlay) {
+    usePlayerStore.getState().play();
+  }
+}
+
+function wrapQueueIndex(index: number, length: number): number {
+  return ((index % length) + length) % length;
+}
+
+/**
+ * Queue walk that wraps with modulo. A single playable id (or only the current
+ * id) seeks to the active range start instead of loadTrack on the same id.
+ */
+function skipByWrapped(
+  queueIds: string[],
+  trackId: string,
+  step: number,
+  autoPlay: boolean | undefined,
+): boolean {
+  const length = queueIds.length;
+  if (length === 0) {
+    return false;
+  }
+  if (length === 1) {
+    replayCurrentTrack(autoPlay);
+    return true;
+  }
+
+  let index = queueIds.indexOf(trackId);
+  if (index < 0) {
+    index = 0;
+  }
+
+  let nextIndex = wrapQueueIndex(index + step, length);
+  const first = nextIndex;
+  let currentIsPlayable = false;
+  let hops = 0;
+  do {
+    const nextId = queueIds[nextIndex]!;
+    const next = useLibraryStore.getState().getTrack(nextId);
+    const playable = Boolean(next && playableUri(next) && !isTrackDownloadBlocked(nextId));
+    if (nextId === trackId) {
+      if (playable) {
+        currentIsPlayable = true;
+      }
+    } else if (playable && next) {
+      const markers = useLibraryStore.getState().markersByTrackId[nextId] ?? [];
+      usePlayerStore.getState().loadTrack(next, markers, queueIds, { autoPlay });
+      return true;
+    }
+    nextIndex = wrapQueueIndex(nextIndex + step, length);
+    hops += 1;
+  } while (nextIndex !== first && hops < length);
+
+  if (currentIsPlayable) {
+    replayCurrentTrack(autoPlay);
+    return true;
+  }
+  return false;
+}
+
 function onEngineFrame(positionMs: number, playing: boolean) {
   const state = usePlayerStore.getState();
   // During waveform scrub, store positionMs is the source of truth for the UI.
@@ -1331,7 +1418,7 @@ function onEngineFrame(positionMs: number, playing: boolean) {
   }
 
   if (playing && playRange.endMs > playRange.startMs && positionMs >= playRange.endMs - 25) {
-    if (exercise || isCustomRange(fileRange, track.durationMs)) {
+    if (exercise || isCustomRange(fileRange, track.durationMs) || state.repeatSong) {
       // One-shot wrap: native seek is async; position can sit near end for many
       // ~50ms frames. Guard so we do not spam seekTo(start) every tick.
       const wrapStuckMs = 1500;
@@ -1362,8 +1449,20 @@ function onEngineFrame(positionMs: number, playing: boolean) {
     !exercise &&
     !isCustomRange(fileRange, track.durationMs);
   const advanceKey = `${track.id}:${fileRange.endMs}`;
-  if (finished && lastAdvanceKey !== advanceKey) {
+  if (finished && state.repeatSong) {
+    const now = Date.now();
+    if (now - repeatSongRestartAt >= 1500) {
+      repeatSongRestartAt = now;
+      engine().seekTo(playRange.startMs);
+      engine().play();
+    }
+  } else if (finished && lastAdvanceKey !== advanceKey) {
     lastAdvanceKey = advanceKey;
+    if (state.repeatAlbum) {
+      if (usePlayerStore.getState().skipBy(1, { autoPlay: true, wrap: true })) {
+        return;
+      }
+    }
     if (usePlayerStore.getState().skipBy(1, { autoPlay: true })) {
       return;
     }

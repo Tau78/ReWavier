@@ -234,6 +234,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Sostituzioni da Drive',
         body: 'Metti una 01 o una 06 nuova nella cartella Drive: arriva da sola sul telefono. Aggiorna serve solo se sul Drive c’è un brano che non è ancora in album.',
       },
+      {
+        title: 'Cassetta nel player',
+        body: 'Nel player in basso parti dalla cassetta: le righe a penna sono gli appunti, toccane una per andare a quel punto. Scorri per l’onda e per il testo. Due tasti ripetono il brano o tutto l’album.',
+      },
     ],
   },
 ];
