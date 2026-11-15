@@ -238,6 +238,10 @@ export const WHATS_NEW_RELEASES: readonly WhatsNewRelease[] = [
         title: 'Cassetta nel player',
         body: 'Nel player in basso parti dalla cassetta: le righe a penna sono gli appunti, toccane una per andare a quel punto. Scorri per l’onda e per il testo. Due tasti ripetono il brano o tutto l’album.',
       },
+      {
+        title: 'Resta aperta in background',
+        body: 'Se metti ReWavier da parte con la cassetta aperta, non si riavvia più da sola dopo qualche minuto.',
+      },
     ],
   },
 ];

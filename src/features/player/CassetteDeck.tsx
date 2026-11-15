@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Animated,
+  AppState,
   Dimensions,
   Easing,
   Platform,
@@ -193,8 +194,22 @@ function useReelSpin(isPlaying: boolean, supply: number, takeup: number) {
 
   useEffect(() => {
     let frame = 0;
+    let running = false;
     let last = performance.now();
+    const stop = () => {
+      if (frame) {
+        cancelAnimationFrame(frame);
+        frame = 0;
+      }
+      running = false;
+    };
     const tick = (now: number) => {
+      frame = 0;
+      // Background + keepAudioSessionActive kept this loop alive and jetsam'd the app.
+      if (AppState.currentState !== 'active') {
+        running = false;
+        return;
+      }
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       const target = playingRef.current ? 1 : 0;
@@ -213,16 +228,39 @@ function useReelSpin(isPlaying: boolean, supply: number, takeup: number) {
       // Fraction of a turn, extended past 1 so the hub never snaps backwards.
       spinL.setValue(angleL.current / 360);
       spinR.setValue(angleR.current / 360);
+      if (playingRef.current || coast.current > 0) {
+        frame = requestAnimationFrame(tick);
+        return;
+      }
+      running = false;
+    };
+    const start = () => {
+      if (running || AppState.currentState !== 'active') {
+        return;
+      }
+      if (!playingRef.current && coast.current < 0.004) {
+        return;
+      }
+      running = true;
+      last = performance.now();
       frame = requestAnimationFrame(tick);
     };
-    frame = requestAnimationFrame(tick);
+    const sub = AppState.addEventListener('change', (next) => {
+      if (next === 'active') {
+        start();
+        return;
+      }
+      stop();
+    });
+    start();
     return () => {
-      cancelAnimationFrame(frame);
+      sub.remove();
+      stop();
       storedAngleL = angleL.current;
       storedAngleR = angleR.current;
       storedCoast = coast.current;
     };
-  }, [spinL, spinR]);
+  }, [spinL, spinR, isPlaying]);
 
   const rotateL = useMemo(
     () =>

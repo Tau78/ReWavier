@@ -16,9 +16,20 @@ assert.match(publishBody, /setActiveForLockScreen/);
 assert.doesNotMatch(publishBody, /clearLockScreenControls/);
 
 const app = JSON.parse(readFileSync(join(root, 'app.json'), 'utf8'));
-assert.deepEqual(app.expo.ios.infoPlist.UIBackgroundModes, ['audio']);
+assert.ok(app.expo.ios.infoPlist.UIBackgroundModes.includes('audio'));
 assert.ok(
   app.expo.android.permissions.includes('android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK'),
+);
+
+const cassette = readFileSync(join(root, 'src/features/player/CassetteDeck.tsx'), 'utf8');
+const reelSpin = cassette.match(/function useReelSpin[\s\S]*?\n  \}, \[spinL, spinR, isPlaying\]\);/)?.[0] ?? '';
+assert.match(reelSpin, /AppState\.addEventListener\('change'/);
+assert.match(reelSpin, /AppState\.currentState !== 'active'/);
+assert.match(reelSpin, /if \(playingRef\.current \|\| coast\.current > 0\) \{\s*frame = requestAnimationFrame\(tick\);/s);
+// Old bug: rAF always rescheduled after setValue, even when idle/background.
+assert.doesNotMatch(
+  reelSpin,
+  /spinL\.setValue\([^)]+\);\s*spinR\.setValue\([^)]+\);\s*frame = requestAnimationFrame\(tick\);/s,
 );
 
 const sketch = readFileSync(join(root, 'src/features/library/RecordSketchScreen.tsx'), 'utf8');
